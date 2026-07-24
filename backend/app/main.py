@@ -3,25 +3,21 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.core.config import get_settings
+
+settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """
-    Initialize and clean up application resources.
+    app.state.settings = settings
 
-    Future resources:
-    - Qdrant client
-    - LLM provider
-    - LangGraph workflows
-    - HTTP clients
-    """
     yield
 
 
 app = FastAPI(
-    title="Multi-Agent Job Assistant API",
-    version="0.1.0",
-    description="API for CV analysis, job matching, and career recommendations.",
+    title=settings.app_name,
+    version=settings.app_version,
+    debug=settings.debug,
     lifespan=lifespan,
 )
 
@@ -30,6 +26,7 @@ app = FastAPI(
 async def health_check() -> dict[str, str]:
     return {
         "status": "healthy",
-        "service": "multi-agent-job-assistant",
-        "version": "0.1.0",
+        "service": settings.app_name,
+        "version": settings.app_version,
+        "environment": settings.environment,
     }
