@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import get_settings
+from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging
 
 settings = get_settings()
@@ -14,7 +15,7 @@ configure_logging(settings)
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.info(
         "Application starting | name=%s | environment=%s",
         settings.app_name,
@@ -32,6 +33,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+register_exception_handlers(app)
 
 @app.get("/health", tags=["System"])
 async def health_check() -> dict[str, str]:
