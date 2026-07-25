@@ -9,9 +9,15 @@ def test_health_check() -> None:
 
     assert response.status_code == 200
 
-    data = response.json()
+    body = response.json()
 
-    assert data['status'] == "healthy"
+    assert body["success"] is True
+    assert body["message"] == "Service is healthy."
+    assert body["meta"] is None
+
+    data = body["data"]
+
+    assert data["status"] == "healthy"
     assert data["service"] == "Multi-Agent Job Assistant"
     assert data["version"] == "0.1.0"
     assert data["environment"] in {
@@ -19,4 +25,3 @@ def test_health_check() -> None:
         "testing",
         "production",
     }
-
