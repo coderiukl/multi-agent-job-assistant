@@ -21,7 +21,10 @@ class Settings(BaseSettings):
         "CRITICAL",
     ] = "INFO"  
 
-    llm_provider: Literal["openai", "openrouter"] = "openai"
+    llm_provider: Literal["openai", "9router"] = "openai"
+    llm_model: str = "cx/gpt-5.5"
+    llm_temperature: int | None = None
+    llm_max_tokens: int | None = None
 
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_base_url: str | None = Field(default=None, repr=False)
