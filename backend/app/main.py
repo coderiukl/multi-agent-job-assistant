@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.core.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging
+from app.middlewares.request_id import request_id_middleware
 
 from app.api.v1.router import router as health_router
 
@@ -34,6 +35,7 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+app.middleware("http")(request_id_middleware)
 
 register_exception_handlers(app)
 
