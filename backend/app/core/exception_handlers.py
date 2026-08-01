@@ -106,7 +106,7 @@ async def validation_exception_handler(request: Request, exception: RequestValid
     )
 
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=_create_error_response(
             code="VALIDATION_ERROR",
             message="Dữ liệu request không hợp lệ.",
