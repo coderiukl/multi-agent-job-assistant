@@ -53,6 +53,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    storage_dir: str = "storage"
+    upload_dir: str = "storage/uploads"
 
 @lru_cache
 def get_settings() -> Settings:
