@@ -18,7 +18,7 @@ def get_request_id(request: Request) -> str | None:
 def get_llm(settings: SettingsDep) -> BaseChatModel:
     return create_llm(settings)
 
-def get_storage_service(settings: Settings) -> LocalStorageService:
+def get_storage_service(settings: SettingsDep) -> LocalStorageService:
     return LocalStorageService(settings)
 
 RequestIdDep = Annotated[str | None, Depends(get_request_id)]
