@@ -4,6 +4,11 @@ pydantic
 pydantic-settings
 python-multipart
 httpx
+PyMuPDF
+opencv-python
+numpy
+paddleocr
+paddlepaddle
 
 langchain
 langgraph

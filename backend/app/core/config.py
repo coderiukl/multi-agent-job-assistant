@@ -39,6 +39,25 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
     allowed_cv_content_types: tuple[str, ...] = ("application/pdf",)
 
+    max_pdf_pages: int = 5
+    pdf_render_dpi: int = 200
+    ocr_enabled: bool = True
+    ocr_languages: tuple[str, ...] = ("vi", "en")
+    allowed_cv_extensions: tuple[str, ...] = (".pdf",)
+
+    min_text_length_for_digital_page: int = 80
+    min_text_blocks_for_digital_page: int = 3
+    scan_image_coverage_threshold: float = 0.70
+    hybrid_image_coverage_threshold: float = 0.10
+    min_ocr_region_area_ratio: float = 0.02
+    dedup_bbox_iou_threshold: float = 0.60
+    dedup_text_similarity_threshold: float = 0.85
+    accepted_confidence_threshold: float = 0.90
+    warning_confidence_threshold: float = 0.70
+    
+    cv_pipeline_version: str = "cv-pipeline-v1"
+    cv_prompt_version: str = "cv-profile-parser-v1"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
