@@ -4,7 +4,7 @@ import numpy as np
 class PageRenderer:
     """Render PDF pages or regions to OpenCV-compatible images."""
 
-    def render_page(self, page: fitz.page, *, dpi: int) -> np.ndarray:
+    def render_page(self, page: fitz.Page, *, dpi: int) -> np.ndarray:
         matrix = fitz.Matrix(dpi / 72, dpi / 72)
         pixmap = page.get_pixmap(matrix=matrix, alpha=False)
         return self._pixmap_to_image(pixmap)
@@ -15,9 +15,9 @@ class PageRenderer:
         pixmap = page.get_pixmap(matrix=matrix, clip=clip, alpha=False)
         return self._pixmap_to_image(pixmap)
 
-    def image_bbox_to_page_box(self, *, image_box: tuple[float, float, float, float], page_box: tuple[float, float, float, float], image_width: int, image_height: int) -> tuple[float, float, float, float]:
-        x0, y0, x1, y1 = image_box
-        px0, py0, px1, py1 = page_box
+    def image_bbox_to_page_bbox(self, *, image_bbox: tuple[float, float, float, float], page_bbox: tuple[float, float, float, float], image_width: int, image_height: int) -> tuple[float, float, float, float]:
+        x0, y0, x1, y1 = image_bbox
+        px0, py0, px1, py1 = page_bbox
 
         page_width = px1 - px0
         page_height = py1 - py0

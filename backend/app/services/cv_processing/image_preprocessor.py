@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+
 class ImagePreprocessor:
     """Apply conservative preprocessing before OCR."""
 
@@ -18,6 +19,10 @@ class ImagePreprocessor:
     def to_grayscale(self, image: np.ndarray) -> np.ndarray:
         if len(image.shape) == 2:
             return image
+
+        if image.shape[2] == 4:
+            return cv2.cvtColor(image, cv2.COLOR_RGBA2GRAY)
+
         return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
     def enhance_contrast(self, image: np.ndarray) -> np.ndarray:
@@ -53,6 +58,9 @@ class ImagePreprocessor:
         matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
 
         return cv2.warpAffine(
-            image, matrix, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE,
+            image,
+            matrix,
+            (width, height),
+            flags=cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_REPLICATE,
         )
-
