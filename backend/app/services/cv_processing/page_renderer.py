@@ -30,6 +30,6 @@ class PageRenderer:
         )
 
     def _pixmap_to_image(self, pixmap: fitz.Pixmap) -> np.ndarray:
-        image = np.frombuffer(pixmap.samples, dtype=np.unit8)
+        image = np.frombuffer(pixmap.samples, dtype=np.uint8)
         image = image.reshape(pixmap.height, pixmap.width, pixmap.n)
         return image
