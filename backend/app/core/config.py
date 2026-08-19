@@ -1,11 +1,13 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
-from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
+# CORS origins
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
@@ -15,7 +17,9 @@ DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:5500",
 ]
 
+
 class Settings(BaseSettings):
+    # Application
     app_name: str = "Multi-Agent Job Assistant"
     app_version: str = "0.1.0"
     environment: Literal["development", "testing", "production"] = "development"
@@ -35,31 +39,36 @@ class Settings(BaseSettings):
     ] = "INFO"
     log_format: Literal["console", "json"] = "console"
 
+    # CORS
     backend_cors_origins: list[str] = Field(
-        default_factory=lambda: DEFAULT_CORS_ORIGINS.copy()
+        default_factory=lambda: DEFAULT_CORS_ORIGINS.copy(),
     )
     backend_cors_allow_credentials: bool = True
 
+    # LLM
     llm_provider: Literal["openai", "9router"] = "openai"
-
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_base_url: str | None = Field(default=None, repr=False)
 
+    # LangSmith
     langsmith_tracing: bool = False
     langsmith_api_key: str | None = Field(default=None, repr=False)
     langsmith_project: str = "multi-agent-job-assistant"
 
+    # Qdrant
     qdrant_url: str | None = None
     qdrant_api_key: str | None = Field(default=None, repr=False)
 
+    # File upload
     max_upload_size_mb: int = 10
     allowed_cv_content_types: tuple[str, ...] = ("application/pdf",)
-
     storage_dir: Path = Path("storage")
     upload_dir: Path = Path("storage/uploads")
+    upload_chunk_size_bytes: int = Field(default=1024 * 1024, gt=0)
 
-    upload_chunk_size_bytes: int = Field(default=1024*1024, gt=0)
-
+    max_pdf_pages: int = Field(default=20, ge=1, le=100)
+    
+    # Pydantic settings
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -67,10 +76,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Upload size conversion
     @property
     def max_upload_size_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
-    
+
+    # CORS validation
     @field_validator("backend_cors_origins")
     @classmethod
     def validate_cors_origins(cls, origins: list[str]) -> list[str]:
@@ -96,6 +107,8 @@ class Settings(BaseSettings):
 
         return list(dict.fromkeys(normalized_origins))
 
+
+# Cached settings
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
