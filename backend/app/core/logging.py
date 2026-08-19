@@ -60,55 +60,55 @@ class JsonFormatter(logging.Formatter):
             default=str
         )
 
-    def configure_logging(settings: Settings) -> None:
-        formatter_name = (
-            "json" if settings.log_format == "json" else "console"
-        )
+def configure_logging(settings: Settings) -> None:
+    formatter_name = (
+        "json" if settings.log_format == "json" else "console"
+    )
 
-        config: dict[str, Any] = {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "filters": {
-                "request_context": {
-                    "()": RequestContextFilter,
-                },
+    config: dict[str, Any] = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {
+            "request_context": {
+                "()": RequestContextFilter,
             },
-            "formatters": {
-                "console": {
-                    "format": (
-                        "%(asctime)s | %(levelname)s | %(name)s | "
-                        "request_id=%(request_id)s | %(message)s"
-                    ),
-                },
-                "json": {
-                    "()": JsonFormatter,
-                },
+        },
+        "formatters": {
+            "console": {
+                "format": (
+                    "%(asctime)s | %(levelname)s | %(name)s | "
+                    "request_id=%(request_id)s | %(message)s"
+                ),
             },
-            "handlers": {
-                "default": {
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://sys.stdout",
-                    "formatter": formatter_name,
-                    "filters": ["request_context"],
-                },
+            "json": {
+                "()": JsonFormatter,
             },
-            "root": {
+        },
+        "handlers": {
+            "default": {
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stdout",
+                "formatter": formatter_name,
+                "filters": ["request_context"],
+            },
+        },
+        "root": {
+            "level": settings.log_level,
+            "handlers": ["default"],
+        },
+        "loggers": {
+            "uvicorn.error": {
                 "level": settings.log_level,
                 "handlers": ["default"],
+                "propagate": False,
             },
-            "loggers": {
-                "uvicorn.error": {
-                    "level": settings.log_level,
-                    "handlers": ["default"],
-                    "propagate": False,
-                },
-                # Request access log sẽ do middleware quản lý.
-                "uvicorn.access": {
-                    "level": "WARNING",
-                    "handlers": ["default"],
-                    "propagate": False,
-                },
+            # Request access log sẽ do middleware quản lý.
+            "uvicorn.access": {
+                "level": "WARNING",
+                "handlers": ["default"],
+                "propagate": False,
             },
-        }
+        },
+    }
 
-        dictConfig(config)
+    dictConfig(config)

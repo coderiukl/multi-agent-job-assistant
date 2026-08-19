@@ -1,10 +1,12 @@
 import logging
+from collections.abc import Mapping
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 from app.core.exceptions import AppException
 from app.schemas.error import ErrorPayload, ErrorResponse
@@ -16,7 +18,7 @@ def _get_request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "-")
 
 
-def _build_error_response(*, request: Request, status_code: int, code: str, message: str, details: Any | None = None, headers: dict[str, str] | None = None) -> JSONResponse:
+def _build_error_response(*, request: Request, status_code: int, code: str, message: str, details: Any | None = None, headers: Mapping[str, str] | None = None) -> JSONResponse:
     request_id = _get_request_id(request)
 
     response_headers = dict(headers or {})
