@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,7 +40,7 @@ class Settings(BaseSettings):
     )
     backend_cors_allow_credentials: bool = True
 
-    llm_provider: Literal["openai", "openrouter"] = "openai"
+    llm_provider: Literal["openai", "9router"] = "openai"
 
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_base_url: str | None = Field(default=None, repr=False)
@@ -54,6 +55,11 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
     allowed_cv_content_types: tuple[str, ...] = ("application/pdf",)
 
+    storage_dir: Path = Path("storage")
+    upload_dir: Path = Path("storage/uploads")
+
+    upload_chunk_size_bytes: int = Field(default=1024*1024, gt=0)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -61,6 +67,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @property
+    def max_upload_size_bytes(self) -> int:
+        return self.max_upload_size_mb * 1024 * 1024
+    
     @field_validator("backend_cors_origins")
     @classmethod
     def validate_cors_origins(cls, origins: list[str]) -> list[str]:

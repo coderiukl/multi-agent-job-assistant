@@ -27,10 +27,17 @@ class ResourceNotFoundException(AppException):
 
 
 class FileValidationException(AppException):
-    def __init__(self, *, message: str = "The uploaded file is invalid.", details: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        message: str = "The uploaded file is invalid.",
+        details: dict[str, Any] | None = None,
+        status_code: int = 422,
+        code: str = "FILE_VALIDATION_ERROR",
+    ) -> None:
         super().__init__(
-            status_code=422,
-            code="FILE_VALIDATION_ERROR",
+            status_code=status_code,
+            code=code,
             message=message,
             details=details,
         )
@@ -43,4 +50,13 @@ class ExternalServiceException(AppException):
             code="EXTERNAL_SERVICE_ERROR",
             message=message,
             details={"service": service},
+        )
+
+
+class StorageException(AppException):
+    def __init__(self, *, message: str = "The file could not be stored.") -> None:
+        super().__init__(
+            status_code=500,
+            code="STORAGE_OPERATION_FAILED",
+            message=message,
         )
