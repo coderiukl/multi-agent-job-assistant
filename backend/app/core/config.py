@@ -67,7 +67,7 @@ class Settings(BaseSettings):
         normalized_origins: list[str] = []
 
         for origin in origins:
-            normalized_origin = origin.rsplit("/")
+            normalized_origin = origin.rstrip("/")
             parsed_origin = urlsplit(normalized_origin)
 
             is_valid = (
