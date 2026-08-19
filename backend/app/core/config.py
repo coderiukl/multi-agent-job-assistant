@@ -10,8 +10,17 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: Literal["development", "testing", "production"] = "development"
     debug: bool = Field(default=False, validation_alias="APP_DEBUG")
-
     api_prefix: str = "/api/v1"
+
+    # Logging
+    log_level: Literal[
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
+    ] = "INFO"
+    log_format: Literal["console", "json"] = "console"
 
     llm_provider: Literal["openai", "openrouter"] = "openai"
 
