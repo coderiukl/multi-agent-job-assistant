@@ -27,7 +27,11 @@ def _resolve_request_id(request: Request) -> str:
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
         request_id = _resolve_request_id(request)
         request.state.request_id = request_id
 
@@ -36,7 +40,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
-
             duration_ms = round((perf_counter() - started_at) * 1000, 2)
 
             response.headers["X-Request-ID"] = request_id

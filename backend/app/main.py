@@ -3,19 +3,19 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.router import create_api_router
 from app.core.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging
 from app.middleware.request_context import RequestContextMiddleware
 
-from app.schemas.health import HealthData
-from app.schemas.response import ApiResponse
-
 settings = get_settings()
 configure_logging(settings)
 
 logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -41,23 +41,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(RequestContextMiddleware)
-register_exception_handlers(app)
-
-@app.get(
-    "/health",
-    response_model=ApiResponse[HealthData],
-    tags=["System"],
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.backend_cors_origins,
+    allow_credentials=settings.backend_cors_allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
+    max_age=600,
 )
-async def health_check() -> ApiResponse[HealthData]:
-    health_data = HealthData(
-        status="healthy",
-        service=settings.app_name,
-        version=settings.app_version,
-        environment=settings.environment,
-    )
+app.add_middleware(RequestContextMiddleware)
 
-    return ApiResponse(
-        message="Service is healthy.",
-        data=health_data,
-    )
+register_exception_handlers(app)
+app.include_router(create_api_router(settings))
