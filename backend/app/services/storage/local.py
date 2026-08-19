@@ -119,6 +119,27 @@ class LocalStorageService:
             size_bytes=size_bytes,
         )
 
+    async def delete(self, stored_file: StoredFile) -> None:
+        try:
+            await asyncio.to_thread(
+                stored_file.path.unlink,
+                missing_ok=True,
+            )
+
+            logger.info(
+                "Stored file deleted",
+                extra={"file_id": stored_file.file_id},
+            )
+
+        except OSError as exc:
+            logger.exception(
+                "Failed to delete stored file",
+                extra={"file_id": stored_file.file_id},
+            )
+
+            raise StorageException(
+                message="The stored file could not be deleted.",
+            ) from exc
     def _validate_metadata(self, *, filename: str, content_type: str) -> None:
         if content_type not in self._allowed_content_types:
             raise FileValidationException(

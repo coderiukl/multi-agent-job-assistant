@@ -2,8 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, UploadFile, status
 
-from app.api.dependencies import StorageServiceDependency
-from app.schemas.cv import CVUploadData
+from app.api.dependencies import CVIngestionServiceDependency
+from app.schemas.cv import CVUploadData, PdfInspectionData, PdfMetadataData
 from app.schemas.error import ErrorResponse
 from app.schemas.response import ApiResponse
 
@@ -39,17 +39,35 @@ async def upload_cv(
         UploadFile,
         File(description="PDF CV file."),
     ],
-    storage_service: StorageServiceDependency,
+    ingestion_service: CVIngestionServiceDependency,
 ) -> ApiResponse[CVUploadData]:
 
-    stored_file = await storage_service.save_cv(file)
+    result = await ingestion_service.ingest(file)
+
+    stored_file = result.stored_file
+    inspection = result.inspection
+    metadata = inspection.metadata
 
     return ApiResponse(
-        message="CV uploaded successfully.",
+        message="CV uploaded and inspected successfully.",
         data=CVUploadData(
             file_id=stored_file.file_id,
             original_filename=stored_file.original_filename,
             content_type=stored_file.content_type,
             size_bytes=stored_file.size_bytes,
+            inspection=PdfInspectionData(
+                page_count=inspection.page_count,
+                is_repaired=inspection.is_repaired,
+                metadata=PdfMetadataData(
+                    title=metadata.title,
+                    author=metadata.author,
+                    subject=metadata.subject,
+                    keywords=metadata.keywords,
+                    creator=metadata.creator,
+                    producer=metadata.producer,
+                    creation_date=metadata.creation_date,
+                    modification_date=metadata.modification_date
+                ),
+            ),
         ),
     )

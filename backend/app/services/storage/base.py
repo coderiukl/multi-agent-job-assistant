@@ -8,3 +8,7 @@ class StorageService(Protocol):
     async def save_cv(self, file: UploadFile) -> StoredFile:
         """Validate and store an uploaded CV."""
         ...
+
+    async def delete(self, stored_file: StoredFile) -> None:
+        """Delete a stored file."""
+        ...
