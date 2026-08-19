@@ -4,15 +4,9 @@ from typing import Any
 class AppException(Exception):
     """Base exception for expected application errors."""
 
-    def __init__(
-        self,
-        *,
-        status_code: int,
-        code: str,
-        message: str,
-        details: dict[str, Any] | None = None,
-    ) -> None:
+    def __init__(self, *, status_code: int, code: str, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(message)
+
         self.status_code = status_code
         self.code = code
         self.message = message
@@ -33,12 +27,7 @@ class ResourceNotFoundException(AppException):
 
 
 class FileValidationException(AppException):
-    def __init__(
-        self,
-        *,
-        message: str = "The uploaded file is invalid.",
-        details: dict[str, Any] | None = None,
-    ) -> None:
+    def __init__(self, *, message: str = "The uploaded file is invalid.", details: dict[str, Any] | None = None) -> None:
         super().__init__(
             status_code=422,
             code="FILE_VALIDATION_ERROR",
@@ -48,12 +37,7 @@ class FileValidationException(AppException):
 
 
 class ExternalServiceException(AppException):
-    def __init__(
-        self,
-        *,
-        service: str,
-        message: str = "An external service is unavailable.",
-    ) -> None:
+    def __init__(self, *, service: str, message: str = "An external service is unavailable.") -> None:
         super().__init__(
             status_code=502,
             code="EXTERNAL_SERVICE_ERROR",

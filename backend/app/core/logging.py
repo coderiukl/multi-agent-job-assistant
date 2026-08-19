@@ -9,18 +9,14 @@ from app.core.config import Settings
 
 _request_id_context: ContextVar[str] = ContextVar("request_id", default="-")
 
-
 def get_request_id() -> str:
     return _request_id_context.get()
-
 
 def set_request_id(request_id: str) -> Token[str]:
     return _request_id_context.set(request_id)
 
-
 def reset_request_id(token: Token[str]) -> None:
     _request_id_context.reset(token)
-
 
 class RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -28,7 +24,6 @@ class RequestContextFilter(logging.Filter):
             record.request_id = get_request_id()
 
         return True
-
 
 class JsonFormatter(logging.Formatter):
     """Convert log records to JSON for log aggregation systems."""
@@ -59,55 +54,61 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
 
-        return json.dumps(payload, ensure_ascii=False, default=str)
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            default=str
+        )
 
+    def configure_logging(settings: Settings) -> None:
+        formatter_name = (
+            "json" if settings.log_format == "json" else "console"
+        )
 
-def configure_logging(settings: Settings) -> None:
-    formatter_name = "json" if settings.log_format == "json" else "console"
-
-    config: dict[str, Any] = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "filters": {
-            "request_context": {
-                "()": RequestContextFilter,
+        config: dict[str, Any] = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "filters": {
+                "request_context": {
+                    "()": RequestContextFilter,
+                },
             },
-        },
-        "formatters": {
-            "console": {
-                "format": (
-                    "%(asctime)s | %(levelname)s | %(name)s | "
-                    "request_id=%(request_id)s | %(message)s"
-                ),
+            "formatters": {
+                "console": {
+                    "format": (
+                        "%(asctime)s | %(levelname)s | %(name)s | "
+                        "request_id=%(request_id)s | %(message)s"
+                    ),
+                },
+                "json": {
+                    "()": JsonFormatter,
+                },
             },
-            "json": {
-                "()": JsonFormatter,
+            "handlers": {
+                "default": {
+                    "class": "logging.StreamHandler",
+                    "stream": "ext://sys.stdout",
+                    "formatter": formatter_name,
+                    "filters": ["request_context"],
+                },
             },
-        },
-        "handlers": {
-            "default": {
-                "class": "logging.StreamHandler",
-                "stream": "ext://sys.stdout",
-                "formatter": formatter_name,
-                "filters": ["request_context"],
-            },
-        },
-        "root": {
-            "level": settings.log_level,
-            "handlers": ["default"],
-        },
-        "loggers": {
-            "uvicorn.error": {
+            "root": {
                 "level": settings.log_level,
                 "handlers": ["default"],
-                "propagate": False,
             },
-            "uvicorn.access": {
-                "level": "WARNING",
-                "handlers": ["default"],
-                "propagate": False,
+            "loggers": {
+                "uvicorn.error": {
+                    "level": settings.log_level,
+                    "handlers": ["default"],
+                    "propagate": False,
+                },
+                # Request access log sẽ do middleware quản lý.
+                "uvicorn.access": {
+                    "level": "WARNING",
+                    "handlers": ["default"],
+                    "propagate": False,
+                },
             },
-        },
-    }
+        }
 
-    dictConfig(config)
+        dictConfig(config)
