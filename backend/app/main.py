@@ -9,6 +9,9 @@ from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging
 from app.middleware.request_context import RequestContextMiddleware
 
+from app.schemas.health import HealthData
+from app.schemas.response import ApiResponse
+
 settings = get_settings()
 configure_logging(settings)
 
@@ -41,11 +44,20 @@ app = FastAPI(
 app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)
 
-@app.get("/health", tags=["System"])
-async def health_check() -> dict[str, str]:
-    return {
-        "status": "healthy",
-        "service": settings.app_name,
-        "version": settings.app_version,
-        "environment": settings.environment,
-    }
+@app.get(
+    "/health",
+    response_model=ApiResponse[HealthData],
+    tags=["System"],
+)
+async def health_check() -> ApiResponse[HealthData]:
+    health_data = HealthData(
+        status="healthy",
+        service=settings.app_name,
+        version=settings.app_version,
+        environment=settings.environment,
+    )
+
+    return ApiResponse(
+        message="Service is healthy.",
+        data=health_data,
+    )
