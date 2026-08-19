@@ -70,7 +70,7 @@ class Settings(BaseSettings):
             normalized_origin = origin.rstrip("/")
             parsed_origin = urlsplit(normalized_origin)
 
-            is_valid = (
+            is_invalid = (
                 normalized_origin == "*"
                 or parsed_origin.scheme not in {"http", "https"}
                 or not parsed_origin.netloc
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
                 or bool(parsed_origin.fragment)
             )
 
-            if is_valid:
+            if is_invalid:
                 raise ValueError(f"Invalid CORS origin: {origin}")
 
             normalized_origins.append(normalized_origin)
