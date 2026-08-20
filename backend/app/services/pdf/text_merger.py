@@ -49,18 +49,18 @@ class PdfTextMerger:
                 )
             )
 
-            pages = tuple(merged_pages)
+        pages = tuple(merged_pages)
 
-            full_text = "\n\n".join(page.text for page in pages if page.text)
+        full_text = "\n\n".join(page.text for page in pages if page.text)
 
-            return PdfTextMergeResult(
-                pages=pages,
-                full_text=full_text,
-                total_character_count=sum(page.character_count for page in pages),
-                total_word_count=sum(page.word_count for page in pages),
-                native_page_count=sum(page.method == "native" for page in pages),
-                ocr_page_count=sum(page.method == "ocr" for page in pages),
-            )
+        return PdfTextMergeResult(
+            pages=pages,
+            full_text=full_text,
+            total_character_count=sum(page.character_count for page in pages),
+            total_word_count=sum(page.word_count for page in pages),
+            native_page_count=sum(page.method == "native" for page in pages),
+            ocr_page_count=sum(page.method == "ocr" for page in pages),
+        )
 
     @staticmethod
     def _select_page_text(
