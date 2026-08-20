@@ -134,6 +134,8 @@ class PdfOcrExtractor:
 
         lines: list[OcrTextLine] = []
 
+        pixel_to_pdf_point = 72.0 / self._dpi
+
         for prediction_result in prediction_results:
             payload = self._prediction_payload(prediction_result)
             result_data = payload.get("res", payload)
@@ -154,10 +156,10 @@ class PdfOcrExtractor:
                         text=normalized_text,
                         confidence=confidence,
                         bbox=(
-                            float(box[0]),
-                            float(box[1]),
-                            float(box[2]),
-                            float(box[3]),
+                            float(box[0]) * pixel_to_pdf_point,
+                            float(box[1]) * pixel_to_pdf_point,
+                            float(box[2]) * pixel_to_pdf_point,
+                            float(box[3]) * pixel_to_pdf_point,
                         ),
                     )
                 )

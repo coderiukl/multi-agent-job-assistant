@@ -75,7 +75,7 @@ async def upload_cv(
                 total_character_count=extraction.total_character_count,
                 total_word_count=extraction.total_word_count,
                 native_page_count=extraction.native_page_count,
-                ocr_required_page_numbers=extraction.ocr_required_page_numbers,
+                ocr_required_page_numbers=list(extraction.ocr_required_page_numbers),
             ),
             ocr=OcrExtractionData(
                 ocr_page_count=ocr_extraction.ocr_page_count,

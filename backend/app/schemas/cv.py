@@ -24,14 +24,6 @@ class NativeTextExtractionData(BaseModel):
     native_page_count: int = Field(ge=0)
     ocr_required_page_numbers: list[int]
 
-class CVUploadData(BaseModel):
-    file_id: str
-    file_name: str
-    file_size: int = Field(ge=1)
-    content_type: str
-    inspection: PdfInspectionData
-    extraction: NativeTextExtractionData
-
 class OcrExtractionData(BaseModel):
     ocr_page_count: int = Field(ge=0)
     total_character_count: int = Field(ge=0)
@@ -40,3 +32,12 @@ class OcrExtractionData(BaseModel):
         ge=0.0,
         le=1.0,
     )
+
+class CVUploadData(BaseModel):
+    file_id: str
+    file_name: str
+    file_size: int = Field(ge=1)
+    content_type: str
+    inspection: PdfInspectionData
+    extraction: NativeTextExtractionData
+    ocr: OcrExtractionData

@@ -48,7 +48,16 @@ class CVIngestionService:
             ocr_extraction = await self._ocr_extractor.extract(file_path=stored_file.path, page_numbers=extraction.ocr_required_page_numbers)
 
         except Exception:
-            await self._storage.delete(stored_file)
+            try:
+                await self._storage.delete(stored_file)
+            except Exception:
+                logger.exception(
+                    "Failed to rollback CV upload",
+                    extra={
+                        "file_id": stored_file.file_id,
+                    },
+                )
+
             raise
 
         return CVIngestionResult(
