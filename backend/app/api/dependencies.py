@@ -5,7 +5,7 @@ from fastapi import Depends
 
 from app.core.config import get_settings
 from app.services.cv_ingestion import CVIngestionService
-from app.services.pdf import PdfInspector, PdfOcrExtractor, NativePdfTextExtractor
+from app.services.pdf import PdfInspector, PdfOcrExtractor, NativePdfTextExtractor, PdfTextMerger
 from app.services.storage import LocalStorageService, StorageService
 
 
@@ -25,17 +25,23 @@ def get_native_pdf_text_extractor() -> NativePdfTextExtractor:
 def get_pdf_ocr_extractor() -> PdfOcrExtractor:
     return PdfOcrExtractor(get_settings())
 
+@lru_cache
+def get_pdf_text_merger() -> PdfTextMerger:
+    return PdfTextMerger()
+
 def get_cv_ingestion_service(
     storage_service: StorageService = Depends(get_storage_service),
     pdf_inspector: PdfInspector = Depends(get_pdf_inspector),
     text_extractor: NativePdfTextExtractor = Depends(get_native_pdf_text_extractor),
     ocr_extractor: PdfOcrExtractor = Depends(get_pdf_ocr_extractor),
+    text_merger: PdfTextMerger = Depends(get_pdf_text_merger),
 ) -> CVIngestionService:
     return CVIngestionService(
         storage=storage_service,
         pdf_inspector=pdf_inspector,
         text_extractor=text_extractor,
         ocr_extractor=ocr_extractor,
+        text_merger=text_merger,
     )
 
 

@@ -11,6 +11,7 @@ from app.services.pdf.models import (
 )
 from app.services.pdf.ocr_extractor import PdfOcrExtractor
 from app.services.pdf.text_extractor import NativePdfTextExtractor
+from app.services.pdf.text_merger import PdfTextMerger, PdfTextMergeResult, UnifiedPdfPageText, TextExtractionMethod
 
 __all__ = [
     "NativePdfTextExtractor",
@@ -24,4 +25,8 @@ __all__ = [
     "PdfOcrExtractor",
     "PdfPageText",
     "PdfTextBlock",
+    "PdfTextMergeResult",
+    "PdfTextMerger",
+    "TextExtractionMethod",
+    "UnifiedPdfPageText",
 ]

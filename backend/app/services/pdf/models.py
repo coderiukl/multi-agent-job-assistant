@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from typing import Literal
 
+TextExtractionMethod = Literal["native", "ocr"]
 
 @dataclass(frozen=True, slots=True)
 class PdfTextBlock:
@@ -69,4 +71,21 @@ class OcrTextExtractionResult:
     full_text: str
     total_character_count: int
     total_word_count: int
+    ocr_page_count: int
+
+@dataclass(frozen=True, slots=True)
+class UnifiedPdfPageText:
+    page_number: int
+    text: str
+    method: TextExtractionMethod
+    character_count: int
+    word_count: int
+
+@dataclass(frozen=True, slots=True)
+class PdfTextMergeResult:
+    pages: tuple[UnifiedPdfPageText, ...]
+    full_text: str
+    total_character_count: int
+    total_word_count: int
+    native_page_count: int
     ocr_page_count: int
