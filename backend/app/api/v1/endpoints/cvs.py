@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, UploadFile, status
 
-from app.api.dependencies import CVIngestionServiceDependency
+from app.api.dependencies import CVIngestionServiceDependency, CVProcessingServiceDependency
 from app.schemas.cv import CVUploadData, PdfInspectionData, PdfMetadataData, NativeTextExtractionData, OcrExtractionData
 from app.schemas.error import ErrorResponse
 from app.schemas.response import ApiResponse
@@ -31,6 +31,10 @@ router = APIRouter()
             "model": ErrorResponse,
             "description": "Storage operation failed.",
         },
+        502: {
+            "model": ErrorResponse,
+            "description": "LLM provider or structured output failed.",
+        },
     },
 )
 
@@ -39,10 +43,13 @@ async def upload_cv(
         UploadFile,
         File(description="PDF CV file."),
     ],
-    ingestion_service: CVIngestionServiceDependency,
+    processing_service: CVProcessingServiceDependency,
 ) -> ApiResponse[CVUploadData]:
 
-    result = await ingestion_service.ingest(file)
+    processing_result = await processing_service.process(file)
+
+    result = processing_result.ingestion
+    profile = processing_result.profile
 
     stored_file = result.stored_file
     inspection = result.inspection
@@ -51,7 +58,7 @@ async def upload_cv(
     ocr_extraction = result.ocr_extraction
 
     return ApiResponse(
-        message="CV uploaded and inspected successfully.",
+        message="CV uploaded and parsed successfully.",
         data=CVUploadData(
             file_id=stored_file.file_id,
             file_name=stored_file.original_filename,
@@ -86,6 +93,7 @@ async def upload_cv(
                     for page in ocr_extraction.pages
                 ) / len(ocr_extraction.pages)
                 if result.ocr_extraction.pages else 0.0
-            )
+            ),
+            profile=profile,
         ),
     )

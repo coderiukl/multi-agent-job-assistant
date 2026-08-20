@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from app.schemas.cv_profile import CVProfile
 
 
 class PdfMetadataData(BaseModel):
@@ -41,3 +41,4 @@ class CVUploadData(BaseModel):
     inspection: PdfInspectionData
     extraction: NativeTextExtractionData
     ocr: OcrExtractionData
+    profile: CVProfile

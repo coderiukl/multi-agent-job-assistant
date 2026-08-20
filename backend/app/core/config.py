@@ -47,8 +47,21 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: Literal["openai", "9router"] = "openai"
+    llm_model: str ="cx/gpt-5.5"
+    llm_timeout_seconds: float = Field(default=60.0, gt=0)
+    llm_max_retries: int = Field(default=2, ge=0, le=5)
+    llm_structured_output_method: Literal[
+        "json_schema",
+        "function_calling",
+    ] = "function_calling"
+
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_base_url: str | None = Field(default=None, repr=False)
+
+    nine_router_api_key: str | None = Field(default=None, repr=False)
+    nine_router_base_url: str | None = Field(default=None, repr=False)
+
+    max_cv_text_chars: int = Field(default=100_000, ge=1_000, le=500_000)
 
     # LangSmith
     langsmith_tracing: bool = False

@@ -69,3 +69,20 @@ class OcrProcessingException(AppException):
             message=message,
             details=details or {},
         )
+
+class LLMConfigurationException(AppException):
+    def __init__(self, *, message: str = "LLM configuration is invalid") -> None:
+        super().__init__(
+            status_code=500,
+            code="LLM_CONFIGURATION_ERROR",
+            message=message
+        )
+
+class StructuredOutputException(AppException):
+    def __init__(self, *, message: str = "The CV could not be converted to structured data.") -> None:
+        super().__init__(
+            status_code=502,
+            code="INVALID_STRUCTURED_OUTPUT",
+            message=message,
+            details=self.details
+        )
