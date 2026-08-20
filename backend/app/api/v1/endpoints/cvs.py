@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, UploadFile, status
 
-from app.api.dependencies import CVIngestionServiceDependency, CVProcessingServiceDependency
+from app.api.dependencies import CVProcessingServiceDependency
 from app.schemas.cv import CVUploadData, PdfInspectionData, PdfMetadataData, NativeTextExtractionData, OcrExtractionData
 from app.schemas.error import ErrorResponse
 from app.schemas.response import ApiResponse

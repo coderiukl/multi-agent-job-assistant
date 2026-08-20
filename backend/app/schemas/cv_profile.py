@@ -20,18 +20,20 @@ class WorkExperience(CVSchema):
     end_date: str | None
     is_current: bool
     responsibilities: list[str]
+    achievements: list[str]
 
 class Education(CVSchema):
-    insitiution: str | None
+    institution: str | None
     degree: str | None
     field_of_study: str | None
     start_date: str | None
     end_date: str | None
+    description: str | None
 
 class Project(CVSchema):
     name: str | None
     description: str | None
-    technologies: str | None
+    technologies: list[str]
     url: str | None
 
 class Certification(CVSchema):

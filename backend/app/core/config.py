@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: Literal["openai", "9router"] = "openai"
-    llm_model: str ="cx/gpt-5.5"
+    llm_model: str = "gpt-5-mini"
     llm_timeout_seconds: float = Field(default=60.0, gt=0)
     llm_max_retries: int = Field(default=2, ge=0, le=5)
     llm_structured_output_method: Literal[
