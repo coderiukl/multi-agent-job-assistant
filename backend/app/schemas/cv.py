@@ -31,3 +31,12 @@ class CVUploadData(BaseModel):
     content_type: str
     inspection: PdfInspectionData
     extraction: NativeTextExtractionData
+
+class OcrExtractionData(BaseModel):
+    ocr_page_count: int = Field(ge=0)
+    total_character_count: int = Field(ge=0)
+    total_word_count: int = Field(ge=0)
+    average_confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+    )

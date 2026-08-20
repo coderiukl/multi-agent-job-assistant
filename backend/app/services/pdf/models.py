@@ -45,3 +45,28 @@ class PdfInspectionResult:
     page_count: int
     is_repaired: bool
     metadata: PdfMetadata
+
+@dataclass(frozen=True, slots=True)
+class OcrTextLine:
+    text: str
+    confidence: float
+    bbox: tuple[float, float, float, float]
+
+
+@dataclass(frozen=True, slots=True)
+class OcrPageText:
+    page_number: int
+    text: str
+    lines: tuple[OcrTextLine, ...]
+    character_count: int
+    word_count: int
+    average_confidence: float
+
+
+@dataclass(frozen=True, slots=True)
+class OcrTextExtractionResult:
+    pages: tuple[OcrPageText, ...]
+    full_text: str
+    total_character_count: int
+    total_word_count: int
+    ocr_page_count: int

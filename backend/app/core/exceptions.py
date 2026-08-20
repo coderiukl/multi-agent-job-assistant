@@ -60,3 +60,12 @@ class StorageException(AppException):
             code="STORAGE_OPERATION_FAILED",
             message=message,
         )
+
+class OcrProcessingException(AppException):
+    def __init__(self, *, message: str = "OCR processing failed.", details: dict[str, Any] | None = None) -> None:
+        super().__init__(
+            status_code=500,
+            code="OCR_PROCESSING_FAILED",
+            message=message,
+            details=details or {},
+        )

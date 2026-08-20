@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, UploadFile, status
 
 from app.api.dependencies import CVIngestionServiceDependency
-from app.schemas.cv import CVUploadData, PdfInspectionData, PdfMetadataData, NativeTextExtractionData
+from app.schemas.cv import CVUploadData, PdfInspectionData, PdfMetadataData, NativeTextExtractionData, OcrExtractionData
 from app.schemas.error import ErrorResponse
 from app.schemas.response import ApiResponse
 
@@ -48,6 +48,7 @@ async def upload_cv(
     inspection = result.inspection
     metadata = inspection.metadata
     extraction = result.extraction
+    ocr_extraction = result.ocr_extraction
 
     return ApiResponse(
         message="CV uploaded and inspected successfully.",
@@ -76,5 +77,15 @@ async def upload_cv(
                 native_page_count=extraction.native_page_count,
                 ocr_required_page_numbers=extraction.ocr_required_page_numbers,
             ),
+            ocr=OcrExtractionData(
+                ocr_page_count=ocr_extraction.ocr_page_count,
+                total_character_count=ocr_extraction.total_character_count,
+                total_word_count=ocr_extraction.total_word_count,
+                average_confidence=sum(
+                    page.average_confidence
+                    for page in ocr_extraction.pages
+                ) / len(ocr_extraction.pages)
+                if result.ocr_extraction.pages else 0.0
+            )
         ),
     )

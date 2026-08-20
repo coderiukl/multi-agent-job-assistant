@@ -3,9 +3,15 @@ from dataclasses import dataclass
 
 from fastapi import UploadFile
 
-from app.services.pdf.inspector import PdfInspector
-from app.services.pdf.models import NativeTextExtractionResult, PdfInspectionResult
-from app.services.pdf.text_extractor import NativePdfTextExtractor
+
+from app.services.pdf import (
+    NativePdfTextExtractor,
+    NativeTextExtractionResult,
+    OcrTextExtractionResult,
+    PdfInspectionResult,
+    PdfInspector,
+    PdfOcrExtractor,
+)
 
 from app.services.storage import StorageService, StoredFile
 
@@ -16,13 +22,22 @@ class CVIngestionResult:
     stored_file: StoredFile
     inspection: PdfInspectionResult
     extraction: NativeTextExtractionResult
+    ocr_extraction: OcrTextExtractionResult
 
 
 class CVIngestionService:
-    def __init__(self, *, storage: StorageService, pdf_inspector: PdfInspector, text_extractor: NativePdfTextExtractor) -> None:
+    def __init__(
+        self,
+        *,
+        storage: StorageService,
+        pdf_inspector: PdfInspector,
+        text_extractor: NativePdfTextExtractor,
+        ocr_extractor: PdfOcrExtractor,
+    ) -> None:
         self._storage = storage
         self._pdf_inspector = pdf_inspector
         self._text_extractor = text_extractor
+        self._ocr_extractor = ocr_extractor
 
     async def ingest(self, upload_file: UploadFile) -> CVIngestionResult:
         stored_file = await self._storage.save(upload_file)
@@ -30,9 +45,15 @@ class CVIngestionService:
         try:
             inspection = await self._pdf_inspector.inspect(stored_file.path)
             extraction = await self._text_extractor.extract(stored_file.path)
+            ocr_extraction = await self._ocr_extractor.extract(file_path=stored_file.path, page_numbers=extraction.ocr_required_page_numbers)
 
         except Exception:
             await self._storage.delete(stored_file)
             raise
 
-        return CVIngestionResult(stored_file=stored_file, inspection=inspection, extraction=extraction)
+        return CVIngestionResult(
+            stored_file=stored_file,
+            inspection=inspection,
+            extraction=extraction,
+            ocr_extraction=ocr_extraction
+        )
