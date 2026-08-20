@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     upload_chunk_size_bytes: int = Field(default=1024 * 1024, gt=0)
 
     max_pdf_pages: int = Field(default=20, ge=1, le=100)
+
+    min_native_text_chars_per_page: int = Field(default=50, ge=0, le=1000)
     
     # Pydantic settings
     model_config = SettingsConfigDict(

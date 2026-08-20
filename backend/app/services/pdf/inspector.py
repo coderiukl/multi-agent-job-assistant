@@ -167,7 +167,7 @@ class PdfInspector:
             ),
         )
 
-    @classmethod
+    @staticmethod
     def _clean_metadata(value: Any) -> str | None:
         if not isinstance(value, str):
             return None

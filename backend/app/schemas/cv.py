@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 
 
+
 class PdfMetadataData(BaseModel):
     title: str | None
     author: str | None
@@ -17,10 +18,16 @@ class PdfInspectionData(BaseModel):
     is_repaired: bool
     metadata: PdfMetadataData
 
+class NativeTextExtractionData(BaseModel):
+    total_character_count: int = Field(ge=0)
+    total_word_count: int = Field(ge=0)
+    native_page_count: int = Field(ge=0)
+    ocr_required_page_numbers: list[int]
 
 class CVUploadData(BaseModel):
     file_id: str
-    original_filename: str
+    file_name: str
+    file_size: int = Field(ge=1)
     content_type: str
-    size_bytes: int = Field(ge=1)
     inspection: PdfInspectionData
+    extraction: NativeTextExtractionData

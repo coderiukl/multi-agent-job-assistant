@@ -31,7 +31,7 @@ class LocalStorageService:
 
         self._upload_dir.mkdir(parents=True, exist_ok=True)
 
-    async def save_cv(self, file: UploadFile) -> StoredFile:
+    async def save(self, file: UploadFile) -> StoredFile:
         original_filename = self._normalize_filename(file.filename)
         content_type = (file.content_type or "application/octet-stream").lower()
 

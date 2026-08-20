@@ -3,7 +3,10 @@ from dataclasses import dataclass
 
 from fastapi import UploadFile
 
-from app.services.pdf import PdfInspectionResult, PdfInspector
+from app.services.pdf.inspector import PdfInspector
+from app.services.pdf.models import NativeTextExtractionResult, PdfInspectionResult
+from app.services.pdf.text_extractor import NativePdfTextExtractor
+
 from app.services.storage import StorageService, StoredFile
 
 logger = logging.getLogger(__name__)
@@ -12,29 +15,24 @@ logger = logging.getLogger(__name__)
 class CVIngestionResult:
     stored_file: StoredFile
     inspection: PdfInspectionResult
+    extraction: NativeTextExtractionResult
+
 
 class CVIngestionService:
-    def __init__(self, *, storage_service: StorageService, pdf_inspector: PdfInspector) -> None:
-        self._storage_service = storage_service
+    def __init__(self, *, storage: StorageService, pdf_inspector: PdfInspector, text_extractor: NativePdfTextExtractor) -> None:
+        self._storage = storage
         self._pdf_inspector = pdf_inspector
+        self._text_extractor = text_extractor
 
-    async def ingest(self, file: UploadFile) -> CVIngestionResult:
-        stored_file = await self._storage_service.save_cv(file)
+    async def ingest(self, upload_file: UploadFile) -> CVIngestionResult:
+        stored_file = await self._storage.save(upload_file)
 
         try:
             inspection = await self._pdf_inspector.inspect(stored_file.path)
+            extraction = await self._text_extractor.extract(stored_file.path)
 
         except Exception:
-            try:
-                await self._storage_service.delete(stored_file)
-            except Exception:
-                logger.exception(
-                    "Failed to rollback invalid CV upload",
-                    extra={
-                        "file_id": stored_file.file_id,
-                    },
-                )
-
+            await self._storage.delete(stored_file)
             raise
 
-        return CVIngestionResult(stored_file=stored_file, inspection=inspection)
+        return CVIngestionResult(stored_file=stored_file, inspection=inspection, extraction=extraction)
