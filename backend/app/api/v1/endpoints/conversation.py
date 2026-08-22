@@ -6,15 +6,15 @@ from app.schemas.response import ApiResponse
 
 router = APIRouter()
 
+
 @router.post(
     "/intent-analysis",
     response_model=ApiResponse[IntentAnalysisResult],
     status_code=status.HTTP_200_OK,
 )
-
 async def analyze_conversation_intent(
     request: IntentAnalysisInput,
-    analyzer: ConversationIntentAnalyzerDependency
+    analyzer: ConversationIntentAnalyzerDependency,
 ) -> ApiResponse[IntentAnalysisResult]:
     result = await analyzer.analyze(request)
 
