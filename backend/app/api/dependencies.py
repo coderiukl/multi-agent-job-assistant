@@ -12,6 +12,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from app.agents import CVParserAgent
 from app.llm import LLMFactory
 from app.services.cv_processing import CVProcessingService
+from app.services.conversation import ConversationIntentAnalyzer
 
 
 @lru_cache
@@ -75,4 +76,17 @@ CVIngestionServiceDependency = Annotated[
 CVProcessingServiceDependency = Annotated[
     CVProcessingService,
     Depends(get_cv_processing_service),
+]
+
+ChatModelDependency = Annotated[
+    BaseChatModel,
+    Depends(get_chat_model)
+]
+
+def get_conversation_intent_analyzer(llm: ChatModelDependency) -> ConversationIntentAnalyzer:
+    return ConversationIntentAnalyzer(llm=llm)
+
+ConversationIntentAnalyzerDependency = Annotated[
+    ConversationIntentAnalyzer,
+    Depends(get_conversation_intent_analyzer)
 ]
