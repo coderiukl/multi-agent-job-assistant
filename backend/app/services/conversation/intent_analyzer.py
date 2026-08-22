@@ -9,7 +9,7 @@ class ConversationIntentAnalyzer:
         self._chain = INTENT_ANALYSIS_PROMPT | structured_llm
 
     async def analyze(self, input_data: IntentAnalysisInput) -> IntentAnalysisResult:
-        result = await self._chain_ainvoke(
+        result = await self._chain.ainvoke(
             {
                 "message": input_data.message,
                 "has_cv": input_data.has_cv,

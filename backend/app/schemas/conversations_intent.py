@@ -19,7 +19,7 @@ class IntentAnalysisInput(BaseModel):
 class IntentAnalysisResult(BaseModel):
     primary_intent: ConversationIntent
     secondary_intents: list[ConversationIntent] = Field(default_factory=list)
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score of the intent classification.",)
     requires_cv: bool = False
     requires_jd: bool = False
 
