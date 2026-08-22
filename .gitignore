@@ -53,3 +53,5 @@ qdrant_storage/
 
 # Frontend
 node_modules/
+
+frontend/.vite/
