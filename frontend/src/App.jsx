@@ -41,7 +41,7 @@ export default function App() {
   const cvUploadRequestRef = useRef(0);
 
   const isUploadingCv = cvUploadStatus === "uploading";
-  const hasUploadedCv = Boolean(selectedCvFile) && cvUploadStatus === "uploaded";
+  const uploadedCvId = cvUploadStatus === "uploaded" ? cvUploadResult?.file_id ?? null : null;
 
   useEffect(() => {
     messageListRef.current?.scrollTo({
@@ -143,7 +143,8 @@ export default function App() {
     try {
       const result = await analyzeConversationIntent({
         message,
-        hasCv: hasUploadedCv,
+        cvId: uploadedCvId,
+        jobDescription: null,
       });
 
       setMessages((currentMessages) => [

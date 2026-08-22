@@ -2,22 +2,27 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
-
-from app.core.config import get_settings
-from app.services.cv_ingestion import CVIngestionService
-from app.services.pdf import PdfInspector, PdfOcrExtractor, NativePdfTextExtractor, PdfTextMerger
-from app.services.storage import LocalStorageService, StorageService
-
 from langchain_core.language_models.chat_models import BaseChatModel
+
 from app.agents import CVParserAgent
 from app.llm import LLMFactory
+from app.core.config import get_settings
+
+from app.repositories.cv import CVRepository, LocalJsonCVRepository
+from app.services.conversation import ConversationIntentAnalyzer, ConservationService
+from app.services.cv_ingestion import CVIngestionService
 from app.services.cv_processing import CVProcessingService
-from app.services.conversation import ConversationIntentAnalyzer
+from app.services.pdf import PdfInspector, PdfOcrExtractor, NativePdfTextExtractor, PdfTextMerger
+from app.services.storage import LocalStorageService, StorageService
 
 
 @lru_cache
 def get_storage_service() -> StorageService:
     return LocalStorageService(get_settings())
+
+@lru_cache
+def get_cv_repository() -> CVRepository:
+    return LocalJsonCVRepository(get_settings())
 
 @lru_cache
 def get_pdf_inspector() -> PdfInspector:
@@ -61,11 +66,13 @@ def get_cv_processing_service(
         ingestion_service: CVIngestionService = Depends(get_cv_ingestion_service),
         parser_agent: CVParserAgent = Depends(get_cv_parser_agent),
         storage_service: StorageService = Depends(get_storage_service),
+        cv_repository: CVRepository = Depends(get_cv_repository),
 ) -> CVProcessingService:
     return CVProcessingService(
         ingestion_service=ingestion_service,
         parser_agent=parser_agent,
-        storage_service=storage_service
+        storage_service=storage_service,
+        cv_repository=cv_repository,
     )
 
 CVIngestionServiceDependency = Annotated[
@@ -89,4 +96,18 @@ def get_conversation_intent_analyzer(llm: ChatModelDependency) -> ConversationIn
 ConversationIntentAnalyzerDependency = Annotated[
     ConversationIntentAnalyzer,
     Depends(get_conversation_intent_analyzer)
+]
+
+def get_conversation_service(
+    analyzer: ConversationIntentAnalyzerDependency,
+    cv_repository: CVRepository = Depends(get_cv_repository)
+) -> ConservationService:
+    return ConservationService(
+        analyzer=analyzer,
+        cv_repository=cv_repository,
+    )
+
+ConservationServiceDependency = Annotated[
+    ConservationService,
+    Depends(get_conversation_service)
 ]
