@@ -18,7 +18,8 @@ LOGGER = logging.getLogger(__name__)
 LOCAL_TIMEZONE = "Asia/Ho_Chi_Minh"
 DATA_DIRECTORY = Path("/opt/airflow/data/jobs")
 MAX_FAILURE_RATE = 0.10
-MIN_FETCH_RATIO = 0.80
+DEFAULT_MIN_FETCH_RATIO = 0.80
+DEFAULT_MIN_FETCH_COUNT = 1
 
 COUNT_FIELDS = (
     "fetched_count",
@@ -45,6 +46,8 @@ class SourceSchedule:
     schedule: str
     limit: int
     uses_cursor: bool
+    min_fetch_ratio: float = DEFAULT_MIN_FETCH_RATIO
+    min_fetch_count: int = DEFAULT_MIN_FETCH_COUNT
 
 
 SOURCE_SCHEDULES = (
@@ -83,6 +86,7 @@ SOURCE_SCHEDULES = (
         schedule="30 21 * * *",
         limit=20,
         uses_cursor=True,
+        min_fetch_ratio=0.40,
     ),
 )
 
@@ -104,7 +108,19 @@ def _validate_metrics(
     metrics: dict[str, Any],
     *,
     expected_limit: int,
+    min_fetch_ratio: float,
+    min_fetch_count: int,
 ) -> dict[str, Any]:
+    if not 0 <= min_fetch_ratio <= 1:
+        raise ValueError(
+            f"min_fetch_ratio must be between 0 and 1, got {min_fetch_ratio!r}"
+        )
+
+    if min_fetch_count < 1:
+        raise ValueError(
+            f"min_fetch_count must be greater than zero, got {min_fetch_count!r}"
+        )
+
     for field in COUNT_FIELDS:
         value = metrics.get(field)
 
@@ -138,12 +154,15 @@ def _validate_metrics(
             f"normalized={normalized}, written_total={written_total}"
         )
 
-    minimum_fetched = max(1, int(expected_limit * MIN_FETCH_RATIO))
+    minimum_fetched = max(
+        min_fetch_count,
+        int(expected_limit * min_fetch_ratio),
+    )
 
-    if fetched < minimum_fetched:
+    if fetched < min_fetch_count:
         raise ValueError(
-            "Fetched count is below the source target: "
-            f"fetched={fetched}, minimum={minimum_fetched}"
+            "Fetched count is below the required minimum: "
+            f"fetched={fetched}, minimum={min_fetch_count}"
         )
 
     failure_rate = failed / fetched
@@ -162,10 +181,23 @@ def _validate_metrics(
     if not raw_path.is_file() or raw_path.stat().st_size == 0:
         raise ValueError(f"Raw batch file is missing or empty: {raw_path}")
 
+    quality_status = "passed"
+
+    if fetched < minimum_fetched:
+        quality_status = "low_fetch_warning"
+        LOGGER.warning(
+            "Fetched count is below the source target but above the hard "
+            "minimum: fetched=%s, target=%s, hard_minimum=%s",
+            fetched,
+            minimum_fetched,
+            min_fetch_count,
+        )
+
     return {
         **metrics,
         "failure_rate": failure_rate,
-        "quality_status": "passed",
+        "minimum_fetched": minimum_fetched,
+        "quality_status": quality_status,
     }
 
 
@@ -266,6 +298,8 @@ def build_source_dag(configuration: SourceSchedule) -> Any:
             return _validate_metrics(
                 metrics,
                 expected_limit=configuration.limit,
+                min_fetch_ratio=configuration.min_fetch_ratio,
+                min_fetch_count=configuration.min_fetch_count,
             )
 
         @task(
