@@ -1,35 +1,41 @@
-from app.core.exceptions import ResourceNotFoundException
-from app.repositories.cv import CVRepository
-from app.schemas.conversations_intent import IntentAnalysisInput, ConversationRequest, IntentAnalysisResult
-from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
+from typing import cast
 
-class ConservationService:
-    def __init__(self, *, analyzer: ConversationIntentAnalyzer, cv_repository: CVRepository) -> None:
-        self._analyzer = analyzer
-        self._cv_repository = cv_repository
+from langgraph.graph.state import CompiledStateGraph
 
-    async def analyze_intent(self, request: ConversationRequest) -> IntentAnalysisResult:
-        has_cv = await self._resolve_cv(request.cv_id)
-        has_jd = request.job_description is not None
+from app.graphs.conversation.state import ConversationState
 
-        analyzer_input = IntentAnalysisInput(
-            message=request.message,
-            has_cv=has_cv,
-            has_jd=has_jd,
+from app.schemas.conversation import ConversationResponseData
+from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
+
+
+class ConversationService:
+    def __init__(self, *, graph: CompiledStateGraph) -> None:
+        self._graph = graph
+
+    async def process(self, request: ConversationRequest) -> ConversationResponseData:
+        state = await self._invoke_graph(request)
+
+        return ConversationResponseData(
+            assistant_message=state["assistant_message"],
+            status=state["status"],
+            route=state["route"],
+            intent=state["intent"],
+            cv_id=request.cv_id,
+            missing_inputs=state.get("missing_inputs", []),
         )
+    
+    async def analyze_intent(self, request: ConversationRequest) -> IntentAnalysisResult:
+        state = await self._invoke_graph(request)
 
-        return await self._analyzer.analyze(analyzer_input)
+        return state['intent']
+    
+    async def _invoke_graph(self, request: ConversationRequest) -> ConversationState:
+        initial_state: ConversationState = {
+            "message": request.message,
+            "cv_id": request.cv_id,
+            "job_description": request.job_description,
+        }
 
-    async def _resolve_cv(self, cv_id: str | None) -> bool:
-        if cv_id is None:
-            return False
+        result = await self._graph.ainvoke(initial_state)
 
-        profile = await self._cv_repository.get(cv_id)
-
-        if profile is None:
-            raise ResourceNotFoundException(
-                resource="CV",
-                identifier=cv_id
-            )
-
-        return True
+        return cast(ConversationState, result)
