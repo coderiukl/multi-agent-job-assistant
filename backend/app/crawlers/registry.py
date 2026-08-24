@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.crawlers.base import JobSource
+from app.crawlers.sources.arbeitnow import ArbeitnowJobSource
 from app.crawlers.sources.himalayas import HimalayasJobSource
 from app.crawlers.sources.remotive import RemotiveJobSource
 from app.crawlers.sources.jobicy import JobicyJobSource
@@ -100,6 +101,11 @@ DEFAULT_JOB_SOURCE_REGISTRY = JobSourceRegistry(
         JobSourceDefinition(
             name="jobicy",
             factory=JobicyJobSource,
+            max_limit=100,
+        ),
+        JobSourceDefinition(
+            name="arbeitnow",
+            factory=ArbeitnowJobSource,
             max_limit=100,
         )
     ]
