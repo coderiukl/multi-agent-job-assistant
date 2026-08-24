@@ -148,10 +148,26 @@ def _validate_metrics(
         )
     )
 
-    if written_total != normalized:
+    if written_total > normalized:
         raise ValueError(
             "Invalid repository totals: "
             f"normalized={normalized}, written_total={written_total}"
+        )
+
+    if normalized > 0 and written_total == 0:
+        raise ValueError(
+            "Repository did not report any written or unchanged jobs "
+            f"for normalized={normalized}"
+        )
+
+    duplicate_count = normalized - written_total
+    if duplicate_count > 0:
+        LOGGER.warning(
+            "Repository totals indicate duplicate jobs within the batch: "
+            "normalized=%s, written_total=%s, duplicates=%s",
+            normalized,
+            written_total,
+            duplicate_count,
         )
 
     minimum_fetched = max(
@@ -195,6 +211,7 @@ def _validate_metrics(
 
     return {
         **metrics,
+        "duplicate_count": duplicate_count,
         "failure_rate": failure_rate,
         "minimum_fetched": minimum_fetched,
         "quality_status": quality_status,
