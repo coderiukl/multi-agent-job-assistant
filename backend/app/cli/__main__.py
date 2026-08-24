@@ -10,6 +10,8 @@ from app.cli.crawl_jobs import (
     print_result,
 )
 
+from app.services.job_crawling import MAX_CRAWL_LIMIT
+
 
 def job_limit(value: str) -> int:
     try:
@@ -21,7 +23,7 @@ def job_limit(value: str) -> int:
 
     if limit < 1 or limit > 20:
         raise argparse.ArgumentTypeError(
-            "limit must be between 1 and 20"
+            f"limit must be between 1 and {MAX_CRAWL_LIMIT}"
         )
 
     return limit
@@ -69,7 +71,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=job_limit,
         default=20,
-        help="Number of jobs to fetch, from 1 to 20",
+        help=(
+            "Number of jobs to fetch. "
+            "Each source may define a lower maximum."
+        ),
     )
     crawl_parser.add_argument(
         "--cursor",

@@ -6,13 +6,15 @@ from typing import Any
 
 import httpx
 
-from app.crawlers.sources.himalayas import HimalayasJobSource
+from app.crawlers.registry import DEFAULT_JOB_SOURCE_REGISTRY, JobSourceRegistry
 from app.normalizers.job import JobNormalizer
 from app.repositories.job import LocalJsonlJobRepository
 from app.services.job_crawling import JobCrawlingService
 
 
-SUPPORTED_SOURCES = {"himalayas"}
+SUPPORTED_SOURCES = frozenset(
+    DEFAULT_JOB_SOURCE_REGISTRY.names
+)
 
 
 async def crawl_jobs(
@@ -22,22 +24,23 @@ async def crawl_jobs(
     cursor: str | None,
     data_dir: Path,
     timeout_seconds: float,
+    registry: JobSourceRegistry = DEFAULT_JOB_SOURCE_REGISTRY,
 ) -> dict[str, Any]:
-    if source_name not in SUPPORTED_SOURCES:
-        raise ValueError(
-            f"Unsupported source: {source_name}. "
-            f"Supported sources: {sorted(SUPPORTED_SOURCES)}"
-        )
+    normalized_source_name = source_name.strip().casefold()
+    source_definition = registry.get(normalized_source_name)
 
-    if limit < 1 or limit > 20:
-        raise ValueError("Himalayas limit must be between 1 and 20")
+    if limit < 1 or limit > source_definition.max_limit:
+        raise ValueError(
+            f"{normalized_source_name} limit must be between "
+            f"1 and {source_definition.max_limit}."
+        )
 
     repository = LocalJsonlJobRepository(data_dir)
     normalizer = JobNormalizer()
 
     timeout = httpx.Timeout(
         timeout=timeout_seconds,
-        connect=10.0,
+        connect=min(timeout_seconds, 10.0),
     )
 
     headers = {
@@ -50,7 +53,10 @@ async def crawl_jobs(
         headers=headers,
         follow_redirects=True,
     ) as client:
-        source = HimalayasJobSource(client)
+        source = registry.create(
+            normalized_source_name,
+            client
+        )
 
         service = JobCrawlingService(
             source=source,
@@ -58,7 +64,7 @@ async def crawl_jobs(
             repository=repository,
         )
 
-        batch_id = build_batch_id(source_name)
+        batch_id = build_batch_id(normalized_source_name)
 
         result = await service.crawl(
             batch_id=batch_id,
