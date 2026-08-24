@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pendulum
 from airflow.sdk import Variable, dag, get_current_context, task
-
 from common.callbacks import persist_failure_alert
 
 LOGGER = logging.getLogger(__name__)
@@ -19,11 +17,23 @@ DATA_DIRECTORY = Path("/opt/airflow/data/jobs")
 METRICS_DIRECTORY = DATA_DIRECTORY / "metrics"
 DAILY_METRICS_DIRECTORY = METRICS_DIRECTORY / "daily"
 
-SOURCE_VARIABLE = "job_metrics_source"
+SOURCES_VARIABLE = "job_metrics_sources"
 FRESHNESS_HOURS_VARIABLE = "job_no_new_data_hours"
+MIN_DAILY_FETCHED_VARIABLE = "job_daily_min_fetched"
+MAX_DAILY_FETCHED_VARIABLE = "job_daily_max_fetched"
 
-DEFAULT_SOURCE = "himalayas"
+DEFAULT_SOURCES = (
+    "himalayas",
+    "remotive",
+    "jobicy",
+    "arbeitnow",
+    "topdev",
+    "itviec",
+)
 DEFAULT_FRESHNESS_HOURS = 24
+DEFAULT_MIN_DAILY_FETCHED = 150
+DEFAULT_MAX_DAILY_FETCHED = 200
+PLANNED_DAILY_FETCHED = 175
 
 COUNT_FIELDS = (
     "fetched_count",
@@ -34,136 +44,131 @@ COUNT_FIELDS = (
     "unchanged_count",
 )
 
-SAFE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
-def _validate_source(source: str) -> str:
-    normalized_source = source.strip()
+def _positive_int_variable(name: str, default: int) -> int:
+    raw_value = Variable.get(name, default=str(default))
 
-    if not normalized_source:
-        raise ValueError("Metrics source must not be empty")
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{name} must be an integer") from error
 
-    if not SAFE_NAME_PATTERN.fullmatch(normalized_source):
+    if value < 1:
+        raise ValueError(f"{name} must be greater than zero")
+
+    return value
+
+
+def _parse_sources(raw_value: Any) -> list[str]:
+    values = str(raw_value).split(",")
+    sources = list(
+        dict.fromkeys(
+            value.strip().casefold()
+            for value in values
+            if value.strip()
+        )
+    )
+
+    if not sources:
+        raise ValueError("At least one metrics source is required")
+
+    unsupported = set(sources) - set(DEFAULT_SOURCES)
+
+    if unsupported:
         raise ValueError(
-            "Metrics source contains unsupported characters: "
-            f"{normalized_source!r}"
+            "Unsupported metrics sources: "
+            + ", ".join(sorted(unsupported))
         )
 
-    return normalized_source
+    return sources
+
 
 def _load_json_record(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(
-            f"Could not read metrics file: {path}"
-        ) from exc
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Could not read metrics file: {path}") from error
 
     if not isinstance(data, dict):
-        raise ValueError(
-            f"Metrics file must contain a JSON object: {path}"
-        )
+        raise TypeError(f"Metrics file must contain an object: {path}")
 
     return data
+
 
 def _read_count(record: dict[str, Any], field: str, path: Path) -> int:
     value = record.get(field)
 
-    if type(value) is not int:
+    if type(value) is not int or value < 0:
         raise ValueError(
-            f"{field} must be an integer in {path}, got {value!r}"
-        )
-
-    if value < 0:
-        raise ValueError(
-            f"{field} cannot be negative in {path}"
+            f"{field} must be a non-negative integer in {path}"
         )
 
     return value
+
 
 def _parse_recorded_at(record: dict[str, Any], path: Path) -> datetime:
     value = record.get("recorded_at")
 
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(
-            f"recorded_at is missing in {path}"
-        )
-
-    normalized_value = value.strip().replace("Z", "+00:00")
+        raise ValueError(f"recorded_at is missing in {path}")
 
     try:
-        parsed = datetime.fromisoformat(normalized_value)
-    except ValueError as exc:
-        raise ValueError(
-            f"Invalid recorded_at in {path}: {value!r}"
-        ) from exc
+        parsed = datetime.fromisoformat(
+            value.strip().replace("Z", "+00:00")
+        )
+    except ValueError as error:
+        raise ValueError(f"Invalid recorded_at in {path}") from error
 
     if parsed.tzinfo is None:
-        raise ValueError(
-            f"recorded_at must contain timezone information in {path}"
-        )
+        raise ValueError(f"recorded_at must include a timezone in {path}")
 
     return parsed.astimezone(UTC)
+
 
 def _resolve_metrics_date() -> date:
     context = get_current_context()
     dag_run = context.get("dag_run")
-
     configured_date: str | None = None
 
-    if dag_run is not None:
-        conf = getattr(dag_run, "conf", None)
-
-        if isinstance(conf, dict):
-            raw_date = conf.get("metrics_date")
-
-            if raw_date is not None:
-                configured_date = str(raw_date).strip()
+    if dag_run is not None and isinstance(
+        getattr(dag_run, "conf", None),
+        dict,
+    ):
+        raw_date = dag_run.conf.get("metrics_date")
+        configured_date = str(raw_date).strip() if raw_date else None
 
     if configured_date:
         try:
             return date.fromisoformat(configured_date)
-        except ValueError as exc:
+        except ValueError as error:
             raise ValueError(
                 "metrics_date must use YYYY-MM-DD format"
-            ) from exc
+            ) from error
 
     logical_date = context.get("logical_date")
+    local_time = (
+        pendulum.instance(logical_date).in_timezone(LOCAL_TIMEZONE)
+        if logical_date is not None
+        else pendulum.now(LOCAL_TIMEZONE)
+    )
+    return local_time.subtract(days=1).date()
 
-    if logical_date is None:
-        local_now = pendulum.now(LOCAL_TIMEZONE)
-    else:
-        local_now = pendulum.instance(logical_date).in_timezone(LOCAL_TIMEZONE)
-
-    return local_now.subtract(days=1).date()
 
 def _write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-
     temporary_path = path.with_suffix(".tmp")
-
     temporary_path.write_text(
-        json.dumps(
-            payload,
-            ensure_ascii=False,
-            indent=2,
-        ),
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-
     temporary_path.replace(path)
+
 
 @dag(
     dag_id="job_daily_crawl_metrics",
-    description=(
-        "Aggregate daily crawl metrics and monitor job data freshness"
-    ),
-    schedule="15 0 * * *",
-    start_date=pendulum.datetime(
-        2026,
-        8,
-        24,
-        tz=LOCAL_TIMEZONE,
-    ),
+    description="Aggregate six-source crawl metrics and enforce daily volume",
+    schedule="45 0 * * *",
+    start_date=pendulum.datetime(2026, 8, 25, tz=LOCAL_TIMEZONE),
     catchup=False,
     max_active_runs=1,
     on_failure_callback=persist_failure_alert,
@@ -176,43 +181,37 @@ def job_daily_crawl_metrics() -> None:
         execution_timeout=timedelta(minutes=1),
     )
     def resolve_metrics_configuration() -> dict[str, Any]:
-        raw_source = Variable.get(
-            SOURCE_VARIABLE,
-            default=DEFAULT_SOURCE,
+        sources = _parse_sources(
+            Variable.get(
+                SOURCES_VARIABLE,
+                default=",".join(DEFAULT_SOURCES),
+            )
         )
-        source = _validate_source(str(raw_source))
-
-        raw_freshness_hours = Variable.get(
-            FRESHNESS_HOURS_VARIABLE,
-            default=str(DEFAULT_FRESHNESS_HOURS),
+        minimum = _positive_int_variable(
+            MIN_DAILY_FETCHED_VARIABLE,
+            DEFAULT_MIN_DAILY_FETCHED,
+        )
+        maximum = _positive_int_variable(
+            MAX_DAILY_FETCHED_VARIABLE,
+            DEFAULT_MAX_DAILY_FETCHED,
         )
 
-        try:
-            freshness_hours = int(raw_freshness_hours)
-        except (TypeError, ValueError) as exc:
+        if minimum > maximum:
             raise ValueError(
-                f"{FRESHNESS_HOURS_VARIABLE} must be an integer"
-            ) from exc
-
-        if freshness_hours < 1:
-            raise ValueError(
-                f"{FRESHNESS_HOURS_VARIABLE} must be greater than zero"
+                "Daily minimum fetched count cannot exceed the maximum"
             )
 
-        metrics_date = _resolve_metrics_date()
-
-        configuration = {
-            "source": source,
-            "metrics_date": metrics_date.isoformat(),
-            "freshness_hours": freshness_hours,
+        return {
+            "sources": sources,
+            "metrics_date": _resolve_metrics_date().isoformat(),
+            "freshness_hours": _positive_int_variable(
+                FRESHNESS_HOURS_VARIABLE,
+                DEFAULT_FRESHNESS_HOURS,
+            ),
+            "minimum_fetched": minimum,
+            "maximum_fetched": maximum,
+            "planned_fetched": PLANNED_DAILY_FETCHED,
         }
-
-        LOGGER.info(
-            "Daily metrics configuration resolved: %s",
-            configuration,
-        )
-
-        return configuration
 
     @task(
         task_id="aggregate_daily_crawl_metrics",
@@ -220,63 +219,67 @@ def job_daily_crawl_metrics() -> None:
         retry_delay=timedelta(minutes=1),
         execution_timeout=timedelta(minutes=5),
     )
-    def aggregate_daily_crawl_metrics(configuration: dict[str, Any]) -> dict[str, Any]:
-        source = str(configuration["source"])
+    def aggregate_daily_crawl_metrics(
+        configuration: dict[str, Any],
+    ) -> dict[str, Any]:
         metrics_date = str(configuration["metrics_date"])
+        totals = {field: 0 for field in COUNT_FIELDS}
+        source_summaries: dict[str, dict[str, Any]] = {}
 
-        metrics_directory = (
-            METRICS_DIRECTORY
-            / source
-            / metrics_date
-        )
+        for source in configuration["sources"]:
+            source_totals = {field: 0 for field in COUNT_FIELDS}
+            metrics_files = sorted(
+                (METRICS_DIRECTORY / source / metrics_date).glob("*.json")
+            )
 
-        metrics_files = sorted(metrics_directory.glob("*.json"))
+            for metrics_path in metrics_files:
+                record = _load_json_record(metrics_path)
 
-        totals = {
-            field: 0
-            for field in COUNT_FIELDS
-        }
+                if record.get("source") != source:
+                    raise ValueError(
+                        f"Metrics source mismatch in {metrics_path}"
+                    )
 
-        batch_ids: list[str] = []
+                for field in COUNT_FIELDS:
+                    count = _read_count(record, field, metrics_path)
+                    source_totals[field] += count
+                    totals[field] += count
 
-        for metrics_path in metrics_files:
-            record = _load_json_record(metrics_path)
+            source_summaries[source] = {
+                "batch_count": len(metrics_files),
+                **source_totals,
+            }
 
-            record_source = record.get("source")
-
-            if record_source != source:
-                raise ValueError(
-                    "Metrics source mismatch in "
-                    f"{metrics_path}: {record_source!r}"
-                )
-
-            for field in COUNT_FIELDS:
-                totals[field] += _read_count(
-                    record,
-                    field,
-                    metrics_path,
-                )
-
-            batch_id = record.get("batch_id")
-
-            if isinstance(batch_id, str) and batch_id:
-                batch_ids.append(batch_id)
-
-        summary = {
-            "source": source,
+        return {
             "metrics_date": metrics_date,
             "generated_at": datetime.now(UTC).isoformat(),
-            "batch_count": len(metrics_files),
+            "sources": source_summaries,
+            "source_count": len(source_summaries),
+            "planned_fetched": configuration["planned_fetched"],
+            "minimum_fetched": configuration["minimum_fetched"],
+            "maximum_fetched": configuration["maximum_fetched"],
             **totals,
-            "batch_ids": batch_ids,
         }
 
-        LOGGER.info(
-            "Daily crawl metrics aggregated: %s",
-            summary,
-        )
+    @task(
+        task_id="validate_daily_crawl_target",
+        retries=0,
+        execution_timeout=timedelta(minutes=1),
+    )
+    def validate_daily_crawl_target(
+        summary: dict[str, Any],
+    ) -> dict[str, Any]:
+        fetched = int(summary["fetched_count"])
+        minimum = int(summary["minimum_fetched"])
+        maximum = int(summary["maximum_fetched"])
 
-        return summary
+        if fetched < minimum or fetched > maximum:
+            raise ValueError(
+                "Daily crawl volume is outside the target range: "
+                f"fetched={fetched}, target={minimum}-{maximum}"
+            )
+
+        return {**summary, "target_status": "passed"}
 
     @task(
         task_id="persist_daily_crawl_metrics",
@@ -284,29 +287,16 @@ def job_daily_crawl_metrics() -> None:
         retry_delay=timedelta(minutes=1),
         execution_timeout=timedelta(minutes=2),
     )
-    def persist_daily_crawl_metrics(summary: dict[str, Any]) -> dict[str, Any]:
-        source = _validate_source(str(summary["source"]))
-        metrics_date = str(summary["metrics_date"])
-
+    def persist_daily_crawl_metrics(
+        summary: dict[str, Any],
+    ) -> dict[str, Any]:
         output_path = (
             DAILY_METRICS_DIRECTORY
-            / source
-            / f"{metrics_date}.json"
+            / f"{summary['metrics_date']}.json"
         )
-
-        _write_json_atomically(
-            output_path,
-            summary,
-        )
-
-        LOGGER.info(
-            "Daily crawl metrics persisted to %s",
-            output_path,
-        )
-
+        _write_json_atomically(output_path, summary)
         return {
-            "source": source,
-            "metrics_date": metrics_date,
+            "metrics_date": summary["metrics_date"],
             "daily_metrics_path": str(output_path),
         }
 
@@ -315,113 +305,72 @@ def job_daily_crawl_metrics() -> None:
         retries=0,
         execution_timeout=timedelta(minutes=5),
     )
-    def check_new_job_freshness(configuration: dict[str, Any]) -> dict[str, Any]:
-        source = _validate_source(
-            str(configuration["source"])
-        )
-        freshness_hours = int(
-            configuration["freshness_hours"]
-        )
-
-        source_directory = METRICS_DIRECTORY / source
-        metrics_files = sorted(
-            source_directory.glob("*/*.json")
-        )
-
-        now = datetime.now(UTC)
-
-        earliest_recorded_at: datetime | None = None
+    def check_new_job_freshness(
+        configuration: dict[str, Any],
+    ) -> dict[str, Any]:
         latest_new_job_at: datetime | None = None
+        earliest_recorded_at: datetime | None = None
         valid_record_count = 0
 
-        for metrics_path in metrics_files:
-            try:
-                record = _load_json_record(metrics_path)
-
-                if record.get("source") != source:
+        for source in configuration["sources"]:
+            for metrics_path in sorted(
+                (METRICS_DIRECTORY / source).glob("*/*.json")
+            ):
+                try:
+                    record = _load_json_record(metrics_path)
+                    recorded_at = _parse_recorded_at(record, metrics_path)
+                    inserted = _read_count(
+                        record,
+                        "inserted_count",
+                        metrics_path,
+                    )
+                except ValueError:
+                    LOGGER.warning(
+                        "Skipping invalid metrics file: %s",
+                        metrics_path,
+                        exc_info=True,
+                    )
                     continue
 
-                recorded_at = _parse_recorded_at(
-                    record,
-                    metrics_path,
-                )
-                inserted_count = _read_count(
-                    record,
-                    "inserted_count",
-                    metrics_path,
-                )
-            except ValueError:
-                LOGGER.warning(
-                    "Skipping invalid historical metrics file: %s",
-                    metrics_path,
-                    exc_info=True,
-                )
-                continue
+                valid_record_count += 1
 
-            valid_record_count += 1
+                if (
+                    earliest_recorded_at is None
+                    or recorded_at < earliest_recorded_at
+                ):
+                    earliest_recorded_at = recorded_at
 
-            if (
-                earliest_recorded_at is None
-                or recorded_at < earliest_recorded_at
-            ):
-                earliest_recorded_at = recorded_at
+                if inserted > 0 and (
+                    latest_new_job_at is None
+                    or recorded_at > latest_new_job_at
+                ):
+                    latest_new_job_at = recorded_at
 
-            if inserted_count > 0 and (
-                latest_new_job_at is None
-                or recorded_at > latest_new_job_at
-            ):
-                latest_new_job_at = recorded_at
+        if valid_record_count == 0 or earliest_recorded_at is None:
+            raise ValueError("No valid crawl metrics found")
 
-        if valid_record_count == 0:
-            raise ValueError(
-                f"No valid crawl metrics found for source {source!r}"
-            )
-
-        reference_time = (
-            latest_new_job_at
-            or earliest_recorded_at
-        )
-
-        if reference_time is None:
-            raise ValueError(
-                f"Could not determine freshness for source {source!r}"
-            )
-
-        age = now - reference_time
+        reference_time = latest_new_job_at or earliest_recorded_at
         age_hours = max(
             0.0,
-            age.total_seconds() / 3600,
+            (datetime.now(UTC) - reference_time).total_seconds() / 3600,
         )
+        threshold = int(configuration["freshness_hours"])
 
-        if (
-            latest_new_job_at is None
-            and age_hours < freshness_hours
-        ):
-            result = {
-                "source": source,
+        if latest_new_job_at is None and age_hours < threshold:
+            return {
                 "freshness_status": "warming_up",
                 "latest_new_job_at": None,
                 "age_hours": round(age_hours, 2),
-                "threshold_hours": freshness_hours,
+                "threshold_hours": threshold,
             }
 
-            LOGGER.warning(
-                "New-job freshness monitoring is warming up: %s",
-                result,
-            )
-
-            return result
-
-        if age_hours >= freshness_hours:
+        if age_hours >= threshold:
             raise ValueError(
                 "No new jobs were inserted for "
-                f"{age_hours:.2f} hours; "
-                f"threshold={freshness_hours} hours; "
-                f"source={source}"
+                f"{age_hours:.2f} hours; threshold={threshold} hours"
             )
 
-        result = {
-            "source": source,
+        return {
             "freshness_status": "fresh",
             "latest_new_job_at": (
                 latest_new_job_at.isoformat()
@@ -429,24 +378,14 @@ def job_daily_crawl_metrics() -> None:
                 else None
             ),
             "age_hours": round(age_hours, 2),
-            "threshold_hours": freshness_hours,
+            "threshold_hours": threshold,
         }
 
-        LOGGER.info(
-            "New-job freshness validation passed: %s",
-            result,
-        )
-
-        return result
-
     configuration = resolve_metrics_configuration()
-
     summary = aggregate_daily_crawl_metrics(configuration)
-
-    persisted_summary = persist_daily_crawl_metrics(summary)
-
+    validated_summary = validate_daily_crawl_target(summary)
+    persisted_summary = persist_daily_crawl_metrics(validated_summary)
     freshness_result = check_new_job_freshness(configuration)
-
     persisted_summary >> freshness_result
 
 

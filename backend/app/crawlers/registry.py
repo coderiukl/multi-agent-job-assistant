@@ -2,12 +2,13 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import httpx
-
 from app.crawlers.base import JobSource
 from app.crawlers.sources.arbeitnow import ArbeitnowJobSource
 from app.crawlers.sources.himalayas import HimalayasJobSource
-from app.crawlers.sources.remotive import RemotiveJobSource
+from app.crawlers.sources.itviec import ItViecJobSource
 from app.crawlers.sources.jobicy import JobicyJobSource
+from app.crawlers.sources.remotive import RemotiveJobSource
+from app.crawlers.sources.topdev import TopDevJobSource
 
 JobSourceFactory = Callable[[httpx.AsyncClient], JobSource]
 
@@ -107,6 +108,16 @@ DEFAULT_JOB_SOURCE_REGISTRY = JobSourceRegistry(
             name="arbeitnow",
             factory=ArbeitnowJobSource,
             max_limit=100,
-        )
+        ),
+        JobSourceDefinition(
+            name="topdev",
+            factory=TopDevJobSource,
+            max_limit=15,
+        ),
+        JobSourceDefinition(
+            name="itviec",
+            factory=ItViecJobSource,
+            max_limit=20,
+        ),
     ]
 )

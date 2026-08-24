@@ -1,7 +1,7 @@
 import argparse
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from app.cli.crawl_jobs import (
     SUPPORTED_SOURCES,
@@ -10,10 +10,8 @@ from app.cli.crawl_jobs import (
     print_result,
 )
 
-from app.services.job_crawling import MAX_CRAWL_LIMIT
 
-
-def job_limit(value: str) -> int:
+def positive_int(value: str) -> int:
     try:
         limit = int(value)
     except ValueError as error:
@@ -21,9 +19,9 @@ def job_limit(value: str) -> int:
             "limit must be an integer"
         ) from error
 
-    if limit < 1 or limit > 20:
+    if limit < 1:
         raise argparse.ArgumentTypeError(
-            f"limit must be between 1 and {MAX_CRAWL_LIMIT}"
+            "limit must be greater than zero"
         )
 
     return limit
@@ -69,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     crawl_parser.add_argument(
         "--limit",
-        type=job_limit,
+        type=positive_int,
         default=20,
         help=(
             "Number of jobs to fetch. "
@@ -122,7 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         print_error(RuntimeError("Command interrupted by user"))
         return 130
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - CLI boundary logs failures.
         print_error(error)
         return 1
 

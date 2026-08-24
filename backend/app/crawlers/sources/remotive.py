@@ -1,8 +1,6 @@
 from datetime import UTC, datetime
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
-
 from app.schemas.job import (
     CrawlPage,
     EmploymentType,
@@ -12,6 +10,8 @@ from app.schemas.job import (
     WorkMode,
 )
 from app.utils.html import html_to_text
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class RemotiveJob(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -66,7 +66,7 @@ class RemotiveJobSource:
                 source=self.source_name,
                 source_job_id=str(job.id),
                 source_url=job.url,
-                payload=job.model_dump(mode="json", exlude_node=False),
+                payload=job.model_dump(mode="json", exclude_none=False),
             )
             for job in page.jobs
         ]
@@ -102,7 +102,7 @@ class RemotiveJobSource:
         )
 
     @staticmethod
-    def _map_employmeny_type(value: str | None) -> EmploymentType:
+    def _map_employment_type(value: str | None) -> EmploymentType:
         mapping = {
             "full_time": EmploymentType.FULL_TIME,
             "part_time": EmploymentType.PART_TIME,

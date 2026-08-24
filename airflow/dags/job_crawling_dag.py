@@ -1,25 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from datetime import timedelta, UTC, datetime
+import re
+from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
-import json
-import re
 
 import pendulum
 from airflow.sdk import Variable, dag, task
-
 from common.callbacks import persist_failure_alert
-
 
 LOGGER = logging.getLogger(__name__)
 
-CURSOR_VARIABLE = "job_crawl_cursor_himalayas"
+LOCAL_TIMEZONE = "Asia/Ho_Chi_Minh"
 DATA_DIRECTORY = Path("/opt/airflow/data/jobs")
-
 MAX_FAILURE_RATE = 0.10
+MIN_FETCH_RATIO = 0.80
 
 COUNT_FIELDS = (
     "fetched_count",
@@ -39,245 +38,281 @@ METRIC_FIELDS = (
     "next_cursor",
 )
 
-@dag(
-    dag_id="job_crawling_pipeline",
-    description="Crawl and normalize remote jobs from Himalayas",
-    schedule="0 */3 * * *",
-    start_date=pendulum.datetime(2026, 8, 24, tz="Asia/Ho_Chi_Minh"),
-    catchup=False,
-    max_active_runs=1,
-    on_failure_callback=persist_failure_alert,
-    tags=["jobs", "crawling", "himalayas"],
+
+@dataclass(frozen=True, slots=True)
+class SourceSchedule:
+    source: str
+    schedule: str
+    limit: int
+    uses_cursor: bool
+
+
+SOURCE_SCHEDULES = (
+    SourceSchedule(
+        source="himalayas",
+        schedule="20 0,5,14 * * *",
+        limit=20,
+        uses_cursor=True,
+    ),
+    SourceSchedule(
+        source="arbeitnow",
+        schedule="10 2,10,18 * * *",
+        limit=20,
+        uses_cursor=True,
+    ),
+    SourceSchedule(
+        source="topdev",
+        schedule="30 7 * * *",
+        limit=15,
+        uses_cursor=True,
+    ),
+    SourceSchedule(
+        source="remotive",
+        schedule="30 12 * * *",
+        limit=10,
+        uses_cursor=False,
+    ),
+    SourceSchedule(
+        source="jobicy",
+        schedule="30 16 * * *",
+        limit=10,
+        uses_cursor=False,
+    ),
+    SourceSchedule(
+        source="itviec",
+        schedule="30 21 * * *",
+        limit=20,
+        uses_cursor=True,
+    ),
 )
 
-def job_crawling_pipeline() -> None:
-    @task(
-        task_id="crawl_himalayas_jobs",
-        retries=3,
-        retry_delay=timedelta(minutes=10),
-        retry_exponential_backoff=True,
-        max_retry_delay=timedelta(hours=1),
-        execution_timeout=timedelta(minutes=10)
-    )
-    def crawl_himalayas_jobs() -> dict[str, Any]:
-        from app.cli.crawl_jobs import crawl_jobs
 
-        stored_cursor = Variable.get(CURSOR_VARIABLE, default=None)
+def _read_cursor(variable_name: str, *, enabled: bool) -> str | None:
+    if not enabled:
+        return None
 
-        cursor = (
-            stored_cursor.strip()
-            if isinstance(stored_cursor, str)
-            and stored_cursor.strip()
-            else None
-        )
+    stored_cursor = Variable.get(variable_name, default=None)
 
-        result = asyncio.run(
-            crawl_jobs(
-                source_name="himalayas",
-                limit=20,
-                cursor=cursor,
-                data_dir=DATA_DIRECTORY,
-                timeout_seconds=30.0,
-            )
-        )
+    if not isinstance(stored_cursor, str):
+        return None
 
-        metrics = {
-            field: result.get(field)
-            for field in METRIC_FIELDS
-        }
+    normalized = stored_cursor.strip()
+    return normalized or None
 
-        LOGGER.info(
-            "Himalayas crawl completed: %s",
-            metrics,
-        )
 
-        return metrics
+def _validate_metrics(
+    metrics: dict[str, Any],
+    *,
+    expected_limit: int,
+) -> dict[str, Any]:
+    for field in COUNT_FIELDS:
+        value = metrics.get(field)
 
-    @task(
-        task_id="validate_crawl_quality",
-        retries=0,
-        execution_timeout=timedelta(minutes=2),
-    )
-    def validate_crawl_quality(metrics: dict[str, Any]) -> dict[str, Any]:
-        for field in COUNT_FIELDS:
-            value = metrics.get(field)
-
-            if not isinstance(value, int):
-                raise ValueError(
-                    f"{field} must be an integer, got {value!r}"
-                )
-
-            if value < 0:
-                raise ValueError(
-                    f"{field} cannot be negative"
-                )
-
-        fetched = metrics["fetched_count"]
-        normalized = metrics["normalized_count"]
-        failed = metrics["failed_count"]
-
-        inserted = metrics["inserted_count"]
-        updated = metrics["updated_count"]
-        unchanged = metrics["unchanged_count"]
-
-        if fetched != normalized + failed:
+        if type(value) is not int or value < 0:
             raise ValueError(
-                "Invalid processing totals: "
-                f"fetched={fetched}, "
-                f"normalized={normalized}, "
-                f"failed={failed}"
+                f"{field} must be a non-negative integer, got {value!r}"
             )
 
-        written_total = inserted + updated + unchanged
+    fetched = metrics["fetched_count"]
+    normalized = metrics["normalized_count"]
+    failed = metrics["failed_count"]
 
-        if written_total != normalized:
-            raise ValueError(
-                "Invalid repository totals: "
-                f"normalized={normalized}, "
-                f"written_total={written_total}"
-            )
+    if fetched != normalized + failed:
+        raise ValueError(
+            "Invalid processing totals: "
+            f"fetched={fetched}, normalized={normalized}, failed={failed}"
+        )
 
-        failure_rate = failed / fetched if fetched > 0 else 0.0
-
-        if failure_rate > MAX_FAILURE_RATE:
-            raise ValueError(
-                "Failure rate exceeded threshold: "
-                f"{failure_rate:.2%} > "
-                f"{MAX_FAILURE_RATE:.2%}"
-            )
-
-        raw_file_path = metrics.get("raw_file_path")
-
-        if fetched > 0:
-            if not raw_file_path:
-                raise ValueError(
-                    "raw_file_path is missing"
-                )
-
-            raw_path = Path(str(raw_file_path))
-
-            if not raw_path.is_absolute():
-                raw_path = Path("/opt/airflow") / raw_path
-
-            if not raw_path.is_file():
-                raise ValueError(
-                    f"Raw batch file does not exist: {raw_path}"
-                )
-
-            if raw_path.stat().st_size == 0:
-                raise ValueError(
-                    f"Raw batch file is empty: {raw_path}"
-                )
-
-        validated_metrics = {
-            **metrics,
-            "failure_rate": failure_rate,
-            "quality_status": "passed",
-        }
-
-        if failed > 0:
-            LOGGER.warning(
-                "Batch passed with %s failed jobs "
-                "(failure rate %.2f%%)",
-                failed,
-                failure_rate * 100,
-            )
-        else:
-            LOGGER.info(
-                "Data-quality validation passed: %s",
-                validated_metrics,
-            )
-
-        return validated_metrics
-
-    @task(
-        task_id="commit_himalayas_cursor",
-        retries=2,
-        retry_delay=timedelta(minutes=1),
-        execution_timeout=timedelta(minutes=2),
+    written_total = sum(
+        metrics[field]
+        for field in (
+            "inserted_count",
+            "updated_count",
+            "unchanged_count",
+        )
     )
-    def commit_himalayas_cursor( validated_metrics: dict[str, Any]) -> dict[str, Any]:
-        next_cursor = validated_metrics.get("next_cursor")
 
-        Variable.set(
-            CURSOR_VARIABLE,
-            next_cursor or "",
-            description=(
-                "Pagination cursor for Himalayas job crawler"
-            ),
+    if written_total != normalized:
+        raise ValueError(
+            "Invalid repository totals: "
+            f"normalized={normalized}, written_total={written_total}"
         )
 
-        LOGGER.info(
-            "Committed Himalayas cursor: %s",
-            next_cursor or "<feed completed>",
+    minimum_fetched = max(1, int(expected_limit * MIN_FETCH_RATIO))
+
+    if fetched < minimum_fetched:
+        raise ValueError(
+            "Fetched count is below the source target: "
+            f"fetched={fetched}, minimum={minimum_fetched}"
         )
 
-        return {
-            **validated_metrics,
-            "committed_cursor": next_cursor,
-        }
+    failure_rate = failed / fetched
 
-    @task(
-        task_id="record_crawl_metrics",
-        retries=2,
-        retry_delay=timedelta(minutes=1),
-        execution_timeout=timedelta(minutes=2),
+    if failure_rate > MAX_FAILURE_RATE:
+        raise ValueError(
+            "Failure rate exceeded threshold: "
+            f"{failure_rate:.2%} > {MAX_FAILURE_RATE:.2%}"
+        )
+
+    raw_path = Path(str(metrics.get("raw_file_path") or ""))
+
+    if not raw_path.is_absolute():
+        raw_path = Path("/opt/airflow") / raw_path
+
+    if not raw_path.is_file() or raw_path.stat().st_size == 0:
+        raise ValueError(f"Raw batch file is missing or empty: {raw_path}")
+
+    return {
+        **metrics,
+        "failure_rate": failure_rate,
+        "quality_status": "passed",
+    }
+
+
+def _persist_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    recorded_at = pendulum.now(LOCAL_TIMEZONE)
+    source = str(metrics.get("source", "unknown"))
+    batch_id = str(metrics.get("batch_id", "unknown_batch"))
+    safe_source = re.sub(r"[^a-zA-Z0-9_.-]+", "_", source)
+    safe_batch_id = re.sub(r"[^a-zA-Z0-9_.-]+", "_", batch_id)
+    metrics_directory = (
+        DATA_DIRECTORY
+        / "metrics"
+        / safe_source
+        / recorded_at.date().isoformat()
     )
-    def record_crawl_metrics(committed_metrics: dict[str, Any]) -> dict[str, Any]:
-        recorded_at = datetime.now(UTC)
+    metrics_directory.mkdir(parents=True, exist_ok=True)
 
-        source = str(committed_metrics.get("source", "unknown"))
-        batch_id = str(
-            committed_metrics.get(
-                "batch_id",
-                "unknown_batch",
+    metrics_path = metrics_directory / f"{safe_batch_id}.json"
+    temporary_path = metrics_path.with_suffix(".tmp")
+    record = {
+        **metrics,
+        "recorded_at": recorded_at.isoformat(),
+    }
+
+    temporary_path.write_text(
+        json.dumps(record, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temporary_path.replace(metrics_path)
+
+    return {
+        "source": source,
+        "batch_id": batch_id,
+        "metrics_file_path": str(metrics_path),
+        "recorded_at": recorded_at.isoformat(),
+    }
+
+
+def build_source_dag(configuration: SourceSchedule) -> Any:
+    source_name = configuration.source
+    cursor_variable = f"job_crawl_cursor_{source_name}"
+
+    @dag(
+        dag_id=f"job_crawl_{source_name}",
+        description=f"Crawl and normalize jobs from {source_name}",
+        schedule=configuration.schedule,
+        start_date=pendulum.datetime(
+            2026,
+            8,
+            24,
+            tz=LOCAL_TIMEZONE,
+        ),
+        catchup=False,
+        max_active_runs=1,
+        on_failure_callback=persist_failure_alert,
+        tags=["jobs", "crawling", source_name],
+    )
+    def source_pipeline() -> None:
+        @task(
+            task_id=f"crawl_{source_name}_jobs",
+            retries=3,
+            retry_delay=timedelta(minutes=10),
+            retry_exponential_backoff=True,
+            max_retry_delay=timedelta(hours=1),
+            execution_timeout=timedelta(minutes=15),
+        )
+        def crawl_source_jobs() -> dict[str, Any]:
+            from app.cli.crawl_jobs import crawl_jobs
+
+            cursor = _read_cursor(
+                cursor_variable,
+                enabled=configuration.uses_cursor,
             )
+            result = asyncio.run(
+                crawl_jobs(
+                    source_name=source_name,
+                    limit=configuration.limit,
+                    cursor=cursor,
+                    data_dir=DATA_DIRECTORY,
+                    timeout_seconds=45.0,
+                )
+            )
+            metrics = {
+                field: result.get(field)
+                for field in METRIC_FIELDS
+            }
+            LOGGER.info("%s crawl completed: %s", source_name, metrics)
+            return metrics
+
+        @task(
+            task_id="validate_crawl_quality",
+            retries=0,
+            execution_timeout=timedelta(minutes=2),
         )
+        def validate_crawl_quality(
+            metrics: dict[str, Any],
+        ) -> dict[str, Any]:
+            return _validate_metrics(
+                metrics,
+                expected_limit=configuration.limit,
+            )
 
-        safe_source = re.sub(r"[^a-zA-Z0-9_.-]+", "_", source)
-        safe_batch_id = re.sub(r"[^a-zA-Z0-9_.-]+", "_", batch_id)
-
-        metrics_directory = (
-            DATA_DIRECTORY
-            / "metrics"
-            / safe_source
-            / recorded_at.date().isoformat()
+        @task(
+            task_id="commit_source_cursor",
+            retries=2,
+            retry_delay=timedelta(minutes=1),
+            execution_timeout=timedelta(minutes=2),
         )
-        metrics_directory.mkdir(parents=True, exist_ok=True)
+        def commit_source_cursor(
+            metrics: dict[str, Any],
+        ) -> dict[str, Any]:
+            next_cursor = metrics.get("next_cursor")
 
-        metrics_path = metrics_directory / f"{safe_batch_id}.json"
-        temporary_path = metrics_path.with_suffix(".tmp")
+            if configuration.uses_cursor:
+                Variable.set(
+                    cursor_variable,
+                    next_cursor or "",
+                    description=(
+                        f"Pagination cursor for {source_name} job crawler"
+                    ),
+                )
 
-        record = {
-            **committed_metrics,
-            "recorded_at": recorded_at.isoformat(),
-        }
+            return {
+                **metrics,
+                "committed_cursor": next_cursor,
+            }
 
-        temporary_path.write_text(
-            json.dumps(
-                record,
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        @task(
+            task_id="record_crawl_metrics",
+            retries=2,
+            retry_delay=timedelta(minutes=1),
+            execution_timeout=timedelta(minutes=2),
         )
-        temporary_path.replace(metrics_path)
+        def record_crawl_metrics(
+            metrics: dict[str, Any],
+        ) -> dict[str, Any]:
+            return _persist_metrics(metrics)
 
-        LOGGER.info(
-            "Crawl metrics persisted to %s",
-            metrics_path,
-        )
+        crawl_metrics = crawl_source_jobs()
+        validated_metrics = validate_crawl_quality(crawl_metrics)
+        committed_metrics = commit_source_cursor(validated_metrics)
+        record_crawl_metrics(committed_metrics)
 
-        return {
-            "source": source,
-            "batch_id": batch_id,
-            "metrics_file_path": str(metrics_path),
-            "recorded_at": recorded_at.isoformat(),
-        }
+    return source_pipeline()
 
-    crawl_metrics = crawl_himalayas_jobs()
-    validated_metrics = validate_crawl_quality(crawl_metrics)
-    committed_metrics = commit_himalayas_cursor(validated_metrics)
-    record_crawl_metrics (committed_metrics)
 
-job_crawling_pipeline()
+for source_configuration in SOURCE_SCHEDULES:
+    globals()[f"job_crawl_{source_configuration.source}"] = build_source_dag(
+        source_configuration
+    )
