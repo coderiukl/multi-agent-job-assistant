@@ -6,6 +6,7 @@ import httpx
 from app.crawlers.base import JobSource
 from app.crawlers.sources.himalayas import HimalayasJobSource
 from app.crawlers.sources.remotive import RemotiveJobSource
+from app.crawlers.sources.jobicy import JobicyJobSource
 
 JobSourceFactory = Callable[[httpx.AsyncClient], JobSource]
 
@@ -94,6 +95,11 @@ DEFAULT_JOB_SOURCE_REGISTRY = JobSourceRegistry(
         JobSourceDefinition(
             name="remotive",
             factory=RemotiveJobSource,
+            max_limit=100,
+        ),
+        JobSourceDefinition(
+            name="jobicy",
+            factory=JobicyJobSource,
             max_limit=100,
         )
     ]
