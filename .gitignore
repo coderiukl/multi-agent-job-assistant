@@ -55,3 +55,11 @@ qdrant_storage/
 node_modules/
 
 frontend/.vite/
+
+# Crawled data
+backend/data/jobs/
+
+# Airflow runtime
+airflow/.env
+airflow/logs/
+airflow/config/airflow.cfg
