@@ -92,7 +92,7 @@ class JobSearchFilters(JobSchema):
 class JobSearchRequest(JobSchema):
     query: str = Field(min_length=1, max_length=2_000)
     filters: JobSearchFilters = Field(default_factory=JobSearchFilters)
-    sort: JobSearchSort = JobSearchSort.RELEVANC
+    sort: JobSearchSort = JobSearchSort.RELEVANCE
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=10, ge=1, le=50)
 
@@ -185,3 +185,9 @@ class JobSearchResult(JobSchema):
     page: int = Field(ge=1)
     page_size: int = Field(ge=1, le=50)
     items: list[JobSearchHit] = Field(default_factory=list)
+
+class JobSearchPage(JobSchema):
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=50)
+    jobs: list[NormalizedJob] = Field(default_factory=list)
