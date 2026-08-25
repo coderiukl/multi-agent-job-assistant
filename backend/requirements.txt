@@ -14,6 +14,10 @@ qdrant-client
 
 aiofiles
 
+sqlalchemy>=2.0,<3
+asyncpg>=0.30,<1
+alembic>=1.16,<2
+
 pymupdf
 paddlepaddle>=3.2,<4
 paddleocr>=3.3,<4

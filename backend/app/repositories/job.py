@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 import os
 import re
 from collections import defaultdict
@@ -18,14 +19,25 @@ from app.schemas.job_storage import (
     JobWriteStatus,
 )
 
+LOGGER = logging.getLogger(__name__)
 
-class JobRepository(Protocol):
-    async def save_raw_batch(self, *, source: str, batch_id: str, jobs: list[RawJob]) -> Path:
+
+class RawJobRepository(Protocol):
+    async def save_raw_batch(
+        self,
+        *,
+        source: str,
+        batch_id: str,
+        jobs: list[RawJob]
+    ) -> Path:
         ...
 
-    async def upsert_many(elf, jobs: list[NormalizedJob],) -> JobUpsertSummary:
+class NormalizedJobRepository(Protocol):
+    async def upsert_many(self, jobs: list[NormalizedJob]):
         ...
 
+class JobRepository(RawJobRepository, NormalizedJobRepository, Protocol):
+   pass
 
 class LocalJsonlJobRepository:
     def __init__(self, root_dir: Path,) -> None:
@@ -38,7 +50,13 @@ class LocalJsonlJobRepository:
 
         self._write_lock = asyncio.Lock()
 
-    async def save_raw_batch(self, *, source: str, batch_id: str, jobs: list[RawJob]) -> Path:
+    async def save_raw_batch(
+        self,
+        *,
+        source: str,
+        batch_id: str,
+        jobs: list[RawJob],
+    ) -> Path:
         safe_source = self._safe_component(source)
         safe_batch_id = self._safe_component(batch_id)
 
@@ -102,7 +120,12 @@ class LocalJsonlJobRepository:
             results=all_results,
         )
 
-    async def _upsert_source(self, *, source: str, jobs: list[NormalizedJob]) -> list[JobUpsertResult]:
+    async def _upsert_source(
+        self,
+        *,
+        source: str,
+        jobs: list[NormalizedJob],
+    ) -> list[JobUpsertResult]:
         safe_source = self._safe_component(source)
         destination = self._normalized_dir / f"{safe_source}.jsonl"
 
@@ -167,11 +190,13 @@ class LocalJsonlJobRepository:
 
         return results
 
-    async def _load_current_jobs(self, path: Path) -> tuple[str, dict[str, NormalizedJob]]:
+    async def _load_current_jobs(
+        self,
+        path: Path,
+    ) -> tuple[str, dict[str, NormalizedJob]]:
         try:
             async with aiofiles.open(
                 path,
-                mode="r",
                 encoding="utf-8",
             ) as input_file:
                 content = await input_file.read()
@@ -185,27 +210,58 @@ class LocalJsonlJobRepository:
             ) from exc
 
         current_jobs: dict[str, NormalizedJob] = {}
+        valid_lines: list[str] = []
+        skipped_corrupt_lines = 0
 
-        try:
-            for line in content.splitlines():
-                if not line.strip():
+        for line_number, line in enumerate(content.splitlines(), start=1):
+            if not line.strip():
+                continue
+
+            try:
+                record = JobVersionRecord.model_validate_json(line)
+
+            except ValidationError as exc:
+                if self._is_json_syntax_error(exc):
+                    skipped_corrupt_lines += 1
+                    LOGGER.warning(
+                        "Skipping invalid JSON normalized job record: "
+                        "path=%s, line=%s",
+                        path,
+                        line_number,
+                    )
                     continue
 
-                record = JobVersionRecord.model_validate_json(line)
-                current_jobs[record.job.job_id] = record.job
+                raise StorageException(
+                    message="The normalized job file is corrupted.",
+                ) from exc
 
-        except ValidationError as exc:
-            raise StorageException(
-                message="The normalized job file is corrupted.",
-            ) from exc
+            valid_lines.append(line)
+            current_jobs[record.job.job_id] = record.job
 
-        return content, current_jobs
+        if skipped_corrupt_lines == 0:
+            return content, current_jobs
 
-    async def _atomic_append_versions(self, *, destination: Path, existing_text: str, versions: list[JobVersionRecord]) -> None:
+        sanitized_content = "\n".join(valid_lines)
+        if sanitized_content:
+            sanitized_content += "\n"
+
+        return sanitized_content, current_jobs
+
+    async def _atomic_append_versions(
+        self,
+        *,
+        destination: Path,
+        existing_text: str,
+        versions: list[JobVersionRecord],
+    ) -> None:
         temporary_path = destination.with_suffix(".jsonl.part")
 
         try:
-            async with aiofiles.open(temporary_path, mode="w", encoding="utf-8") as output:
+            async with aiofiles.open(
+                temporary_path,
+                mode="w",
+                encoding="utf-8",
+            ) as output:
                 if existing_text:
                     await output.write(existing_text.rstrip("\n"))
                     await output.write("\n")
@@ -282,3 +338,11 @@ class LocalJsonlJobRepository:
         digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
 
         return f"{normalized[:80]}-{digest}"
+
+    @staticmethod
+    def _is_json_syntax_error(exc: ValidationError) -> bool:
+        for error in exc.errors():
+            if error.get("type") == "json_invalid":
+                return True
+
+        return False

@@ -68,9 +68,12 @@ class Settings(BaseSettings):
     langsmith_api_key: str | None = Field(default=None, repr=False)
     langsmith_project: str = "multi-agent-job-assistant"
 
-    # Qdrant
-    qdrant_url: str | None = None
-    qdrant_api_key: str | None = Field(default=None, repr=False)
+    # Job storage
+    job_storage_backend: Literal["jsonl", "postgres"] = "jsonl"
+    job_database_url: str | None = Field(default=None, repr=False)
+    job_database_pool_size: int = Field(default=5, ge=1, le=50)
+    job_database_max_overflow: int = Field(default=10, ge=0, le=100)
+    job_database_echo: bool = False
 
     # File upload
     max_upload_size_mb: int = 10
@@ -78,9 +81,7 @@ class Settings(BaseSettings):
     storage_dir: Path = Path("storage")
     upload_dir: Path = Path("storage/uploads")
     upload_chunk_size_bytes: int = Field(default=1024 * 1024, gt=0)
-
     max_pdf_pages: int = Field(default=20, ge=1, le=100)
-
     min_native_text_chars_per_page: int = Field(default=50, ge=0, le=1000)
 
     # OCR
@@ -94,6 +95,11 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    # # Qdrant
+    # qdrant_url: str | None = None
+    # qdrant_api_key: str | None = Field(default=None, repr=False)
+    
 
     # Upload size conversion
     @property
