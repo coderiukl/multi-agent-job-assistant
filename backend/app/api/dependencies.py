@@ -9,12 +9,14 @@ from app.llm import LLMFactory
 from app.core.config import get_settings
 
 from app.repositories.cv import CVRepository, LocalJsonCVRepository
-from app.services.conversation import ConversationIntentAnalyzer, ConservationService
+from app.services.conversation import ConversationIntentAnalyzer, ConversationService
 from app.services.cv_ingestion import CVIngestionService
 from app.services.cv_processing import CVProcessingService
 from app.services.pdf import PdfInspector, PdfOcrExtractor, NativePdfTextExtractor, PdfTextMerger
 from app.services.storage import LocalStorageService, StorageService
 
+from langgraph.graph.state import CompiledStateGraph
+from app.graphs.conversation import ConversationNodes, build_conversation_graph
 
 @lru_cache
 def get_storage_service() -> StorageService:
@@ -90,24 +92,25 @@ ChatModelDependency = Annotated[
     Depends(get_chat_model)
 ]
 
-def get_conversation_intent_analyzer(llm: ChatModelDependency) -> ConversationIntentAnalyzer:
-    return ConversationIntentAnalyzer(llm=llm)
-
-ConversationIntentAnalyzerDependency = Annotated[
-    ConversationIntentAnalyzer,
-    Depends(get_conversation_intent_analyzer)
-]
-
-def get_conversation_service(
-    analyzer: ConversationIntentAnalyzerDependency,
-    cv_repository: CVRepository = Depends(get_cv_repository)
-) -> ConservationService:
-    return ConservationService(
+@lru_cache
+def get_conversation_graph() -> CompiledStateGraph:
+    analyzer = ConversationIntentAnalyzer(llm=get_chat_model())
+    nodes = ConversationNodes(
         analyzer=analyzer,
-        cv_repository=cv_repository,
+        cv_repository=get_cv_repository()
     )
 
-ConservationServiceDependency = Annotated[
-    ConservationService,
+    return build_conversation_graph(nodes)
+
+ConversationGraphDependency = Annotated[
+    CompiledStateGraph,
+    Depends(get_conversation_graph)
+]
+
+def get_conversation_service(graph: ConversationGraphDependency) -> ConversationService:
+    return ConversationService(graph=graph)
+
+ConversationServiceDependency = Annotated[
+    ConversationService,
     Depends(get_conversation_service)
 ]

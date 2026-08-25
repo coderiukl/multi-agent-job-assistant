@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-import { analyzeConversationIntent, uploadCv } from "./api.js";
+import { sendConversationMessage, uploadCv } from "./api.js";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -141,7 +141,7 @@ export default function App() {
     ]);
 
     try {
-      const result = await analyzeConversationIntent({
+      const result = await sendConversationMessage({
         message,
         cvId: uploadedCvId,
         jobDescription: null,
@@ -153,9 +153,12 @@ export default function App() {
           id: crypto.randomUUID(),
           role: "assistant",
           text: result.answer,
-          hasCv: result.hasCv,
+          cvId: result.cvId,
+          status: result.status,
+          route: result.route,
           confidence: result.confidence,
           primaryIntent: result.primaryIntent,
+          missingInputs: result.missingInputs,
         },
       ]);
     } catch (submitError) {
