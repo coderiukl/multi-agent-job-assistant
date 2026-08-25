@@ -96,10 +96,20 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # # Qdrant
-    # qdrant_url: str | None = None
-    # qdrant_api_key: str | None = Field(default=None, repr=False)
-    
+    # Job embeddings 
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimensions: int = Field(default=1024, ge=1024, le=1024)
+    embedding_device: Literal["cpu", "cuda"] = "cpu"
+    embedding_batch_size: int = Field(default=4, ge=1, le=32)
+    embedding_max_length: int = Field(default=2048, ge=128, le=8192)
+    embedding_cache_dir: Path = Path("storage/models")
+    job_embedding_max_chars: int = Field(default=12_000, ge=1_000, le=50_000)
+
+    # Qdrant
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str | None = Field(default=None, repr=False)
+    qdrant_collection_name: str = "jobs_bge_m3_v1"
+    qdrant_timeout_seconds: float = Field(default=30.0, gt=0)
 
     # Upload size conversion
     @property
