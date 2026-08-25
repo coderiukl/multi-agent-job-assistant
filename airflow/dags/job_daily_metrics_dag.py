@@ -164,6 +164,22 @@ def _write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
     temporary_path.replace(path)
 
 
+def _validate_daily_crawl_target(summary: dict[str, Any]) -> dict[str, Any]:
+    fetched = int(summary["fetched_count"])
+    minimum = int(summary["minimum_fetched"])
+    maximum = int(summary["maximum_fetched"])
+
+    if fetched < minimum:
+        raise ValueError(
+            "Daily crawl volume is below the target range: "
+            f"fetched={fetched}, minimum={minimum}"
+        )
+
+    target_status = "above_target" if fetched > maximum else "passed"
+
+    return {**summary, "target_status": target_status}
+
+
 @dag(
     dag_id="job_daily_crawl_metrics",
     description="Aggregate six-source crawl metrics and enforce daily volume",
@@ -269,17 +285,7 @@ def job_daily_crawl_metrics() -> None:
     def validate_daily_crawl_target(
         summary: dict[str, Any],
     ) -> dict[str, Any]:
-        fetched = int(summary["fetched_count"])
-        minimum = int(summary["minimum_fetched"])
-        maximum = int(summary["maximum_fetched"])
-
-        if fetched < minimum or fetched > maximum:
-            raise ValueError(
-                "Daily crawl volume is outside the target range: "
-                f"fetched={fetched}, target={minimum}-{maximum}"
-            )
-
-        return {**summary, "target_status": "passed"}
+        return _validate_daily_crawl_target(summary)
 
     @task(
         task_id="persist_daily_crawl_metrics",
