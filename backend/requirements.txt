@@ -25,3 +25,5 @@ numpy
 
 pendulum
 apache-airflow>=3,<4
+
+sentence-transformers
