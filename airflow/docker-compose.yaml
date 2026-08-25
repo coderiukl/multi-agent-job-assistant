@@ -58,7 +58,7 @@ x-airflow-common:
     PYTHONPATH: /opt/project/backend
     JOB_STORAGE_BACKEND: postgres
     JOB_DATABASE_URL: "postgresql+asyncpg://job_app:job_app@jobs-postgres:5432/job_search_ai"
-    JOB_DATABASE_POOP_SIZE: 5
+    JOB_DATABASE_POOL_SIZE: 5
     JOB_DATABASE_MAX_OVERFLOW: 10
     JOB_DATABASE_ECHO: "false"
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
