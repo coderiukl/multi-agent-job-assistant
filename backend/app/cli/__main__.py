@@ -1,14 +1,22 @@
 import argparse
 import asyncio
+import json
+import sys
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 
-from app.cli.crawl_jobs import (
-    SUPPORTED_SOURCES,
-    crawl_jobs,
-    print_error,
-    print_result,
-)
+from app.crawlers.registry import DEFAULT_JOB_SOURCE_REGISTRY
+
+SUPPORTED_SOURCES = frozenset(DEFAULT_JOB_SOURCE_REGISTRY.names)
+
+def iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "date must use YYYY-MM-DD format"
+        ) from error
 
 
 def positive_int(value: str) -> int:
@@ -92,23 +100,91 @@ def build_parser() -> argparse.ArgumentParser:
         help="HTTP timeout in seconds",
     )
 
+    import_parser = subparsers.add_parser(
+        "import-jsonl-jobs",
+        help=(
+            "Import normalized JSONL jobs "
+            "into PostgreSQL"
+        ),
+    )
+
+    import_parser.add_argument(
+        "--date",
+        dest="target_date",
+        type=iso_date,
+        required=True,
+        help="Crawl date using YYYY-MM-DD",
+    )
+    import_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data/jobs"),
+        help="Job JSONL data directory",
+    )
+    import_parser.add_argument(
+        "--timezone",
+        default="Asia/Ho_Chi_Minh",
+        help="Timezone used to interpret crawl date",
+    )
+    import_parser.add_argument(
+        "--source",
+        choices=sorted(SUPPORTED_SOURCES),
+        default=None,
+        help="Only import one source",
+    )
+
     return parser
 
 
 async def execute(args: argparse.Namespace) -> int:
-    if args.command != "crawl-jobs":
-        raise ValueError(f"Unsupported command: {args.command}")
+    if args.command == "crawl-jobs":
+        from app.cli.crawl_jobs import crawl_jobs, print_result
 
-    result = await crawl_jobs(
-        source_name=args.source,
-        limit=args.limit,
-        cursor=args.cursor,
-        data_dir=args.data_dir,
-        timeout_seconds=args.timeout,
+        result = await crawl_jobs(
+            source_name=args.source,
+            limit=args.limit,
+            cursor=args.cursor,
+            data_dir=args.data_dir,
+            timeout_seconds=args.timeout,
+        )
+
+        print_result(result)
+        return 0
+
+    if args.command == "import-jsonl-jobs":
+        from app.cli.crawl_jobs import print_result
+        from backend.app.cli.import_jsonl_jobs import import_jsonl_jobs
+
+        result = await import_jsonl_jobs(
+            target_date=args.target_date,
+            data_dir=args.data_dir,
+            timezone_name=args.timezone,
+            source=args.source,
+        )
+
+        print_result(result)
+        return 0
+
+    raise ValueError(
+        f"Unsupported command: {args.command}"
     )
 
-    print_result(result)
-    return 0
+
+def print_error(error: Exception) -> None:
+    payload = {
+        "status": "failed",
+        "error_type": type(error).__name__,
+        "message": str(error),
+    }
+
+    print(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        file=sys.stderr,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
