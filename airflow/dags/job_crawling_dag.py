@@ -20,6 +20,7 @@ DATA_DIRECTORY = Path("/opt/airflow/data/jobs")
 MAX_FAILURE_RATE = 0.10
 DEFAULT_MIN_FETCH_RATIO = 0.80
 DEFAULT_MIN_FETCH_COUNT = 1
+JOB_INDEX_SCAN_BATCH_SIZE = 100
 
 COUNT_FIELDS = (
     "fetched_count",
@@ -35,6 +36,7 @@ METRIC_FIELDS = (
     "batch_id",
     *COUNT_FIELDS,
     "raw_file_path",
+    "normalized_job_ids",
     "current_cursor",
     "next_cursor",
 )
@@ -309,9 +311,7 @@ def build_source_dag(configuration: SourceSchedule) -> Any:
             retries=0,
             execution_timeout=timedelta(minutes=2),
         )
-        def validate_crawl_quality(
-            metrics: dict[str, Any],
-        ) -> dict[str, Any]:
+        def validate_crawl_quality(metrics: dict[str, Any]) -> dict[str, Any]:
             return _validate_metrics(
                 metrics,
                 expected_limit=configuration.limit,
@@ -325,9 +325,7 @@ def build_source_dag(configuration: SourceSchedule) -> Any:
             retry_delay=timedelta(minutes=1),
             execution_timeout=timedelta(minutes=2),
         )
-        def commit_source_cursor(
-            metrics: dict[str, Any],
-        ) -> dict[str, Any]:
+        def commit_source_cursor(metrics: dict[str, Any]) -> dict[str, Any]:
             next_cursor = metrics.get("next_cursor")
 
             if configuration.uses_cursor:
@@ -350,15 +348,41 @@ def build_source_dag(configuration: SourceSchedule) -> Any:
             retry_delay=timedelta(minutes=1),
             execution_timeout=timedelta(minutes=2),
         )
-        def record_crawl_metrics(
-            metrics: dict[str, Any],
-        ) -> dict[str, Any]:
+        def record_crawl_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
             return _persist_metrics(metrics)
 
+        @task(
+            task_id="index_jobs",
+            retries=2,
+            retry_delay=timedelta(minutes=5),
+            retry_exponential_backoff=True,
+            max_retry_delay=timedelta(minutes=20),
+            execution_timeout=timedelta(minutes=45),
+        )
+        def index_jobs(metrics: dict[str, Any]) -> dict[str, Any]:
+            from app.cli.index_jobs import sync_job_index
+
+            result = asyncio.run(
+                sync_job_index(
+                    scan_batch_size=JOB_INDEX_SCAN_BATCH_SIZE,
+                    source=source_name,
+                    job_ids=list(metrics.get("normalized_job_ids") or []),
+                )
+            )
+
+            LOGGER.info(
+                "%s job indexing completed: %s",
+                source_name,
+                result,
+            )
+
+            return result
         crawl_metrics = crawl_source_jobs()
         validated_metrics = validate_crawl_quality(crawl_metrics)
         committed_metrics = commit_source_cursor(validated_metrics)
-        record_crawl_metrics(committed_metrics)
+        recorded_metrics = record_crawl_metrics(committed_metrics)
+        indexing_result = index_jobs(committed_metrics)
+        recorded_metrics >> indexing_result
 
     return source_pipeline()
 
