@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,13 +14,23 @@ class PostgresJobIndexSource:
     def __init__(self, session_factory: JobSessionFactory) -> None:
         self._session_factory = session_factory
 
-    async def iter_batches(self, *, batch_size: int) -> AsyncIterator[list[NormalizedJob]]:
+    async def iter_batches(
+        self,
+        *,
+        batch_size: int,
+        source: str | None = None,
+        job_ids: Sequence[str] | None = None,
+    ) -> AsyncIterator[list[NormalizedJob]]:
         if not 1 <= batch_size <= 1_000:
             raise ValueError(
                 "batch_size must be between 1 and 1000."
             )
 
         cursor: str | None = None
+        selected_job_ids = list(dict.fromkeys(job_ids or []))
+
+        if job_ids is not None and not selected_job_ids:
+            return
 
         try:
             async with self._session_factory() as session:
@@ -30,6 +40,16 @@ class PostgresJobIndexSource:
                         .order_by(JobModel.job_id.asc())
                         .limit(batch_size)
                     )
+
+                    if source is not None:
+                        statement = statement.where(
+                            JobModel.source == source
+                        )
+
+                    if job_ids is not None:
+                        statement = statement.where(
+                            JobModel.job_id.in_(selected_job_ids)
+                        )
 
                     if cursor is not None:
                         statement = statement.where(
