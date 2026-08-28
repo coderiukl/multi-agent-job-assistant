@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -7,7 +8,14 @@ from app.repositories.postgres_job_index_source import PostgresJobIndexSource
 from app.schemas.job_index import JobIndexSyncSummary
 from app.vectorstores import QdrantJobVectorIndex, create_qdrant_client
 
-async def sync_job_index(*, scan_batch_size: int, settings:Settings | None = None) -> dict[str, Any]:
+
+async def sync_job_index(
+    *,
+    scan_batch_size: int,
+    source: str | None = None,
+    job_ids: Sequence[str] | None = None,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
     selected_settings = settings or get_settings()
 
     if selected_settings.job_storage_backend != "postgres":
@@ -15,7 +23,7 @@ async def sync_job_index(*, scan_batch_size: int, settings:Settings | None = Non
             "JOB_STORAGE_BACKEND must be postgres to index jobs."
         )
 
-    if not 1 < scan_batch_size <= 1_000:
+    if not 1 <= scan_batch_size <= 1_000:
         raise ValueError("scan_batch_size must be between 1 and 1000")
 
     engine = create_job_database_engine(selected_settings)
@@ -24,7 +32,7 @@ async def sync_job_index(*, scan_batch_size: int, settings:Settings | None = Non
 
     try:
         embeddings = EmbeddingFactory.create(selected_settings)
-        source = PostgresJobIndexSource(session_factory)
+        index_source = PostgresJobIndexSource(session_factory)
         vector_index = QdrantJobVectorIndex(
             client=qdrant_client,
             embeddings=embeddings,
@@ -38,7 +46,11 @@ async def sync_job_index(*, scan_batch_size: int, settings:Settings | None = Non
         unchanged = 0
         batches = 0
 
-        async for jobs in source.iter_batches(batch_size=scan_batch_size):
+        async for jobs in index_source.iter_batches(
+            batch_size=scan_batch_size,
+            source=source,
+            job_ids=job_ids,
+        ):
             scanned += len(jobs)
 
             pending_jobs = await vector_index.get_jobs_requiring_index(jobs)
@@ -51,6 +63,7 @@ async def sync_job_index(*, scan_batch_size: int, settings:Settings | None = Non
             batches += result.batches
 
         summary = JobIndexSyncSummary(
+            source=source,
             scanned=scanned,
             indexed=indexed,
             unchanged=unchanged,
