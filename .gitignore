@@ -44,6 +44,7 @@ dist/
 uploads/
 temp/
 tmp/
+backend/storage/
 
 # Qdrant local data
 qdrant_storage/
