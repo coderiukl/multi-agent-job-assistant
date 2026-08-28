@@ -3,10 +3,12 @@ import logging
 import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from email.utils import parsedate_to_datetime
 from typing import Any, ClassVar
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
+
 from app.crawlers.structured_data import extract_job_posting, extract_links
 from app.schemas.job import (
     CrawlPage,
@@ -32,6 +34,9 @@ class StructuredJobBoardSource:
 
     _MAX_LIMIT = 20
     _REQUEST_DELAY_SECONDS = 0.3
+    _DETAIL_MAX_ATTEMPTS = 3
+    _RATE_LIMIT_BACKOFF_SECONDS = 30.0
+    _MAX_RETRY_AFTER_SECONDS = 300.0
     _HTML_HEADERS: ClassVar[dict[str, str]] = {
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "vi,en;q=0.8",
@@ -75,21 +80,22 @@ class StructuredJobBoardSource:
         ][:limit]
 
         raw_jobs: list[RawJob] = []
+        stopped_by_rate_limit = False
 
         for index, detail_url in enumerate(detail_urls):
-            try:
-                detail_response = await self._client.get(
-                    detail_url,
-                    headers=self._HTML_HEADERS,
-                )
-                detail_response.raise_for_status()
-            except httpx.HTTPError:
-                LOGGER.warning(
-                    "Could not fetch job detail from %s",
-                    detail_url,
-                    exc_info=True,
-                )
+            detail_response = await self._fetch_detail(detail_url)
+
+            if detail_response is None:
                 continue
+
+            if detail_response.status_code == 429:
+                stopped_by_rate_limit = True
+                LOGGER.warning(
+                    "Stopping %s detail crawl early after rate limit at %s",
+                    self.source_name,
+                    detail_url,
+                )
+                break
 
             posting = extract_job_posting(detail_response.text)
 
@@ -119,19 +125,108 @@ class StructuredJobBoardSource:
                 )
             )
 
-            if (
-                self._REQUEST_DELAY_SECONDS > 0
-                and index < len(detail_urls) - 1
-            ):
+            if self._REQUEST_DELAY_SECONDS > 0 and index < len(detail_urls) - 1:
                 await asyncio.sleep(self._REQUEST_DELAY_SECONDS)
 
         next_cursor = (
             str(page_number + 1)
-            if len(detail_urls) == limit
+            if len(detail_urls) == limit and not stopped_by_rate_limit
             else None
         )
 
         return CrawlPage(items=raw_jobs, next_cursor=next_cursor)
+
+    async def _fetch_detail(self, detail_url: str) -> httpx.Response | None:
+        for attempt in range(1, self._DETAIL_MAX_ATTEMPTS + 1):
+            try:
+                response = await self._client.get(
+                    detail_url,
+                    headers=self._HTML_HEADERS,
+                )
+                response.raise_for_status()
+                return response
+
+            except httpx.HTTPStatusError as exc:
+                response = exc.response
+
+                if response.status_code != 429:
+                    LOGGER.warning(
+                        "Could not fetch job detail from %s",
+                        detail_url,
+                        exc_info=True,
+                    )
+                    return None
+
+                if attempt >= self._DETAIL_MAX_ATTEMPTS:
+                    LOGGER.warning(
+                        "Rate limit persisted while fetching %s",
+                        detail_url,
+                        exc_info=True,
+                    )
+                    return response
+
+                retry_delay = self._retry_delay_seconds(
+                    response,
+                    attempt=attempt,
+                )
+                LOGGER.warning(
+                    "Rate limited while fetching %s; retrying in %.1fs",
+                    detail_url,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+
+            except httpx.HTTPError:
+                LOGGER.warning(
+                    "Could not fetch job detail from %s",
+                    detail_url,
+                    exc_info=True,
+                )
+                return None
+
+        return None
+
+    def _retry_delay_seconds(
+        self,
+        response: httpx.Response,
+        *,
+        attempt: int,
+    ) -> float:
+        retry_after = response.headers.get("Retry-After")
+
+        if retry_after:
+            retry_delay = self._parse_retry_after(retry_after)
+
+            if retry_delay is not None:
+                return min(retry_delay, self._MAX_RETRY_AFTER_SECONDS)
+
+        return min(
+            self._RATE_LIMIT_BACKOFF_SECONDS * attempt,
+            self._MAX_RETRY_AFTER_SECONDS,
+        )
+
+    @staticmethod
+    def _parse_retry_after(value: str) -> float | None:
+        normalized = value.strip()
+
+        if not normalized:
+            return None
+
+        if normalized.isdecimal():
+            return max(float(normalized), 0.0)
+
+        try:
+            retry_at = parsedate_to_datetime(normalized)
+        except (TypeError, ValueError):
+            return None
+
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=UTC)
+
+        return max(
+            (retry_at.astimezone(UTC) - datetime.now(UTC)).total_seconds(),
+            0.0,
+        )
 
     def map_to_candidate(self, raw_job: RawJob) -> JobCandidate:
         posting = raw_job.payload
