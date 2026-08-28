@@ -133,12 +133,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only import one source",
     )
 
+    index_parser = subparsers.add_parser(
+        "index-jobs",
+        help="Synchronize PostgreSQL jobs to Qdrant."
+    )
+
+    index_parser.add_argument(
+        "--batch-size",
+        type=positive_int,
+        default=100,
+        help=(
+            "Number of PostgreSQL jobs scanned "
+            "per batch."
+        ),
+    )
     return parser
 
 
 async def execute(args: argparse.Namespace) -> int:
     if args.command == "crawl-jobs":
         from app.cli.crawl_jobs import crawl_jobs, print_result
+        
 
         result = await crawl_jobs(
             source_name=args.source,
@@ -153,7 +168,7 @@ async def execute(args: argparse.Namespace) -> int:
 
     if args.command == "import-jsonl-jobs":
         from app.cli.crawl_jobs import print_result
-        from backend.app.cli.import_jsonl_jobs import import_jsonl_jobs
+        from app.cli.import_jsonl_jobs import import_jsonl_jobs
 
         result = await import_jsonl_jobs(
             target_date=args.target_date,
@@ -163,6 +178,15 @@ async def execute(args: argparse.Namespace) -> int:
         )
 
         print_result(result)
+        return 0
+
+    if args.command == "index-jobs":
+        from app.cli.crawl_jobs import print_result
+        from app.cli.index_jobs import sync_job_index
+
+        result = await sync_job_index(scan_batch_size=args.batch_size)
+
+        print_result
         return 0
 
     raise ValueError(
