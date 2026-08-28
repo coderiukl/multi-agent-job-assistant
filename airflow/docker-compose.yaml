@@ -61,6 +61,16 @@ x-airflow-common:
     JOB_DATABASE_POOL_SIZE: 5
     JOB_DATABASE_MAX_OVERFLOW: 10
     JOB_DATABASE_ECHO: "false"
+    EMBEDDING_MODEL: "BAAI/bge-m3"
+    EMBEDDING_DIMENSIONS: "1024"
+    EMBEDDING_DEVICE: "cpu"
+    EMBEDDING_BATCH_SIZE: "4"
+    EMBEDDING_MAX_LENGTH: "2048"
+    EMBEDDING_CACHE_DIR: "/home/airflow/.cache/job-models"
+    JOB_EMBEDDING_MAX_CHARS: "12000"
+    QDRANT_URL: "http://qdrant:6333"
+    QDRANT_COLLECTION_NAME: "jobs_bge_m3_v1"
+    QDRANT_TIMEOUT_SECONDS: "30"
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
@@ -89,6 +99,8 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ../backend/app:/opt/project/backend/app:ro
     - ../backend/data/jobs:/opt/airflow/data/jobs
+    - huggingface-cache:/home/airflow/.cache/huggingface
+    - embedding-model-cache:/home/airflow/.cache/job-models
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -131,6 +143,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+    restart: always
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-storage:/qdrant/storage
     restart: always
 
   redis:
@@ -283,9 +303,10 @@ services:
           echo
         fi
         echo
-        echo "Creating missing opt dirs if missing:"
+        echo "Creating missing opt and cache dirs if missing:"
         echo
         mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
+        mkdir -v -p /home/airflow/.cache/{huggingface,job-models}
         echo
         echo "Airflow version:"
         /entrypoint airflow version
@@ -305,6 +326,10 @@ services:
         echo "Change ownership of files in /opt/airflow to ${AIRFLOW_UID:-50000}:0"
         echo
         chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/
+        echo
+        echo "Change ownership of files in /home/airflow/.cache to ${AIRFLOW_UID:-50000}:0"
+        echo
+        chown -R "${AIRFLOW_UID:-50000}:0" /home/airflow/.cache/
         echo
         echo "Change ownership of files in shared volumes to ${AIRFLOW_UID:-50000}:0"
         echo
@@ -364,3 +389,6 @@ services:
 volumes:
   postgres-db-volume:
   jobs-postgres-db-volume:
+  qdrant-storage:
+  huggingface-cache:
+  embedding-model-cache:
