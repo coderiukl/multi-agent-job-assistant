@@ -147,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
             "per batch."
         ),
     )
+    index_parser.add_argument(
+        "--source",
+        choices=sorted(SUPPORTED_SOURCES),
+        default=None,
+        help="Only index jobs from one source.",
+    )
     return parser
 
 
@@ -184,9 +190,12 @@ async def execute(args: argparse.Namespace) -> int:
         from app.cli.crawl_jobs import print_result
         from app.cli.index_jobs import sync_job_index
 
-        result = await sync_job_index(scan_batch_size=args.batch_size)
+        result = await sync_job_index(
+            scan_batch_size=args.batch_size,
+            source=args.source,
+        )
 
-        print_result
+        print_result(result)
         return 0
 
     raise ValueError(
