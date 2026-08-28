@@ -10,6 +10,7 @@ class JobIndexingSummary(JobSchema):
 
 
 class JobIndexSyncSummary(JobSchema):
+    source: str | None = None
     scanned: int = Field(ge=0)
     indexed: int = Field(ge=0)
     unchanged: int = Field(ge=0)
