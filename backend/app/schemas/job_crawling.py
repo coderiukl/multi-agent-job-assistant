@@ -24,6 +24,7 @@ class JobCrawlResult(JobCrawlingSchema):
     unchanged_count: int = Field(ge=0)
 
     raw_file_path: str
+    normalized_job_ids: list[str] = Field(default_factory=list)
 
     current_cursor: str | None = None
     next_cursor: str | None = None
