@@ -15,7 +15,13 @@ MAX_CRAWL_LIMIT = 100
 
 
 class JobCrawlingService:
-    def __init__(self, *, source: JobSource, normalizer: JobNormalizer, repository: JobRepository) -> None:
+    def __init__(
+        self,
+        *,
+        source: JobSource,
+        normalizer: JobNormalizer,
+        repository: JobRepository,
+    ) -> None:
         self._source = source
         self._normalizer = normalizer
         self._repository = repository
@@ -33,7 +39,13 @@ class JobCrawlingService:
             limit=limit,
         )
 
-    async def crawl(self, *, batch_id: str, cursor: str | None = None, limit: int = 20) -> JobCrawlResult:
+    async def crawl(
+        self,
+        *,
+        batch_id: str,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> JobCrawlResult:
         self._validate_request(
             batch_id=batch_id,
             limit=limit,
@@ -107,6 +119,10 @@ class JobCrawlingService:
             updated_count=upsert_summary.updated,
             unchanged_count=upsert_summary.unchanged,
             raw_file_path=str(raw_file_path),
+            normalized_job_ids=[
+                result.job_id
+                for result in upsert_summary.results
+            ],
             current_cursor=cursor,
             next_cursor=page.next_cursor,
             failures=failures,
