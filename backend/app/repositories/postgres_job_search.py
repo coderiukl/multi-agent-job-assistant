@@ -80,6 +80,12 @@ class PostgresJobSearchRepository:
             ],
         )
 
+    async def search_candidates(self, *, plan: JobSearchPlan, limit: int) -> list[NormalizedJob]:
+        ...
+
+    async def get_by_ids(self, *, job_ids: Sequence[str], plan: JobSearchPlan) -> list[NormalizedJob]:
+        ...
+
     def _build_filtered_statement(self, plan: JobSearchPlan) -> Select[tuple[JobModel]]:
         statement = select(JobModel)
         conditions = self._build_conditions(plan)
