@@ -25,6 +25,8 @@ from app.schemas.job_search import (
 )
 from app.repositories.job_mapping import job_model_to_schema
 
+MAX_CANDIDATE_LIMIT = 500
+
 
 class PostgresJobSearchRepository:
     def __init__(self, session_factory: JobSessionFactory) -> None:
@@ -81,10 +83,79 @@ class PostgresJobSearchRepository:
         )
 
     async def search_candidates(self, *, plan: JobSearchPlan, limit: int) -> list[NormalizedJob]:
-        ...
+        self._validate_candidate_limit(limit)
 
+        try:
+            async with self._session_factory() as session:
+                statement = self._build_filtered_statement(
+                    plan=plan,
+                    include_keywords=True
+                )
+
+                statement = self._apply_sorting(
+                    statement=statement,
+                    plan=plan
+                ).limit(limit)
+
+                result = await session.scalars(statement)
+                models = list(result.all())
+
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message=(
+                    "Job search candidates could not be loaded "
+                    "from PostgreSQL."
+                ),
+            ) from exc
+
+        return [
+            job_model_to_schema(model)
+            for model in models 
+        ]
+    
     async def get_by_ids(self, *, job_ids: Sequence[str], plan: JobSearchPlan) -> list[NormalizedJob]:
-        ...
+        selected_job_ids = list(dict.fromkeys(job_ids))
+
+        if not selected_job_ids:
+            return []
+
+        self._validate_candidate_limit(len(selected_job_ids))
+
+        try:
+            async with self._session_factory() as session:
+                statement = select(JobModel).where(
+                    JobModel.job_id.in_(selected_job_ids)
+                )
+
+                conditions = self._build_conditions(
+                    plan=plan,
+                    include_keywords=False
+                )
+
+                if conditions:
+                    statement = statement.where(*conditions)
+
+                result = await session.scalars(statement)
+                models = list(result.all())
+
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message=(
+                    "Semantic job candidates could not be loaded "
+                    "from PostgreSQL."
+                ),
+            ) from exc
+
+        models_by_id = {
+            model.job_id: model
+            for model in models
+        }
+
+        return [
+            job_model_to_schema(models_by_id[job_id]) 
+            for job_id in selected_job_ids
+            if job_id in models_by_id
+        ]
 
     def _build_filtered_statement(self, plan: JobSearchPlan) -> Select[tuple[JobModel]]:
         statement = select(JobModel)
@@ -264,3 +335,8 @@ class PostgresJobSearchRepository:
             raise ValueError(
                 "page_size must be between 1 and 50."
             )
+
+    @staticmethod
+    def _validate_candidate_limit(limit: int) -> None:
+        if not 1 <= limit <= MAX_CANDIDATE_LIMIT:
+            raise ValueError(f"Candidate limit must be between 1 and {MAX_CANDIDATE_LIMIT}")
