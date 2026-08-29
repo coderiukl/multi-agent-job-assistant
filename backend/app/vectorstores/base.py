@@ -14,5 +14,5 @@ class JobVectorIndex(Protocol):
     async def index_jobs(self, jobs: list[NormalizedJob]) -> JobIndexingSummary:
         ...
 
-    async def search_jobs(self, *, query, limit: int) -> list[JobVectorSearchHit]:
+    async def search_jobs(self, *, query: str, limit: int) -> list[JobVectorSearchHit]:
         ...

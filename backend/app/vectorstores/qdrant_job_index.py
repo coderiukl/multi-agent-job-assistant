@@ -175,7 +175,7 @@ class QdrantJobVectorIndex:
         await self.ensure_collection()
 
         try:
-            query_vector = await self._embeddings.embed_query(normalized_query)
+            query_vector = await self._embeddings.aembed_query(normalized_query)
 
             if len(query_vector) != self._dimensions:
                 raise ValueError("Query embedding dimension does not match the Qdrant collection")
