@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.core.exceptions import AppException, ExternalServiceException
 from app.schemas.job import NormalizedJob
 from app.schemas.job_index import JobIndexingSummary
+from app.schemas.job_search import JobVectorSearchHit
 
 LOGGER = logging.getLogger(__name__)
 
@@ -161,6 +162,73 @@ class QdrantJobVectorIndex:
             ) from exc
 
         return JobIndexingSummary(received=len(jobs), indexed=indexed, batches=batches)
+
+    async def search_jobs(self, *, query: str, limit: int) -> list[JobVectorSearchHit]:
+        normalized_query = query.strip()
+
+        if not normalized_query:
+            raise ValueError("Semantic query must not be empty.")
+
+        if not 1 <= limit <= 500:
+            raise ValueError("Semantic search limit must be between 1 and 500.")
+
+        await self.ensure_collection()
+
+        try:
+            query_vector = await self._embeddings.embed_query(normalized_query)
+
+            if len(query_vector) != self._dimensions:
+                raise ValueError("Query embedding dimension does not match the Qdrant collection")
+
+            response = await self._client.query_points(
+                collection_name=self._collection_name,
+                query=query_vector,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+        except AppException:
+            raise
+
+        except Exception as exc:
+            LOGGER.exception(
+                "Qdrant semantic job search failed",
+                extra={
+                    "collection": self._collection_name,
+                    "limit": limit,
+                    "error_type": type(exc).__name__,
+                },
+            )
+
+            raise ExternalServiceException(
+                service="qdrant",
+                message="Semantic job search is unavailable.",
+            ) from exc
+
+        hits: list[JobVectorSearchHit] = []
+
+        for point in response.points:
+            payload = point.payload or {}
+            job_id = payload.get("job_id")
+
+            if not isinstance(job_id, str):
+                LOGGER.warning(
+                    "Qdrant job point has no valid job_id",
+                    extra={"point_id": str(point.id)},
+                )
+                continue
+
+            hits.append(
+                JobVectorSearchHit(
+                    job_id=job_id,
+                    score=float(point.score)
+                )
+            )
+
+        return hits
+
+
 
     def _build_embedding_text(self, job: NormalizedJob) -> str:
         employment_type = (
