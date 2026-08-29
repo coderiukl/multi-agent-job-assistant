@@ -178,7 +178,7 @@ class JobSearchHit(JobSchema):
         return normalized_values
 
 class JobVectorSearchHit(JobSchema):
-    job_id: str = Field(min_length=64, max_length=64, pattern=r"^{0-9a-z}{64}$")
+    job_id: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     score: float = Field(ge=-1.0, le=1.0)
 
 class JobSearchResult(JobSchema):
