@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.core.exceptions import ExternalServiceException
-from app.prompts.job_search import JOB_SEARCH_QUERY_PROMPT
+from app.prompts.job_search import JOB_SEARCH_AGENT_PROMPT
 from app.schemas.job_search import (
     JobSearchFilters,
     JobSearchPlan,
@@ -28,7 +28,7 @@ class JobSearchAgent:
         )
 
     async def analyze(self, request: JobSearchRequest) -> JobSearchPlan:
-        prompt_value = JOB_SEARCH_QUERY_PROMPT.invoke(
+        prompt_value = JOB_SEARCH_AGENT_PROMPT.invoke(
             {
                 "query": request.query,
                 "filters": request.filters.model_dump_json(),
