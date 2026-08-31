@@ -125,7 +125,7 @@ class HybridJobSearchService:
 
         sorted_hits = self._sort_hits(
             hits=deduplicated_hits,
-            sort=request.sort,
+            sort=plan.sort,
         )
 
         total = len(sorted_hits)

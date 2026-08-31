@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await close_job_search_resources()
         logger.info("Application stopped")
 
 
