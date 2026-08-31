@@ -95,7 +95,7 @@ def _job_quality(job: NormalizedJob) -> tuple[int, int, int, float]:
         _ensure_utc(timestamp_source).timestamp(),
     )
 
-def _ensure_dict(value: datetime) -> datetime:
+def _ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
 
