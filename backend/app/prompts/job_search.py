@@ -55,8 +55,8 @@ Rules:
    - Leave empty when unspecified.
 
 8. salary:
-   - Only extract salary_min when explicitly provided.
-   - salary_currency is required when salary_min is provided.
+   - Only extract salary_min or salary_max when explicitly provided.
+   - salary_currency is required when salary_min or salary_max is provided.
    - Normalize Vietnamese currency to VND.
 
 9. posted_after and sorting:

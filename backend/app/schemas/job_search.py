@@ -1,5 +1,4 @@
 from datetime import datetime
-from decimal import Decimal
 from enum import StrEnum
 from typing import Self
 
@@ -32,7 +31,8 @@ class JobSearchFilters(JobSchema):
     work_modes: list[WorkMode] = Field(default_factory=list, max_length=10)
     seniority_levels: list[SeniorityLevel] = Field(default_factory=list, max_length=10)
     skills: list[str] = Field(default_factory=list, max_length=50)
-    salary_min: Decimal | None = Field(default=None, ge=0)
+    salary_min: float | None = Field(default=None, ge=0)
+    salary_max: float | None = Field(default=None, ge=0)
     salary_currency: str | None = Field(default=None, min_length=3, max_length=3)
     posted_after: datetime | None = None
     include_expired: bool = False
@@ -81,10 +81,22 @@ class JobSearchFilters(JobSchema):
 
     @model_validator(mode="after")
     def validate_salary_filter(self) -> Self:
-        if self.salary_min is not None and self.salary_currency is None:
+        has_salary_filter = (
+            self.salary_min is not None
+            or self.salary_max is not None
+        )
+
+        if has_salary_filter and self.salary_currency is None:
             raise ValueError(
-                "salary_currency is required when salary_min is provided."
+                "salary_currency is required when salary filters are provided."
             )
+
+        if (
+            self.salary_min is not None
+            and self.salary_max is not None
+            and self.salary_min > self.salary_max
+        ):
+            raise ValueError("salary_min must not be greater than salary_max.")
 
         return self
 

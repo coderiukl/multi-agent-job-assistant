@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from decimal import Decimal
 
 from sqlalchemy import (
     Select,
@@ -254,6 +255,7 @@ class PostgresJobSearchRepository:
             )
 
         if filters.salary_min is not None:
+            salary_min = self._to_decimal(filters.salary_min)
             maximum_available_salary = func.coalesce(
                 JobModel.salary_max,
                 JobModel.salary_min,
@@ -261,7 +263,19 @@ class PostgresJobSearchRepository:
 
             conditions.append(
                 maximum_available_salary
-                >= filters.salary_min
+                >= salary_min
+            )
+
+        if filters.salary_max is not None:
+            salary_max = self._to_decimal(filters.salary_max)
+            minimum_available_salary = func.coalesce(
+                JobModel.salary_min,
+                JobModel.salary_max,
+            )
+
+            conditions.append(
+                minimum_available_salary
+                <= salary_max
             )
 
         if filters.salary_currency is not None:
@@ -352,6 +366,10 @@ class PostgresJobSearchRepository:
         )
 
         return f"%{escaped}%"
+
+    @staticmethod
+    def _to_decimal(value: float) -> Decimal:
+        return Decimal(str(value))
 
     @staticmethod
     def _validate_pagination(*, page: int, page_size: int) -> None:

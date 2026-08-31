@@ -120,6 +120,11 @@ class JobSearchAgent:
                 if explicit.salary_min is not None
                 else inferred.salary_min
             ),
+            salary_max=(
+                explicit.salary_max
+                if explicit.salary_max is not None
+                else inferred.salary_max
+            ),
             salary_currency=(
                 explicit.salary_currency
                 or inferred.salary_currency
