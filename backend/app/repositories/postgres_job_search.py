@@ -14,6 +14,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.core.exceptions import StorageException
 from app.database.models import JobModel
 from app.database.session import JobSessionFactory
+from app.repositories.job_mapping import job_model_to_schema
 from app.schemas.job import (
     NormalizedJob,
     SeniorityLevel,
@@ -23,7 +24,7 @@ from app.schemas.job_search import (
     JobSearchPlan,
     JobSearchSort,
 )
-from app.repositories.job_mapping import job_model_to_schema
+
 
 MAX_CANDIDATE_LIMIT = 500
 
@@ -41,7 +42,8 @@ class PostgresJobSearchRepository:
         try:
             async with self._session_factory() as session:
                 filtered_statement = self._build_filtered_statement(
-                    plan
+                    plan=plan,
+                    include_keywords=True,
                 )
 
                 count_statement = (
@@ -58,18 +60,18 @@ class PostgresJobSearchRepository:
                     plan=plan,
                 )
 
-                search_statement = search_statement.offset(
-                    (page - 1) * page_size
-                ).limit(page_size)
+                search_statement = (
+                    search_statement
+                    .offset((page - 1) * page_size)
+                    .limit(page_size)
+                )
 
                 result = await session.scalars(search_statement)
-                models = result.all()
+                models = list(result.all())
 
         except SQLAlchemyError as exc:
             raise StorageException(
-                message=(
-                    "Jobs could not be searched in PostgreSQL."
-                )
+                message="Jobs could not be searched in PostgreSQL.",
             ) from exc
 
         return JobSearchPage(
@@ -89,12 +91,12 @@ class PostgresJobSearchRepository:
             async with self._session_factory() as session:
                 statement = self._build_filtered_statement(
                     plan=plan,
-                    include_keywords=True
+                    include_keywords=True,
                 )
 
                 statement = self._apply_sorting(
                     statement=statement,
-                    plan=plan
+                    plan=plan,
                 ).limit(limit)
 
                 result = await session.scalars(statement)
@@ -110,16 +112,18 @@ class PostgresJobSearchRepository:
 
         return [
             job_model_to_schema(model)
-            for model in models 
+            for model in models
         ]
-    
+
     async def get_by_ids(self, *, job_ids: Sequence[str], plan: JobSearchPlan) -> list[NormalizedJob]:
         selected_job_ids = list(dict.fromkeys(job_ids))
 
         if not selected_job_ids:
             return []
 
-        self._validate_candidate_limit(len(selected_job_ids))
+        self._validate_candidate_limit(
+            len(selected_job_ids)
+        )
 
         try:
             async with self._session_factory() as session:
@@ -129,7 +133,7 @@ class PostgresJobSearchRepository:
 
                 conditions = self._build_conditions(
                     plan=plan,
-                    include_keywords=False
+                    include_keywords=False,
                 )
 
                 if conditions:
@@ -152,21 +156,25 @@ class PostgresJobSearchRepository:
         }
 
         return [
-            job_model_to_schema(models_by_id[job_id]) 
+            job_model_to_schema(models_by_id[job_id])
             for job_id in selected_job_ids
             if job_id in models_by_id
         ]
 
-    def _build_filtered_statement(self, plan: JobSearchPlan) -> Select[tuple[JobModel]]:
+    def _build_filtered_statement(self, *, plan: JobSearchPlan, include_keywords: bool) -> Select[tuple[JobModel]]:
         statement = select(JobModel)
-        conditions = self._build_conditions(plan)
+
+        conditions = self._build_conditions(
+            plan=plan,
+            include_keywords=include_keywords,
+        )
 
         if conditions:
             statement = statement.where(*conditions)
 
         return statement
 
-    def _build_conditions(self, plan: JobSearchPlan) -> list[ColumnElement[bool]]:
+    def _build_conditions(self, *, plan: JobSearchPlan, include_keywords: bool) -> list[ColumnElement[bool]]:
         filters = plan.filters
         conditions: list[ColumnElement[bool]] = []
 
@@ -187,27 +195,30 @@ class PostgresJobSearchRepository:
                 for location in filters.locations
             ]
 
-            conditions.append(or_(*location_conditions))
+            conditions.append(
+                or_(*location_conditions)
+            )
 
         if filters.employment_types:
+            employment_type_values = [
+                employment_type.value
+                for employment_type in filters.employment_types
+            ]
+
             conditions.append(
                 JobModel.employment_type.in_(
-                    [
-                        employment_type.value
-                        for employment_type
-                        in filters.employment_types
-                    ]
+                    employment_type_values
                 )
             )
 
         if filters.work_modes:
+            work_mode_values = [
+                work_mode.value
+                for work_mode in filters.work_modes
+            ]
+
             conditions.append(
-                JobModel.work_mode.in_(
-                    [
-                        work_mode.value
-                        for work_mode in filters.work_modes
-                    ]
-                )
+                JobModel.work_mode.in_(work_mode_values)
             )
 
         if filters.seniority_levels:
@@ -225,7 +236,10 @@ class PostgresJobSearchRepository:
             )
 
         if filters.skills:
-            serialized_skills = cast(JobModel.skills, Text)
+            serialized_skills = cast(
+                JobModel.skills,
+                Text,
+            )
 
             skill_conditions = [
                 serialized_skills.ilike(
@@ -235,7 +249,9 @@ class PostgresJobSearchRepository:
                 for skill in filters.skills
             ]
 
-            conditions.append(or_(*skill_conditions))
+            conditions.append(
+                or_(*skill_conditions)
+            )
 
         if filters.salary_min is not None:
             maximum_available_salary = func.coalesce(
@@ -244,7 +260,8 @@ class PostgresJobSearchRepository:
             )
 
             conditions.append(
-                maximum_available_salary >= filters.salary_min
+                maximum_available_salary
+                >= filters.salary_min
             )
 
         if filters.salary_currency is not None:
@@ -255,15 +272,19 @@ class PostgresJobSearchRepository:
 
         if filters.posted_after is not None:
             conditions.append(
-                JobModel.posted_at >= filters.posted_after
+                JobModel.posted_at
+                >= filters.posted_after
             )
 
-        keyword_condition = self._build_keyword_condition(
-            plan.keywords
-        )
+        if include_keywords:
+            keyword_condition = (
+                self._build_keyword_condition(
+                    plan.keywords
+                )
+            )
 
-        if keyword_condition is not None:
-            conditions.append(keyword_condition)
+            if keyword_condition is not None:
+                conditions.append(keyword_condition)
 
         return conditions
 
@@ -271,8 +292,14 @@ class PostgresJobSearchRepository:
         if not keywords:
             return None
 
-        serialized_skills = cast(JobModel.skills, Text)
-        keyword_conditions: list[ColumnElement[bool]] = []
+        serialized_skills = cast(
+            JobModel.skills,
+            Text,
+        )
+
+        keyword_conditions: list[
+            ColumnElement[bool]
+        ] = []
 
         for keyword in keywords:
             pattern = self._contains_pattern(keyword)
@@ -332,11 +359,12 @@ class PostgresJobSearchRepository:
             raise ValueError("page must be greater than or equal to 1.")
 
         if not 1 <= page_size <= 50:
-            raise ValueError(
-                "page_size must be between 1 and 50."
-            )
+            raise ValueError("page_size must be between 1 and 50.")
 
     @staticmethod
     def _validate_candidate_limit(limit: int) -> None:
         if not 1 <= limit <= MAX_CANDIDATE_LIMIT:
-            raise ValueError(f"Candidate limit must be between 1 and {MAX_CANDIDATE_LIMIT}")
+            raise ValueError(
+                "Candidate limit must be between "
+                f"1 and {MAX_CANDIDATE_LIMIT}."
+            )
