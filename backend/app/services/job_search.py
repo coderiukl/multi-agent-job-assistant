@@ -54,7 +54,6 @@ class HybridJobSearchService:
 
     async def search(self, request: JobSearchRequest) -> JobSearchResult:
         plan = await self._agent.analyze(request)
-
         retrieval_limit = self._resolve_retrieval_limit(request)
 
         postgres_result, semantic_result = (
@@ -107,7 +106,7 @@ class HybridJobSearchService:
         )
 
         semantic_scores = self._build_semantic_scores(semantic_hits)
-        
+
         merged_jobs = self._merge_jobs(
             postgres_jobs=postgres_jobs,
             semantic_jobs=semantic_jobs,
@@ -117,7 +116,7 @@ class HybridJobSearchService:
             self._build_search_hit(
                 job=job,
                 plan=plan,
-                semantic_score=semantic_scores.get(job.job_id)
+                semantic_score=semantic_scores.get(job.job_id),
             )
             for job in merged_jobs
         ]
@@ -230,11 +229,13 @@ class HybridJobSearchService:
 
         freshness_score = self._calculate_freshness_score(job)
 
-        final_score = self._calculate_final_score(
+        final_score = (
+            self._calculate_final_score(
                 semantic_score=semantic_score,
                 keyword_score=keyword_score,
                 freshness_score=freshness_score,
             )
+        )
 
         reasons = self._build_reasons(
             job=job,
@@ -313,12 +314,12 @@ class HybridJobSearchService:
 
         return (
             cls._clamp_score(score),
-            list(dict.fromkeys(matched_terms)),
+            list(dict.fromkeys(matched_terms))
         )
 
     @staticmethod
     def _contains_term(*, text: str, term: str) -> bool:
-        pattern =rf"(?<!\w){re.escape(term)}(?!\w)"
+        pattern = rf"(?<!\w){re.escape(term)}(?!\w)"
 
         return re.search(pattern, text, flags=re.IGNORECASE) is not None
 
@@ -332,7 +333,7 @@ class HybridJobSearchService:
         normalized_posted_at = cls._ensure_utc(posted_at)
 
         age_seconds = max(
-            0.0, (datetime.now(UTC) - normalized_posted_at).total_seconds(),
+            0.0, (datetime.now(UTC) - normalized_posted_at).total_seconds()
         )
 
         age_days = age_seconds / 86_400.0
@@ -503,8 +504,7 @@ class HybridJobSearchService:
         page: int,
         page_size: int,
     ) -> list[JobSearchHit]:
-        start = ( page - 1) * page_size
-
+        start = (page - 1) * page_size
         end = start + page_size
 
         return hits[start:end]
@@ -554,6 +554,4 @@ class HybridJobSearchService:
 
     @classmethod
     def _round_score(cls, score: float) -> float:
-        return round(
-            cls._clamp_score(score), 6,
-        )
+        return round(cls._clamp_score(score), 6)
