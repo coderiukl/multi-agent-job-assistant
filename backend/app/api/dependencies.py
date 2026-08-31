@@ -2,21 +2,34 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.graph.state import CompiledStateGraph
+from qdrant_client import AsyncQdrantClient
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.agents import CVParserAgent
-from app.llm import LLMFactory
+from app.agents.job_search_agent import JobSearchAgent
 from app.core.config import get_settings
-
+from app.database import JobSessionFactory, create_job_database_engine, create_job_session_factory
+from app.embeddings import EmbeddingFactory
+from app.graphs.conversation import ConversationNodes, build_conversation_graph
+from app.llm import LLMFactory
 from app.repositories.cv import CVRepository, LocalJsonCVRepository
+from app.repositories.postgres_job_search import PostgresJobSearchRepository
 from app.services.conversation import ConversationIntentAnalyzer, ConversationService
 from app.services.cv_ingestion import CVIngestionService
 from app.services.cv_processing import CVProcessingService
-from app.services.pdf import PdfInspector, PdfOcrExtractor, NativePdfTextExtractor, PdfTextMerger
+from app.services.job_search import HybridJobSearchService
+from app.services.pdf import (
+    NativePdfTextExtractor,
+    PdfInspector,
+    PdfOcrExtractor,
+    PdfTextMerger,
+)
 from app.services.storage import LocalStorageService, StorageService
+from app.vectorstores import QdrantJobVectorIndex, create_qdrant_client
 
-from langgraph.graph.state import CompiledStateGraph
-from app.graphs.conversation import ConversationNodes, build_conversation_graph
 
 @lru_cache
 def get_storage_service() -> StorageService:
@@ -65,10 +78,10 @@ def get_cv_ingestion_service(
     )
 
 def get_cv_processing_service(
-        ingestion_service: CVIngestionService = Depends(get_cv_ingestion_service),
-        parser_agent: CVParserAgent = Depends(get_cv_parser_agent),
-        storage_service: StorageService = Depends(get_storage_service),
-        cv_repository: CVRepository = Depends(get_cv_repository),
+    ingestion_service: CVIngestionService = Depends(get_cv_ingestion_service),
+    parser_agent: CVParserAgent = Depends(get_cv_parser_agent),
+    storage_service: StorageService = Depends(get_storage_service),
+    cv_repository: CVRepository = Depends(get_cv_repository),
 ) -> CVProcessingService:
     return CVProcessingService(
         ingestion_service=ingestion_service,
@@ -114,3 +127,90 @@ ConversationServiceDependency = Annotated[
     ConversationService,
     Depends(get_conversation_service)
 ]
+
+# Job Search dependencies
+
+@lru_cache
+def get_job_database_engine() -> AsyncEngine:
+    return create_job_database_engine(
+        get_settings()
+    )
+
+
+@lru_cache
+def get_job_session_factory() -> JobSessionFactory:
+    return create_job_session_factory(
+        get_job_database_engine()
+    )
+
+
+@lru_cache
+def get_job_search_repository() -> PostgresJobSearchRepository:
+    return PostgresJobSearchRepository(
+        get_job_session_factory()
+    )
+
+
+@lru_cache
+def get_job_embeddings() -> Embeddings:
+    return EmbeddingFactory.create(
+        get_settings()
+    )
+
+
+@lru_cache
+def get_job_qdrant_client() -> AsyncQdrantClient:
+    return create_qdrant_client(
+        get_settings()
+    )
+
+
+@lru_cache
+def get_job_vector_index() -> QdrantJobVectorIndex:
+    return QdrantJobVectorIndex(
+        client=get_job_qdrant_client(),
+        embeddings=get_job_embeddings(),
+        settings=get_settings(),
+    )
+
+
+@lru_cache
+def get_job_search_agent() -> JobSearchAgent:
+    return JobSearchAgent(
+        llm=get_chat_model(),
+        settings=get_settings(),
+    )
+
+
+@lru_cache
+def get_job_search_service() -> HybridJobSearchService:
+    return HybridJobSearchService(
+        agent=get_job_search_agent(),
+        repository=get_job_search_repository(),
+        vector_index=get_job_vector_index(),
+        candidate_limit=100,
+    )
+
+
+JobSearchServiceDependency = Annotated[
+    HybridJobSearchService,
+    Depends(get_job_search_service),
+]
+
+
+async def close_job_search_resources() -> None:
+   
+    if get_job_qdrant_client.cache_info().currsize:
+        await get_job_qdrant_client().close()
+
+    if get_job_database_engine.cache_info().currsize:
+        await get_job_database_engine().dispose()
+
+    get_job_search_service.cache_clear()
+    get_job_search_agent.cache_clear()
+    get_job_vector_index.cache_clear()
+    get_job_qdrant_client.cache_clear()
+    get_job_embeddings.cache_clear()
+    get_job_search_repository.cache_clear()
+    get_job_session_factory.cache_clear()
+    get_job_database_engine.cache_clear()

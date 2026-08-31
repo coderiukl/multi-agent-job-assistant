@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dependencies import close_job_search_resources
 from app.api.router import create_api_router
 from app.core.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
