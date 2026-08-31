@@ -7,6 +7,7 @@ from app.schemas.conversation import (
 )
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cv_profile import CVProfile
+from app.schemas.job_search import JobSearchResult
 
 class ConversationState(TypedDict, total=False):
     # Dữ liệu từ request
@@ -26,6 +27,9 @@ class ConversationState(TypedDict, total=False):
     route: ConversationRoute
     status: ConversationStatus
     missing_inputs: list[RequiredInput]
+
+    # Kết quả của các business agent
+    job_search_result: JobSearchResult | None
 
     # Nội dung trả về người dùng
     assistant_message: str

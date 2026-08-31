@@ -10,17 +10,17 @@ from app.repositories.cv import CVRepository
 
 from app.schemas.conversations_intent import IntentAnalysisInput
 from app.schemas.conversation import ConversationRoute, ConversationStatus, RequiredInput
+from app.schemas.job_search import JobSearchResult, JobSearchRequest
 
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
+from app.services.job_search import HybridJobSearchService
+
 
 logger = logging.getLogger(__name__)
 
 BUSINESS_ROUTE_MESSAGES: dict[ConversationRoute, str] = {
     ConversationRoute.CV_ANALYSIS: (
         "Yêu cầu phân tích CV đã được tiếp nhận."
-    ),
-    ConversationRoute.JOB_SEARCH: (
-        "Yêu cầu tìm kiếm việc làm đã được tiếp nhận."
     ),
     ConversationRoute.JOB_MATCHING: (
         "Yêu cầu đánh giá mức độ phù hợp giữa CV và công việc "
@@ -35,9 +35,16 @@ BUSINESS_ROUTE_MESSAGES: dict[ConversationRoute, str] = {
 }
 
 class ConversationNodes:
-    def __init__(self, *, analyzer: ConversationIntentAnalyzer, cv_repository: CVRepository) -> None:
+    def __init__(
+        self,
+        *,
+        analyzer: ConversationIntentAnalyzer,
+        cv_repository: CVRepository,
+        job_search_service: HybridJobSearchService,
+    ) -> None:
         self._analyzer = analyzer
         self._cv_repository = cv_repository
+        self._job_search_service = job_search_service
 
     async def resolve_context(self, state: ConversationState) -> dict[str, Any]:
         cv_id = state.get("cv_id")
@@ -92,6 +99,35 @@ class ConversationNodes:
 
         return {"intent": intent}
 
+    async def execute_job_search(self, state: ConversationState) -> dict[str, Any]:
+        request = JobSearchRequest(
+            query=state["message"],
+            page=1,
+            page_size=10
+        )
+
+        result = await self._job_search_service.search(request)
+
+        assistant_message = self._build_job_search_message(result)
+
+        logger.info(
+            "Conversation job search completed",
+            extra={
+                "query": request.query,
+                "strategy": result.strategy.value,
+                "total": result.total,
+                "returned_items": len(result.items),
+            },
+        )
+
+        return {
+            "route": ConversationRoute.JOB_SEARCH,
+            "status": ConversationStatus.COMPLETED,
+            "missing_inputs": [],
+            "assistant_message": assistant_message,
+            "job_search_result": result,
+        }
+
     async def respond_clarification(self, state: ConversationState) -> dict[str, Any]:
         intent = state['intent']
         missing_inputs = collect_missing_inputs(state)
@@ -104,12 +140,8 @@ class ConversationNodes:
         return {
             "route": ConversationRoute.CLARIFICATION,
             "status": ConversationStatus.COMPLETED,
-            "missing_inputs": [],
-            "assistant_message": (
-                "Xin chào! Tôi có thể hỗ trợ bạn phân tích CV, "
-                "tìm kiếm công việc, đánh giá mức độ phù hợp với JD "
-                "và tư vấn định hướng nghề nghiệp."
-            ),
+            "missing_inputs": missing_inputs,
+            "assistant_message": assistant_message
         }
 
     async def respond_small_talk(
@@ -197,3 +229,19 @@ class ConversationNodes:
             return generated_question
 
         return "Bạn có thể cung cấp thêm thông tin về yêu cầu không?"
+
+    @staticmethod 
+    def _build_job_search_message(result: JobSearchResult) -> str:
+        returned_count = len(result.items)
+
+        if returned_count == 0:
+            return (
+                "Tôi chưa tìm thấy công việc phù hợp với yêu cầu. "
+                "Bạn có thể thử mở rộng địa điểm, kỹ năng hoặc "
+                "cấp độ kinh nghiệm."
+            )
+
+        return (
+            f"Tôi đã tìm thấy {result.total} công việc phù hợp "
+            f"và đang hiển thị {returned_count} kết quả tốt nhất."
+        )

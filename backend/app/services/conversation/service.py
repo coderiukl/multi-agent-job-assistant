@@ -22,20 +22,27 @@ class ConversationService:
             intent=state["intent"],
             cv_id=request.cv_id,
             missing_inputs=state.get("missing_inputs", []),
+            job_search_result=state.get("job_search_result")
         )
     
     async def analyze_intent(self, request: ConversationRequest) -> IntentAnalysisResult:
-        state = await self._invoke_graph(request)
+        state = await self._invoke_graph(request, stop_after_intent=True)
 
         return state['intent']
     
-    async def _invoke_graph(self, request: ConversationRequest) -> ConversationState:
+    async def _invoke_graph(self, request: ConversationRequest, stop_after_intent: bool = False) -> ConversationState:
         initial_state: ConversationState = {
             "message": request.message,
             "cv_id": request.cv_id,
             "job_description": request.job_description,
         }
 
-        result = await self._graph.ainvoke(initial_state)
+        if stop_after_intent:
+            result = await self._graph.ainvoke(
+                initial_state,
+                interrupt_after=["analyze_intent"]
+            )
+        else:
+            result = await self._graph.ainvoke(initial_state)
 
         return cast(ConversationState, result)

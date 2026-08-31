@@ -3,6 +3,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from app.schemas.conversations_intent import IntentAnalysisResult
+from app.schemas.job_search import JobSearchResult
 
 class ConversationRoute(StrEnum):
     CLARIFICATION = "clarification"
@@ -34,3 +35,6 @@ class ConversationResponseData(BaseModel):
 
     cv_id: str | None = None
     missing_inputs: list[RequiredInput] = Field(default_factory=list)
+
+    job_search_result: JobSearchResult | None = None
+    

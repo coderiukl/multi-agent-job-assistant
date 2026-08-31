@@ -15,6 +15,7 @@ def build_conversation_graph(nodes: ConversationNodes) -> CompiledStateGraph:
     graph.add_node("out_of_scope", nodes.respond_out_out_scope)
     graph.add_node("general_question", nodes.respond_general_question)
     graph.add_node("business_task", nodes.dispatch_business_task)
+    graph.add_node("job_search", nodes.execute_job_search)
 
     graph.add_edge(START, "resolve_context")
     graph.add_edge("resolve_context", "analyzer_intent")
@@ -32,6 +33,7 @@ def build_conversation_graph(nodes: ConversationNodes) -> CompiledStateGraph:
             ConversationRoute.JOB_MATCHING: "business_task",
             ConversationRoute.CAREER_ADVICE: "business_task",
             ConversationRoute.COVER_LETTER: "business_task",
+            ConversationRoute.JOB_SEARCH: "job_search"
         },
     )
 
@@ -40,5 +42,6 @@ def build_conversation_graph(nodes: ConversationNodes) -> CompiledStateGraph:
     graph.add_edge("out_of_scope", END)
     graph.add_edge("general_question", END)
     graph.add_edge("business_task", END)
+    graph.add_edge("job_search", END)
 
     return graph.compile()

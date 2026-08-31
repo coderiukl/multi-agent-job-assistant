@@ -105,29 +105,6 @@ ChatModelDependency = Annotated[
     Depends(get_chat_model)
 ]
 
-@lru_cache
-def get_conversation_graph() -> CompiledStateGraph:
-    analyzer = ConversationIntentAnalyzer(llm=get_chat_model())
-    nodes = ConversationNodes(
-        analyzer=analyzer,
-        cv_repository=get_cv_repository()
-    )
-
-    return build_conversation_graph(nodes)
-
-ConversationGraphDependency = Annotated[
-    CompiledStateGraph,
-    Depends(get_conversation_graph)
-]
-
-def get_conversation_service(graph: ConversationGraphDependency) -> ConversationService:
-    return ConversationService(graph=graph)
-
-ConversationServiceDependency = Annotated[
-    ConversationService,
-    Depends(get_conversation_service)
-]
-
 # Job Search dependencies
 
 @lru_cache
@@ -199,6 +176,7 @@ JobSearchServiceDependency = Annotated[
 
 
 async def close_job_search_resources() -> None:
+    get_conversation_graph.cache_clear()
    
     if get_job_qdrant_client.cache_info().currsize:
         await get_job_qdrant_client().close()
@@ -214,3 +192,27 @@ async def close_job_search_resources() -> None:
     get_job_search_repository.cache_clear()
     get_job_session_factory.cache_clear()
     get_job_database_engine.cache_clear()
+
+@lru_cache
+def get_conversation_graph() -> CompiledStateGraph:
+    analyzer = ConversationIntentAnalyzer(llm=get_chat_model())
+    nodes = ConversationNodes(
+        analyzer=analyzer,
+        cv_repository=get_cv_repository(),
+        job_search_service=get_job_search_service(),
+    )
+
+    return build_conversation_graph(nodes)
+
+ConversationGraphDependency = Annotated[
+    CompiledStateGraph,
+    Depends(get_conversation_graph)
+]
+
+def get_conversation_service(graph: ConversationGraphDependency) -> ConversationService:
+    return ConversationService(graph=graph)
+
+ConversationServiceDependency = Annotated[
+    ConversationService,
+    Depends(get_conversation_service)
+]
