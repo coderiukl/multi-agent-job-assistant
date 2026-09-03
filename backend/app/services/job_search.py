@@ -17,6 +17,8 @@ from app.schemas.job_search import (
     JobSearchStrategy,
     JobVectorSearchHit,
 )
+from app.schemas.job_search_context import JobSearchContext
+
 from app.utils.job_deduplication import build_job_deduplication_key
 from app.vectorstores.base import JobVectorIndex
 
@@ -52,8 +54,9 @@ class HybridJobSearchService:
         self._vector_index = vector_index
         self._candidate_limit = candidate_limit
 
-    async def search(self, request: JobSearchRequest) -> JobSearchResult:
-        plan = await self._agent.analyze(request)
+    async def search(self, request: JobSearchRequest, *, context: JobSearchContext | None = None) -> JobSearchResult:
+        plan = await self._agent.analyze(request, context=context)
+        
         retrieval_limit = self._resolve_retrieval_limit(request)
 
         postgres_result, semantic_result = (

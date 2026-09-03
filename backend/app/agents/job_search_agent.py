@@ -15,6 +15,7 @@ from app.schemas.job_search import (
     JobSearchSort,
     JobSearchStrategy,
 )
+from app.schemas.job_search_context import JobSearchContext
 
 
 LOGGER = logging.getLogger(__name__)
@@ -27,20 +28,26 @@ class JobSearchAgent:
             method=settings.llm_structured_output_method,
         )
 
-    async def analyze(self, request: JobSearchRequest) -> JobSearchPlan:
+    async def analyze(self, request: JobSearchRequest, context: JobSearchContext | None = None) -> JobSearchPlan:
+
+        candidate_context = (
+            context.model_dump_json(exclude_none=True)
+            if context is not None
+            else "{}"
+        )
+
         prompt_value = JOB_SEARCH_AGENT_PROMPT.invoke(
             {
                 "query": request.query,
-                "filters": request.filters.model_dump_json(),
+                "candidate_context": candidate_context,
+                "filters": request.filters.model_dump_json(exclude_none=True),
                 "sort": request.sort.value,
             }
         )
 
         for attempt in range(2):
             try:
-                result: Any = await self._structured_llm.ainvoke(
-                    prompt_value
-                )
+                result: Any = await self._structured_llm.ainvoke(prompt_value)
 
                 plan = (
                     result

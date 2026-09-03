@@ -14,6 +14,7 @@ from app.schemas.job_search import JobSearchResult, JobSearchRequest
 
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.job_search import HybridJobSearchService
+from app.services.job_search_context import build_job_search_context
 
 
 logger = logging.getLogger(__name__)
@@ -105,10 +106,11 @@ class ConversationNodes:
             page=1,
             page_size=10
         )
+        search_context = build_job_search_context(state.get("cv_profile"))
 
-        result = await self._job_search_service.search(request)
+        result = await self._job_search_service.search(request, context=search_context)
 
-        assistant_message = self._build_job_search_message(result)
+        assistant_message = self._build_job_search_message(result, used_cv=search_context is not None)
 
         logger.info(
             "Conversation job search completed",
@@ -231,17 +233,22 @@ class ConversationNodes:
         return "Bạn có thể cung cấp thêm thông tin về yêu cầu không?"
 
     @staticmethod 
-    def _build_job_search_message(result: JobSearchResult) -> str:
+    def _build_job_search_message(result: JobSearchResult, *, used_cv: bool) -> str:
         returned_count = len(result.items)
 
         if returned_count == 0:
             return (
-                "Tôi chưa tìm thấy công việc phù hợp với yêu cầu. "
-                "Bạn có thể thử mở rộng địa điểm, kỹ năng hoặc "
-                "cấp độ kinh nghiệm."
+                "Tôi chưa tìm thấy công việc phù hợp với tiêu chí hiện tại. "
+                "Bạn có thể thử mở rộng địa điểm, kỹ năng hoặc cấp độ kinh nghiệm."
+            )
+
+        if used_cv:
+            return (
+                f"Tôi đã chọn ra {returned_count} công việc có mức độ liên quan "
+                "cao nhất dựa trên yêu cầu và thông tin nghề nghiệp trong CV của bạn."
             )
 
         return (
-            f"Tôi đã tìm thấy {result.total} công việc phù hợp "
-            f"và đang hiển thị {returned_count} kết quả tốt nhất."
+            f"Tôi đã chọn ra {returned_count} công việc có mức độ liên quan "
+            "cao nhất với yêu cầu tìm kiếm của bạn."
         )

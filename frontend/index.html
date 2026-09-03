@@ -2,15 +2,260 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+
     <meta
       name="description"
-      content="Trợ lý AI phân tích CV và tư vấn tìm kiếm việc làm"
+      content="Job Search AI - Trợ lý AI hỗ trợ tìm kiếm việc làm, phân tích CV và tư vấn nghề nghiệp."
     />
-    <title>Job Search AI - Trợ lý nghề nghiệp AI</title>
+
+    <title>Job Search AI - AI Job Assistant</title>
   </head>
+
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="/" aria-label="Job Search AI">
+          <span class="brand-logo">CP</span>
+
+          <span class="brand-content">
+            <strong>Job Search AI</strong>
+            <small>Multi-Agent Job Assistant</small>
+          </span>
+        </a>
+
+        <div class="header-actions">
+          <span class="system-status">
+            <span class="status-dot"></span>
+            Hệ thống hoạt động
+          </span>
+
+          <button
+            id="new-chat-button"
+            class="secondary-button"
+            type="button"
+          >
+            Cuộc trò chuyện mới
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="chat-panel" aria-label="Trợ lý hội thoại">
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">AI CAREER ASSISTANT</span>
+              <h1>Trợ lý nghề nghiệp</h1>
+            </div>
+
+            <span id="cv-status-badge" class="cv-status-badge">
+              Chưa có CV
+            </span>
+          </header>
+
+          <div
+            id="message-list"
+            class="message-list"
+            aria-live="polite"
+          ></div>
+
+          <div id="suggestion-list" class="suggestion-list">
+            <button
+              type="button"
+              class="suggestion-card"
+              data-message="Tìm công việc AI tại Hồ Chí Minh phù hợp với sinh viên mới ra trường, không yêu cầu nhiều kinh nghiệm"
+            >
+              <span class="suggestion-icon">⌕</span>
+
+              <span>
+                <strong>Tìm việc AI</strong>
+                <small>Dành cho Fresher tại TP.HCM</small>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              class="suggestion-card"
+              data-message="Phân tích điểm mạnh và điểm cần cải thiện trong CV của tôi"
+            >
+              <span class="suggestion-icon">CV</span>
+
+              <span>
+                <strong>Phân tích CV</strong>
+                <small>Đánh giá nội dung và kỹ năng</small>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              class="suggestion-card"
+              data-message="Tôi cần học thêm gì để trở thành Data Engineer?"
+            >
+              <span class="suggestion-icon">↗</span>
+
+              <span>
+                <strong>Lộ trình kỹ năng</strong>
+                <small>Nhận đề xuất học tập</small>
+              </span>
+            </button>
+          </div>
+
+          <footer class="composer-container">
+            <div
+              id="global-error"
+              class="error-message"
+              role="alert"
+              hidden
+            ></div>
+
+            <div
+              id="selected-cv"
+              class="selected-cv"
+              hidden
+            >
+              <span class="pdf-badge">PDF</span>
+
+              <div class="selected-cv-content">
+                <strong id="selected-cv-name"></strong>
+                <small id="selected-cv-status"></small>
+              </div>
+
+              <button
+                id="remove-cv-button"
+                type="button"
+                aria-label="Xóa CV"
+              >
+                ×
+              </button>
+            </div>
+
+            <form id="chat-form" class="chat-form">
+              <input
+                id="cv-input"
+                type="file"
+                accept=".pdf,application/pdf"
+                hidden
+              />
+
+              <button
+                id="attach-cv-button"
+                class="icon-button"
+                type="button"
+                aria-label="Đính kèm CV"
+                title="Đính kèm CV"
+              >
+                +
+              </button>
+
+              <textarea
+                id="message-input"
+                rows="1"
+                maxlength="2000"
+                placeholder="Nhập yêu cầu tìm việc hoặc câu hỏi nghề nghiệp..."
+                aria-label="Nội dung tin nhắn"
+              ></textarea>
+
+              <button
+                id="send-button"
+                class="send-button"
+                type="submit"
+                aria-label="Gửi tin nhắn"
+                disabled
+              >
+                Gửi
+              </button>
+            </form>
+
+            <p class="ai-warning">
+              CareerPilot có thể mắc lỗi. Hãy kiểm tra lại thông tin
+              quan trọng trước khi ứng tuyển.
+            </p>
+          </footer>
+        </section>
+
+        <section class="results-panel" aria-label="Kết quả công việc">
+          <header class="results-header">
+            <div>
+              <span class="eyebrow">JOB DISCOVERY</span>
+              <h2>Công việc phù hợp</h2>
+            </div>
+
+            <select
+              id="job-sort"
+              class="sort-select"
+              aria-label="Sắp xếp công việc"
+              disabled
+            >
+              <option value="relevance">Phù hợp nhất</option>
+              <option value="newest">Mới nhất</option>
+            </select>
+          </header>
+
+          <section
+            id="results-summary"
+            class="results-summary"
+            hidden
+          >
+            <div>
+              <strong id="result-count">0 công việc</strong>
+              <span id="search-strategy"></span>
+            </div>
+
+            <div id="active-filters" class="filter-list"></div>
+          </section>
+
+          <div id="job-results" class="job-results">
+            <section id="results-empty" class="empty-state">
+              <div class="empty-illustration">⌕</div>
+
+              <h3>Bắt đầu tìm công việc</h3>
+
+              <p>
+                Hãy mô tả vị trí, địa điểm, kỹ năng hoặc cấp độ
+                kinh nghiệm bạn mong muốn.
+              </p>
+
+              <div class="example-query">
+                “Tìm công việc AI tại Hồ Chí Minh phù hợp với
+                sinh viên mới ra trường.”
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div
+      id="job-detail-overlay"
+      class="job-detail-overlay"
+      hidden
+    ></div>
+
+    <aside
+      id="job-detail-drawer"
+      class="job-detail-drawer"
+      aria-label="Chi tiết công việc"
+      aria-hidden="true"
+    >
+      <header class="drawer-header">
+        <span>Chi tiết công việc</span>
+
+        <button
+          id="close-job-detail"
+          type="button"
+          aria-label="Đóng chi tiết công việc"
+        >
+          ×
+        </button>
+      </header>
+
+      <div id="job-detail-content" class="drawer-content"></div>
+    </aside>
+
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>
