@@ -156,7 +156,7 @@ class ConversationNodes:
                     "assistant_message": self._build_clarification_message(missing_inputs, generated_question=None),
                 }
 
-            matching_input = JobMatchingInput(cv_profile, job=JobMatchTarget(description=job_description))
+            matching_input = JobMatchingInput(cv_profile=cv_profile, job=JobMatchTarget(description=job_description))
 
             result = await self._job_matching_service.match(matching_input)
 
@@ -168,9 +168,7 @@ class ConversationNodes:
                     "cv_id": state.get("cv_id"),
                     "job_id": result.job_id,
                     "overall_score": result.overall_score,
-                    "recommendation": (
-                        result.recommendation.value
-                    ),
+                    "recommendation": result.recommendation.value,
                 },
             )
 
@@ -193,7 +191,7 @@ class ConversationNodes:
 
         return {
             "route": ConversationRoute.CLARIFICATION,
-            "status": ConversationStatus.COMPLETED,
+            "status": ConversationStatus.NEEDS_CLARIFICATION,
             "missing_inputs": missing_inputs,
             "assistant_message": assistant_message
         }
