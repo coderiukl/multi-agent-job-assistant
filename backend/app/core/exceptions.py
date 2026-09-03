@@ -79,10 +79,10 @@ class LLMConfigurationException(AppException):
         )
 
 class StructuredOutputException(AppException):
-    def __init__(self, *, message: str = "The CV could not be converted to structured data.") -> None:
+    def __init__(self, *, message: str = "The CV could not be converted to structured data.", details: dict[str, Any] | None = None) -> None:
         super().__init__(
             status_code=502,
             code="INVALID_STRUCTURED_OUTPUT",
             message=message,
-            details=self.details
+            details=details or {},
         )
