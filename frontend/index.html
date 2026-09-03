@@ -67,6 +67,19 @@
             <button
               type="button"
               class="suggestion-card"
+              data-action="open-matching"
+            >
+              <span class="suggestion-icon">%</span>
+
+              <span>
+                <strong>So khớp CV với JD</strong>
+                <small>Xem điểm phù hợp và kỹ năng còn thiếu</small>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              class="suggestion-card"
               data-message="Tìm công việc AI tại Hồ Chí Minh phù hợp với sinh viên mới ra trường, không yêu cầu nhiều kinh nghiệm"
             >
               <span class="suggestion-icon">⌕</span>
@@ -133,6 +146,36 @@
               </button>
             </div>
 
+            <section
+              id="job-description-panel"
+              class="job-description-panel"
+              aria-labelledby="job-description-label"
+              hidden
+            >
+              <div class="job-description-header">
+                <label id="job-description-label" for="job-description-input">
+                  Job Description
+                </label>
+
+                <div class="job-description-actions">
+                  <span id="job-description-count">0/20.000</span>
+                  <button id="clear-jd-button" type="button">Xóa JD</button>
+                </div>
+              </div>
+
+              <textarea
+                id="job-description-input"
+                rows="7"
+                maxlength="20000"
+                placeholder="Dán mô tả công việc cần so khớp với CV vào đây..."
+                aria-describedby="job-description-help"
+              ></textarea>
+
+              <p id="job-description-help">
+                CV phải được tải lên thành công trước khi so khớp.
+              </p>
+            </section>
+
             <form id="chat-form" class="chat-form">
               <input
                 id="cv-input"
@@ -140,6 +183,17 @@
                 accept=".pdf,application/pdf"
                 hidden
               />
+
+              <button
+                id="toggle-jd-button"
+                class="icon-button jd-button"
+                type="button"
+                aria-label="Mở phần nhập Job Description"
+                aria-pressed="false"
+                title="So khớp CV với JD"
+              >
+                JD
+              </button>
 
               <button
                 id="attach-cv-button"
@@ -180,8 +234,8 @@
         <section class="results-panel" aria-label="Kết quả công việc">
           <header class="results-header">
             <div>
-              <span class="eyebrow">JOB DISCOVERY</span>
-              <h2>Công việc phù hợp</h2>
+              <span id="results-eyebrow" class="eyebrow">JOB DISCOVERY</span>
+              <h2 id="results-title">Công việc phù hợp</h2>
             </div>
 
             <select

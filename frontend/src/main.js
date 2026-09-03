@@ -17,6 +17,10 @@ const state = {
   cvUploadStatus: "idle",
   cvUploadRequestId: 0,
 
+  matchingMode: false,
+  jobDescription: "",
+  currentMatchingResult: null,
+
   isSending: false,
   jobs: [],
   currentSearchResult: null,
@@ -34,6 +38,17 @@ const elements = {
   chatForm: document.querySelector("#chat-form"),
   messageInput: document.querySelector("#message-input"),
   sendButton: document.querySelector("#send-button"),
+  toggleJdButton: document.querySelector("#toggle-jd-button"),
+  jobDescriptionPanel: document.querySelector(
+    "#job-description-panel",
+  ),
+  jobDescriptionInput: document.querySelector(
+    "#job-description-input",
+  ),
+  jobDescriptionCount: document.querySelector(
+    "#job-description-count",
+  ),
+  clearJdButton: document.querySelector("#clear-jd-button"),
 
   cvInput: document.querySelector("#cv-input"),
   attachCvButton: document.querySelector("#attach-cv-button"),
@@ -51,6 +66,8 @@ const elements = {
   searchStrategy: document.querySelector("#search-strategy"),
   activeFilters: document.querySelector("#active-filters"),
   jobSort: document.querySelector("#job-sort"),
+  resultsEyebrow: document.querySelector("#results-eyebrow"),
+  resultsTitle: document.querySelector("#results-title"),
 
   jobDetailOverlay: document.querySelector(
     "#job-detail-overlay",
@@ -106,6 +123,21 @@ function bindEvents() {
   elements.chatForm.addEventListener(
     "submit",
     handleSubmit,
+  );
+
+  elements.toggleJdButton.addEventListener(
+    "click",
+    () => setMatchingMode(!state.matchingMode),
+  );
+
+  elements.jobDescriptionInput.addEventListener(
+    "input",
+    handleJobDescriptionInput,
+  );
+
+  elements.clearJdButton.addEventListener(
+    "click",
+    clearJobDescription,
   );
 
   elements.attachCvButton.addEventListener(
@@ -166,9 +198,30 @@ function bindEvents() {
 async function handleSubmit(event) {
   event.preventDefault();
 
-  const message = elements.messageInput.value.trim();
+  const typedMessage = elements.messageInput.value.trim();
+  const jobDescription = state.matchingMode
+    ? elements.jobDescriptionInput.value.trim()
+    : null;
+  const message = typedMessage || (
+    jobDescription
+      ? "Hãy đánh giá mức độ phù hợp giữa CV của tôi và công việc này"
+      : ""
+  );
 
   if (!message || state.isSending) {
+    return;
+  }
+
+  if (state.matchingMode && !state.uploadedCvId) {
+    showError(
+      "Hãy tải lên CV và chờ phân tích thành công trước khi so khớp.",
+    );
+    return;
+  }
+
+  if (state.matchingMode && !jobDescription) {
+    showError("Hãy dán Job Description cần so khớp.");
+    elements.jobDescriptionInput.focus();
     return;
   }
 
@@ -199,7 +252,7 @@ async function handleSubmit(event) {
     const conversation = await sendConversationMessage({
       message,
       cvId: state.uploadedCvId,
-      jobDescription: null,
+      jobDescription,
     });
 
     removeTypingIndicator();
@@ -213,6 +266,15 @@ async function handleSubmit(event) {
       await handleJobSearchConversation(
         message,
         conversation.jobSearchResult,
+      );
+    }
+
+    if (
+      conversation.route === "job_matching" &&
+      conversation.jobMatchingResult
+    ) {
+      renderJobMatchingResult(
+        conversation.jobMatchingResult,
       );
     }
   } catch (error) {
@@ -436,7 +498,66 @@ function renderCvStatus() {
 }
 
 
+function setMatchingMode(enabled, jobDescription = "") {
+  state.matchingMode = enabled;
+
+  if (jobDescription) {
+    state.jobDescription = jobDescription;
+    elements.jobDescriptionInput.value = jobDescription;
+  }
+
+  elements.jobDescriptionPanel.hidden = !enabled;
+  elements.toggleJdButton.classList.toggle("is-active", enabled);
+  elements.toggleJdButton.setAttribute(
+    "aria-pressed",
+    String(enabled),
+  );
+
+  updateJobDescriptionCount();
+  updateSendButton();
+
+  if (enabled) {
+    elements.jobDescriptionInput.focus();
+  }
+}
+
+
+function handleJobDescriptionInput(event) {
+  state.jobDescription = event.target.value;
+  updateJobDescriptionCount();
+  updateSendButton();
+}
+
+
+function clearJobDescription() {
+  state.jobDescription = "";
+  elements.jobDescriptionInput.value = "";
+  updateJobDescriptionCount();
+  updateSendButton();
+  elements.jobDescriptionInput.focus();
+}
+
+
+function updateJobDescriptionCount() {
+  const length = elements.jobDescriptionInput.value.length;
+  elements.jobDescriptionCount.textContent =
+    `${length.toLocaleString("vi-VN")}/20.000`;
+}
+
+
 function handleSuggestionClick(event) {
+  const matchingButton = event.target.closest(
+    "[data-action='open-matching']",
+  );
+
+  if (matchingButton) {
+    setMatchingMode(true);
+    elements.messageInput.value =
+      "Hãy đánh giá mức độ phù hợp giữa CV của tôi và công việc này";
+    updateSendButton();
+    return;
+  }
+
   const button = event.target.closest("[data-message]");
 
   if (!button) {
@@ -452,15 +573,20 @@ function handleSuggestionClick(event) {
 
 
 function handleJobResultClick(event) {
+  const matchingButton = event.target.closest(
+    "[data-action='match-job']",
+  );
   const detailButton = event.target.closest(
     "[data-action='view-job']",
   );
 
-  if (!detailButton) {
+  const actionButton = matchingButton || detailButton;
+
+  if (!actionButton) {
     return;
   }
 
-  const jobId = detailButton.dataset.jobId;
+  const jobId = actionButton.dataset.jobId;
 
   if (!jobId) {
     return;
@@ -474,7 +600,38 @@ function handleJobResultClick(event) {
     return;
   }
 
+  if (matchingButton) {
+    prepareSelectedJobForMatching(hit);
+    return;
+  }
+
   openJobDetail(hit);
+}
+
+
+function prepareSelectedJobForMatching(hit) {
+  const job = hit?.job ?? {};
+  const description = String(job.description ?? "").trim();
+
+  if (!state.uploadedCvId) {
+    showError(
+      "Hãy tải lên CV trước khi đánh giá độ phù hợp với công việc.",
+    );
+    return;
+  }
+
+  if (!description) {
+    showError("Công việc này chưa có JD để thực hiện so khớp.");
+    return;
+  }
+
+  clearError();
+  setMatchingMode(true, description);
+  elements.messageInput.value =
+    `Đánh giá CV của tôi với vị trí ${job.title || "này"}`;
+  updateSendButton();
+  closeJobDetail();
+  elements.messageInput.focus();
 }
 
 
@@ -501,6 +658,196 @@ function renderJobSearchResult(result) {
   }
 
   elements.jobResults.innerHTML = items.map(renderJobCard).join("");
+}
+
+
+function renderJobMatchingResult(result) {
+  state.currentMatchingResult = result;
+  const score = clampMatchingScore(result?.overallScore);
+  const breakdown = result?.breakdown ?? {};
+  const strengths = Array.isArray(result?.strengths)
+    ? result.strengths
+    : [];
+  const gaps = Array.isArray(result?.gaps)
+    ? result.gaps
+    : [];
+  const evidence = Array.isArray(result?.evidence)
+    ? result.evidence
+    : [];
+
+  elements.resultsEyebrow.textContent = "CV · JOB MATCHING";
+  elements.resultsTitle.textContent = "Kết quả so khớp";
+  elements.resultsSummary.hidden = true;
+  elements.jobSort.disabled = true;
+
+  elements.jobResults.innerHTML = `
+    <section class="matching-result" aria-label="Kết quả so khớp CV">
+      <header class="matching-overview">
+        <div
+          class="matching-score-ring"
+          style="--matching-score: ${score}"
+          aria-label="Điểm phù hợp ${score.toFixed(2)} trên 100"
+        >
+          <strong>${score.toFixed(2)}</strong>
+          <span>/100</span>
+        </div>
+
+        <div class="matching-summary">
+          <span class="recommendation-badge ${escapeHtml(
+            result?.recommendation || "low_match",
+          )}">
+            ${escapeHtml(
+              getRecommendationLabel(result?.recommendation),
+            )}
+          </span>
+
+          <h3>Mức độ phù hợp tổng thể</h3>
+          <p>${escapeHtml(result?.summary || "Chưa có nhận xét tổng quan.")}</p>
+
+          ${
+            result?.confidence === null ||
+            result?.confidence === undefined
+              ? ""
+              : `
+                <small>
+                  Độ tin cậy đánh giá:
+                  ${Math.round(result.confidence * 100)}%
+                </small>
+              `
+          }
+        </div>
+      </header>
+
+      <section class="matching-section">
+        <h3>Điểm thành phần</h3>
+        <div class="breakdown-grid">
+          ${renderBreakdownItem(
+            "Kỹ năng chuyên môn",
+            breakdown.technicalSkills,
+          )}
+          ${renderBreakdownItem(
+            "Kinh nghiệm",
+            breakdown.experience,
+          )}
+          ${renderBreakdownItem(
+            "Dự án",
+            breakdown.projects,
+          )}
+          ${renderBreakdownItem(
+            "Học vấn",
+            breakdown.education,
+          )}
+          ${renderBreakdownItem(
+            "Ngoại ngữ & chứng chỉ",
+            breakdown.languagesAndCertifications,
+          )}
+        </div>
+      </section>
+
+      <div class="matching-columns">
+        ${renderMatchingList(
+          "Điểm mạnh",
+          strengths,
+          "strength",
+          "Chưa xác định được điểm mạnh nổi bật.",
+        )}
+        ${renderMatchingList(
+          "Khoảng thiếu",
+          gaps,
+          "gap",
+          "Không có khoảng thiếu quan trọng được ghi nhận.",
+        )}
+      </div>
+
+      <section class="matching-section evidence-section">
+        <h3>Bằng chứng đánh giá</h3>
+        ${
+          evidence.length
+            ? `<div class="evidence-list">
+                ${evidence.map(renderEvidenceItem).join("")}
+              </div>`
+            : `<p class="matching-empty-text">
+                Chưa có bằng chứng chi tiết.
+              </p>`
+        }
+      </section>
+    </section>
+  `;
+}
+
+
+function renderBreakdownItem(label, value) {
+  const score = clampMatchingScore(value);
+
+  return `
+    <article class="breakdown-item">
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <strong>${score.toFixed(0)}</strong>
+      </div>
+      <div class="score-track" aria-hidden="true">
+        <span style="width: ${score}%"></span>
+      </div>
+    </article>
+  `;
+}
+
+
+function renderMatchingList(
+  title,
+  items,
+  variant,
+  emptyMessage,
+) {
+  return `
+    <section class="matching-list-card ${escapeHtml(variant)}">
+      <h3>${escapeHtml(title)}</h3>
+      ${
+        items.length
+          ? `<ul>
+              ${items
+                .map((item) => `<li>${escapeHtml(item)}</li>`)
+                .join("")}
+            </ul>`
+          : `<p>${escapeHtml(emptyMessage)}</p>`
+      }
+    </section>
+  `;
+}
+
+
+function renderEvidenceItem(item) {
+  const cvEvidence = Array.isArray(item?.cvEvidence)
+    ? item.cvEvidence
+    : [];
+
+  return `
+    <details class="evidence-item">
+      <summary>
+        <span class="evidence-status ${escapeHtml(item?.status || "missing")}">
+          ${escapeHtml(getEvidenceStatusLabel(item?.status))}
+        </span>
+        <span>${escapeHtml(item?.requirement || "Yêu cầu công việc")}</span>
+      </summary>
+
+      <div class="evidence-content">
+        <p>${escapeHtml(item?.explanation || "Chưa có giải thích.")}</p>
+
+        ${
+          cvEvidence.length
+            ? `<strong>Bằng chứng từ CV</strong>
+              <ul>
+                ${cvEvidence
+                  .map((evidence) => `<li>${escapeHtml(evidence)}</li>`)
+                  .join("")}
+              </ul>`
+            : `<span class="no-cv-evidence">
+                Không tìm thấy bằng chứng tương ứng trong CV.
+              </span>`
+        }
+      </div>
+    </details>
+  `;
 }
 
 
@@ -636,6 +983,15 @@ function renderJobCard(hit) {
           Xem chi tiết
         </button>
 
+        <button
+          type="button"
+          class="primary-button"
+          data-action="match-job"
+          data-job-id="${escapeHtml(jobId)}"
+        >
+          So khớp CV
+        </button>
+
         ${
           sourceUrl
             ? `
@@ -766,6 +1122,14 @@ function openJobDetail(hit) {
     </section>
 
     <div class="drawer-actions">
+      <button
+        type="button"
+        class="primary-button"
+        id="match-drawer-job"
+      >
+        So khớp với CV
+      </button>
+
       ${
         sourceUrl
           ? `
@@ -790,6 +1154,13 @@ function openJobDetail(hit) {
       </button>
     </div>
   `;
+
+  elements.jobDetailContent
+    .querySelector("#match-drawer-job")
+    ?.addEventListener(
+      "click",
+      () => prepareSelectedJobForMatching(hit),
+    );
 
   elements.jobDetailContent
     .querySelector("#close-drawer-action")
@@ -1007,6 +1378,8 @@ function createSkeletonCards(count) {
 
 
 function showInitialJobState() {
+  elements.resultsEyebrow.textContent = "JOB DISCOVERY";
+  elements.resultsTitle.textContent = "Công việc phù hợp";
   elements.resultsSummary.hidden = true;
   elements.jobSort.disabled = true;
   elements.activeFilters.innerHTML = "";
@@ -1073,12 +1446,18 @@ function resetConversation() {
   state.lastSearchQuery = "";
   state.currentSort = "relevance";
   state.selectedJob = null;
+  state.currentMatchingResult = null;
+  state.matchingMode = false;
+  state.jobDescription = "";
   state.isSending = false;
 
   elements.messageList.innerHTML = "";
   elements.suggestionList.hidden = false;
   elements.messageInput.value = "";
+  elements.jobDescriptionInput.value = "";
   elements.jobSort.value = "relevance";
+
+  setMatchingMode(false);
 
   clearError();
   closeJobDetail();
@@ -1172,17 +1551,31 @@ function removeTypingIndicator() {
 function setComposerDisabled(disabled) {
   elements.messageInput.disabled = disabled;
   elements.attachCvButton.disabled = disabled;
+  elements.toggleJdButton.disabled = disabled;
+  elements.jobDescriptionInput.disabled = disabled;
+  elements.clearJdButton.disabled = disabled;
 
   elements.sendButton.disabled =
     disabled ||
-    !elements.messageInput.value.trim();
+    !hasComposerContent();
 }
 
 
 function updateSendButton() {
   elements.sendButton.disabled =
     state.isSending ||
-    !elements.messageInput.value.trim();
+    !hasComposerContent();
+}
+
+
+function hasComposerContent() {
+  return Boolean(
+    elements.messageInput.value.trim() ||
+    (
+      state.matchingMode &&
+      elements.jobDescriptionInput.value.trim()
+    ),
+  );
 }
 
 
@@ -1236,6 +1629,17 @@ function formatScore(value) {
   );
 
   return `${Math.round(normalized * 100)}%`;
+}
+
+
+function clampMatchingScore(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, number));
 }
 
 
@@ -1324,6 +1728,30 @@ function getStrategyLabel(strategy) {
   };
 
   return labels[strategy] ?? "Tìm kiếm công việc";
+}
+
+
+function getRecommendationLabel(value) {
+  const labels = {
+    strong_match: "Rất phù hợp",
+    good_match: "Phù hợp",
+    partial_match: "Phù hợp một phần",
+    low_match: "Mức độ phù hợp thấp",
+  };
+
+  return labels[value] ?? "Chưa xác định";
+}
+
+
+function getEvidenceStatusLabel(value) {
+  const labels = {
+    matched: "Đáp ứng",
+    partial: "Một phần",
+    missing: "Còn thiếu",
+    not_applicable: "Không áp dụng",
+  };
+
+  return labels[value] ?? "Chưa xác định";
 }
 
 

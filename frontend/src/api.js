@@ -146,7 +146,52 @@ function normalizeConversationResponse(responseBody) {
     cvId: data?.cv_id ?? null,
     missingInputs: Array.isArray(data?.missing_inputs) ? data.missing_inputs : [],
     jobSearchResult: data?.job_search_result ? normalizeJobSearchResult(data.job_search_result) : null,
+    jobMatchingResult: data?.job_matching_result
+      ? normalizeJobMatchingResult(data.job_matching_result)
+      : null,
   };
+}
+
+function normalizeJobMatchingResult(data) {
+  const breakdown = data?.breakdown ?? {};
+
+  return {
+    jobId: data?.job_id ?? null,
+    overallScore: toNumber(data?.overall_score),
+    recommendation: data?.recommendation ?? "low_match",
+    breakdown: {
+      technicalSkills: toNumber(breakdown?.technical_skills),
+      experience: toNumber(breakdown?.experience),
+      education: toNumber(breakdown?.education),
+      projects: toNumber(breakdown?.projects),
+      languagesAndCertifications: toNumber(
+        breakdown?.language_and_certifications,
+      ),
+    },
+    strengths: normalizeStringList(data?.strengths),
+    gaps: normalizeStringList(data?.gaps),
+    evidence: Array.isArray(data?.evidence)
+      ? data.evidence.map(normalizeMatchEvidence)
+      : [],
+    summary: data?.summary ?? "",
+    confidence: toNullableNumber(data?.confidence),
+  };
+}
+
+function normalizeMatchEvidence(evidence) {
+  return {
+    dimension: evidence?.dimension ?? "technical_skills",
+    requirement: evidence?.requirement ?? "",
+    cvEvidence: normalizeStringList(evidence?.cv_evidence),
+    status: evidence?.status ?? "missing",
+    explanation: evidence?.explanation ?? "",
+  };
+}
+
+function normalizeStringList(value) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === "string" && item.trim())
+    : [];
 }
 
 function normalizeJobSearchResult(data) {
