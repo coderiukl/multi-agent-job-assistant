@@ -611,7 +611,9 @@ function handleJobResultClick(event) {
 
 function prepareSelectedJobForMatching(hit) {
   const job = hit?.job ?? {};
-  const description = String(job.description ?? "").trim();
+  const description = String(
+    job.description ?? "",
+  ).trim();
 
   if (!state.uploadedCvId) {
     showError(
@@ -621,17 +623,29 @@ function prepareSelectedJobForMatching(hit) {
   }
 
   if (!description) {
-    showError("Công việc này chưa có JD để thực hiện so khớp.");
+    showError(
+      "Công việc này chưa có JD để thực hiện so khớp.",
+    );
+    return;
+  }
+
+  if (state.isSending) {
     return;
   }
 
   clearError();
+
+  // Đưa JD của công việc vào chế độ Job Matching
   setMatchingMode(true, description);
+
   elements.messageInput.value =
     `Đánh giá CV của tôi với vị trí ${job.title || "này"}`;
+
   updateSendButton();
   closeJobDetail();
-  elements.messageInput.focus();
+
+  // Tự động gửi yêu cầu, không cần bấm nút gửi
+  elements.chatForm.requestSubmit();
 }
 
 
