@@ -104,6 +104,8 @@ class JobMatchingService:
         if applicable_weight <= 0:
             return 0.0
 
+        weighted_score = 0.0
+
         for dimension in applicable_dimensions:
             field_name = BREAKDOWN_FIELD_BY_DIMENSION[dimension]
             dimension_score = float(getattr(assessment.breakdown, field_name))
