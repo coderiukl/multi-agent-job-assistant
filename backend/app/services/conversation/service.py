@@ -40,7 +40,7 @@ class ConversationService:
         if stop_after_intent:
             result = await self._graph.ainvoke(
                 initial_state,
-                interrupt_after=["analyze_intent"]
+                interrupt_after=["analyzer_intent"]
             )
         else:
             result = await self._graph.ainvoke(initial_state)

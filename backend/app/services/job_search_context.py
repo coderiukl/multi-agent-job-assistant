@@ -4,7 +4,7 @@ from app.schemas.cv_profile import CVProfile
 from app.schemas.job import normalize_single_line
 from app.schemas.job_search_context import JobSearchContext
 
-def _unique_values(values: Iterable[str | None], limit: int) -> list[str]:
+def _unique_values(values: Iterable[str | None], *, limit: int) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
 
@@ -15,7 +15,7 @@ def _unique_values(values: Iterable[str | None], limit: int) -> list[str]:
         normalized = normalize_single_line(value)
         key = normalized.casefold()
 
-        if not normalize_single_line or key in seen:
+        if not normalized or key in seen:
             continue
 
         seen.add(key)
@@ -37,7 +37,7 @@ def _education_background(profile: CVProfile) -> list[str]:
 
     return _unique_values(values, limit=10)
 
-def build_job_search_context(profile: CVProfile) -> JobSearchContext:
+def build_job_search_context(profile: CVProfile) -> JobSearchContext | None:
     if profile is None:
         return None
 

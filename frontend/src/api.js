@@ -4,7 +4,6 @@ const ENDPOINTS = {
   joSearch: "/api/v1/jobs/search",
   cvUpload: "/api/v1/cvs",
 }
-const CV_ENDPOINT = "/api/v1/cvs";
 
 export class ApiError extends Error {
   constructor(message, status = 0, details = null) {
@@ -146,6 +145,7 @@ function normalizeConversationResponse(responseBody) {
     confidence: typeof intent?.confidence === "number" ? intent.confidence : null,
     cvId: data?.cv_id ?? null,
     missingInputs: Array.isArray(data?.missing_inputs) ? data.missing_inputs : [],
+    jobSearchResult: data?.job_search_result ? normalizeJobSearchResult(data.job_search_result) : null,
   };
 }
 

@@ -28,7 +28,7 @@ class JobSearchContext(JobSchema):
         "skills", 
         "recent_job_titles", 
         "education_background",
-        "professional_summary",
+        "project_technologies",
     )
     @classmethod
     def normalize_string_list(cls, values: list[str]) -> list[str]:

@@ -29,11 +29,10 @@ def build_conversation_graph(nodes: ConversationNodes) -> CompiledStateGraph:
             ConversationRoute.OUT_OF_SCOPE: "out_of_scope",
             ConversationRoute.GENERAL_QUESTION: "general_question",
             ConversationRoute.CV_ANALYSIS: "business_task",
-            ConversationRoute.JOB_SEARCH: "business_task",
+            ConversationRoute.JOB_SEARCH: "job_search",
             ConversationRoute.JOB_MATCHING: "business_task",
             ConversationRoute.CAREER_ADVICE: "business_task",
             ConversationRoute.COVER_LETTER: "business_task",
-            ConversationRoute.JOB_SEARCH: "job_search"
         },
     )
 
