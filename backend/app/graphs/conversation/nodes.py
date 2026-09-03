@@ -11,10 +11,12 @@ from app.repositories.cv import CVRepository
 from app.schemas.conversations_intent import IntentAnalysisInput
 from app.schemas.conversation import ConversationRoute, ConversationStatus, RequiredInput
 from app.schemas.job_search import JobSearchResult, JobSearchRequest
+from app.schemas.job_matching import JobMatchingInput, JobMatchingResult, JobMatchTarget, MatchRecommendation
 
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.job_search import HybridJobSearchService
 from app.services.job_search_context import build_job_search_context
+from app.services.job_matching import JobMatchingService
 
 
 logger = logging.getLogger(__name__)
@@ -22,10 +24,6 @@ logger = logging.getLogger(__name__)
 BUSINESS_ROUTE_MESSAGES: dict[ConversationRoute, str] = {
     ConversationRoute.CV_ANALYSIS: (
         "Yêu cầu phân tích CV đã được tiếp nhận."
-    ),
-    ConversationRoute.JOB_MATCHING: (
-        "Yêu cầu đánh giá mức độ phù hợp giữa CV và công việc "
-        "đã được tiếp nhận."
     ),
     ConversationRoute.CAREER_ADVICE: (
         "Yêu cầu tư vấn nghề nghiệp đã được tiếp nhận."
@@ -35,6 +33,13 @@ BUSINESS_ROUTE_MESSAGES: dict[ConversationRoute, str] = {
     ),
 }
 
+MATCH_RECOMMENDATION_LABELS: dict[MatchRecommendation, str] = {
+    MatchRecommendation.STRONG_MATCH: "rất phù hợp",
+    MatchRecommendation.GOOD_MATCH: "phù hợp",
+    MatchRecommendation.PARTIAL_MATCH: "phù hợp một phần",
+    MatchRecommendation.LOW_MATCH: "mức độ phù hợp thấp",
+}
+
 class ConversationNodes:
     def __init__(
         self,
@@ -42,10 +47,12 @@ class ConversationNodes:
         analyzer: ConversationIntentAnalyzer,
         cv_repository: CVRepository,
         job_search_service: HybridJobSearchService,
+        job_matching_service: JobMatchingService,
     ) -> None:
         self._analyzer = analyzer
         self._cv_repository = cv_repository
         self._job_search_service = job_search_service
+        self._job_matching_service = job_matching_service
 
     async def resolve_context(self, state: ConversationState) -> dict[str, Any]:
         cv_id = state.get("cv_id")
@@ -130,6 +137,51 @@ class ConversationNodes:
             "job_search_result": result,
         }
 
+    async def execute_job_matching(self, state: ConversationState) -> dict[str, Any]:
+            cv_profile = state.get("cv_profile")
+            job_description = state.get("job_description")
+            missing_inputs: list[RequiredInput] = []
+
+            if cv_profile is None:
+                missing_inputs.append(RequiredInput.CV)
+
+            if not job_description:
+                missing_inputs.append(RequiredInput.JOB_DESCRIPTION)
+
+            if missing_inputs:
+                return {
+                    "route": ConversationRoute.CLARIFICATION,
+                    "status": ConversationStatus.NEEDS_CLARIFICATION,
+                    "missing_inputs": missing_inputs,
+                    "assistant_message": self._build_clarification_message(missing_inputs, generated_question=None),
+                }
+
+            matching_input = JobMatchingInput(cv_profile, job=JobMatchTarget(description=job_description))
+
+            result = await self._job_matching_service.match(matching_input)
+
+            assistant_message = self._build_job_matching_message(result)
+
+            logger.info(
+                "Conversation job matching completed",
+                extra={
+                    "cv_id": state.get("cv_id"),
+                    "job_id": result.job_id,
+                    "overall_score": result.overall_score,
+                    "recommendation": (
+                        result.recommendation.value
+                    ),
+                },
+            )
+
+            return {
+                "route": ConversationRoute.JOB_MATCHING,
+                "status": ConversationStatus.COMPLETED,
+                "missing_inputs": [],
+                "assistant_message": assistant_message,
+                "job_matching_result": result,
+            }
+    
     async def respond_clarification(self, state: ConversationState) -> dict[str, Any]:
         intent = state['intent']
         missing_inputs = collect_missing_inputs(state)
@@ -251,4 +303,14 @@ class ConversationNodes:
         return (
             f"Tôi đã chọn ra {returned_count} công việc có mức độ liên quan "
             "cao nhất với yêu cầu tìm kiếm của bạn."
+        )
+
+    @staticmethod 
+    def _build_job_matching_message(result: JobMatchingResult) -> str:
+        recommendation_label = MATCH_RECOMMENDATION_LABELS[result.recommendation]
+
+        return (
+            f"Mức độ phù hợp của CV với công việc là "
+            f"{result.overall_score:.2f}/100 "
+            f"({recommendation_label}). {result.summary}"
         )

@@ -2,32 +2,38 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
+
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
+
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.agents import CVParserAgent
-from app.agents.job_search_agent import JobSearchAgent
+from app.agents import CVParserAgent, JobSearchAgent, JobMatchingAgent
+
 from app.core.config import get_settings
 from app.database import JobSessionFactory, create_job_database_engine, create_job_session_factory
 from app.embeddings import EmbeddingFactory
+
 from app.graphs.conversation import ConversationNodes, build_conversation_graph
 from app.llm import LLMFactory
+
 from app.repositories.cv import CVRepository, LocalJsonCVRepository
 from app.repositories.postgres_job_search import PostgresJobSearchRepository
+
 from app.services.conversation import ConversationIntentAnalyzer, ConversationService
 from app.services.cv_ingestion import CVIngestionService
 from app.services.cv_processing import CVProcessingService
 from app.services.job_search import HybridJobSearchService
+from app.services.job_matching import JobMatchingService
+from app.services.storage import LocalStorageService, StorageService
 from app.services.pdf import (
     NativePdfTextExtractor,
     PdfInspector,
     PdfOcrExtractor,
     PdfTextMerger,
 )
-from app.services.storage import LocalStorageService, StorageService
 from app.vectorstores import QdrantJobVectorIndex, create_qdrant_client
 
 
@@ -186,12 +192,35 @@ async def close_job_search_resources() -> None:
 
     get_job_search_service.cache_clear()
     get_job_search_agent.cache_clear()
+
+    get_job_matching_service.cache_clear()
+    get_job_matching_agent.cache_clear()
+
     get_job_vector_index.cache_clear()
     get_job_qdrant_client.cache_clear()
     get_job_embeddings.cache_clear()
     get_job_search_repository.cache_clear()
+    
     get_job_session_factory.cache_clear()
     get_job_database_engine.cache_clear()
+
+@lru_cache
+def get_job_matching_agent() -> JobMatchingAgent:
+    return JobMatchingAgent(
+        llm=get_chat_model(),
+        settings=get_settings(),
+    )
+
+@lru_cache
+def get_job_matching_service() -> JobMatchingService:
+    return JobMatchingService(
+        agent=get_job_matching_agent(),
+    )
+
+JobMatchingServiceDependency = Annotated[
+    JobMatchingService,
+    Depends(get_job_matching_service),
+]
 
 @lru_cache
 def get_conversation_graph() -> CompiledStateGraph:
@@ -200,6 +229,7 @@ def get_conversation_graph() -> CompiledStateGraph:
         analyzer=analyzer,
         cv_repository=get_cv_repository(),
         job_search_service=get_job_search_service(),
+        job_matching_service=get_job_matching_service(),
     )
 
     return build_conversation_graph(nodes)
