@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.job_search import JobSearchResult
+from app.schemas.job_matching import JobMatchingResult
 
 class ConversationRoute(StrEnum):
     CLARIFICATION = "clarification"
@@ -37,4 +38,6 @@ class ConversationResponseData(BaseModel):
     missing_inputs: list[RequiredInput] = Field(default_factory=list)
 
     job_search_result: JobSearchResult | None = None
+    job_matching_result: JobMatchingResult | None = None
+    
     

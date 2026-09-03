@@ -22,7 +22,8 @@ class ConversationService:
             intent=state["intent"],
             cv_id=request.cv_id,
             missing_inputs=state.get("missing_inputs", []),
-            job_search_result=state.get("job_search_result")
+            job_search_result=state.get("job_search_result"),
+            job_matching_result=state.get("job_matching_result"),
         )
     
     async def analyze_intent(self, request: ConversationRequest) -> IntentAnalysisResult:

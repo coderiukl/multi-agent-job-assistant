@@ -8,6 +8,7 @@ from app.schemas.conversation import (
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cv_profile import CVProfile
 from app.schemas.job_search import JobSearchResult
+from app.schemas.job_matching import JobMatchingResult
 
 class ConversationState(TypedDict, total=False):
     # Dữ liệu từ request
@@ -30,6 +31,7 @@ class ConversationState(TypedDict, total=False):
 
     # Kết quả của các business agent
     job_search_result: JobSearchResult | None
+    job_matching_result: JobMatchingResult | None
 
     # Nội dung trả về người dùng
     assistant_message: str
