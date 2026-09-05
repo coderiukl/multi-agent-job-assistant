@@ -227,7 +227,8 @@ a {
     minmax(360px, 0.78fr)
     minmax(520px, 1.4fr);
   gap: 16px;
-  height: calc(100vh - var(--header-height));
+  height: calc(100dvh - var(--header-height));
+  min-height: 0;
   padding: 16px;
 }
 
@@ -310,11 +311,12 @@ a {
 .chat-panel {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .message-list {
-  flex: 1;
-  min-height: 180px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 22px 20px 12px;
   scroll-behavior: smooth;
@@ -391,7 +393,12 @@ a {
 
 .suggestion-list {
   display: grid;
+  flex: 0 1 auto;
   gap: 9px;
+  min-height: 0;
+  max-height: clamp(160px, 40dvh, 390px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px 20px 18px 64px;
 }
 
@@ -449,7 +456,7 @@ a {
 /* Chat composer */
 
 .composer-container {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   max-height: min(360px, 46dvh);
   overflow-y: auto;
   padding: 12px 16px 14px;
@@ -1853,6 +1860,117 @@ a {
   font-size: 13px;
 }
 
+/* Cover letter result */
+
+.cover-letter-result {
+  display: grid;
+  gap: 16px;
+}
+
+.cover-letter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cover-letter-header > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cover-letter-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cover-letter-badge.secondary {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+
+.cover-letter-paper {
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.cover-letter-paper pre {
+  margin: 0;
+  overflow: visible;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+  font-family:
+    Georgia,
+    "Times New Roman",
+    serif;
+  font-size: 15px;
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+.cover-letter-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cover-letter-meta span {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cover-letter-evidence-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cover-letter-evidence {
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.cover-letter-evidence h3 {
+  margin: 0 0 11px;
+  font-size: 15px;
+}
+
+.cover-letter-evidence ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 19px;
+}
+
+.cover-letter-evidence li,
+.cover-letter-evidence p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Career advice result */
+
 .career-advice-result {
   display: grid;
   gap: 22px;
@@ -2322,11 +2440,14 @@ a {
 
   .chat-panel,
   .results-panel {
-    min-height: 720px;
+    min-height: 0;
   }
 
   .chat-panel {
-    height: calc(100vh - var(--header-height) - 32px);
+    height: max(
+      520px,
+      calc(100dvh - var(--header-height) - 32px)
+    );
   }
 
   .results-panel {
@@ -2412,7 +2533,7 @@ a {
 
   .chat-panel,
   .results-panel {
-    min-height: auto;
+    min-height: 0;
     border-radius: var(--radius-md);
   }
 
@@ -2450,7 +2571,7 @@ a {
   }
 
   .message-list {
-    min-height: 150px;
+    min-height: 80px;
     padding: 16px 13px 10px;
   }
 
@@ -2476,6 +2597,7 @@ a {
   }
 
   .suggestion-list {
+    max-height: clamp(150px, 36dvh, 300px);
     padding: 8px 13px 14px 52px;
   }
 
@@ -2586,6 +2708,23 @@ a {
     flex-direction: column;
   }
   
+  .cover-letter-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cover-letter-header .primary-button {
+    width: 100%;
+  }
+
+  .cover-letter-paper {
+    padding: 18px;
+  }
+
+  .cover-letter-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+
   .evidence-item summary {
     align-items: flex-start;
     flex-direction: column;
@@ -2627,6 +2766,22 @@ a {
 
   .drawer-job-heading h2 {
     font-size: 21px;
+  }
+}
+
+/* Short viewports */
+
+@media (max-height: 650px) {
+  .message-list {
+    min-height: 60px;
+  }
+
+  .suggestion-list {
+    max-height: 30dvh;
+  }
+
+  .composer-container {
+    max-height: 48dvh;
   }
 }
 

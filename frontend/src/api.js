@@ -147,10 +147,31 @@ function normalizeConversationResponse(responseBody) {
     missingInputs: Array.isArray(data?.missing_inputs) ? data.missing_inputs : [],
     cvAnalysisResult: data?.cv_analysis_result ? normalizeCvAnalysisResult(data.cv_analysis_result) : null,
     careerAdviceResult: data?.career_advice_result ? normalizeCareerAdviceResult(data.career_advice_result) : null,
+    coverLetterResult: data?.cover_letter_result ? normalizeCoverLetterResult(data.cover_letter_result) : null,
     jobSearchResult: data?.job_search_result ? normalizeJobSearchResult(data.job_search_result) : null,
     jobMatchingResult: data?.job_matching_result
       ? normalizeJobMatchingResult(data.job_matching_result)
       : null,
+  };
+}
+
+function normalizeCoverLetterResult(data) {
+  return {
+    language: data?.language ?? "vi",
+    tone: data?.tone ?? "professional",
+    subject: data?.subject ?? "",
+    salutation: data?.salutation ?? "",
+    openingParagraph:data?.opening_paragraph ?? "",
+    bodyParagraphs: normalizeStringList(data?.body_paragraphs),
+    closingParagraph: data?.closing_paragraph ?? "",
+    complimentaryClose: data?.complimentary_close ?? "",
+    signatureName: data?.signature_name ?? null,
+    cvEvidenceUsed: normalizeStringList(data?.cv_evidence_used),
+    jobRequirementsAddressed: normalizeStringList(data?.job_requirements_addressed),
+    confidence: toNullableNumber(data?.confidence),
+    fullText: data?.full_text ?? "",
+    wordCount: toNumber(data?.word_count),
+    isPersonalized: Boolean(data?.is_personalized),
   };
 }
 

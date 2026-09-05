@@ -7,6 +7,7 @@ from app.schemas.job_search import JobSearchResult
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.cv_analysis import CVAnalysisResult
 from app.schemas.career_advice import CareerAdviceResult
+from app.schemas.cover_letter import CoverLetterResult
 
 class ConversationRoute(StrEnum):
     CLARIFICATION = "clarification"
@@ -43,5 +44,6 @@ class ConversationResponseData(BaseModel):
     job_matching_result: JobMatchingResult | None = None
     cv_analysis_result: CVAnalysisResult | None = None
     career_advice_result: CareerAdviceResult | None = None
+    cover_letter_result: CoverLetterResult | None = None
     
     

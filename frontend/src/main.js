@@ -22,6 +22,7 @@ const state = {
   currentMatchingResult: null,
   currentCvAnalysisResult: null,
   currentCareerAdviceResult: null,
+  currentCoverLetterResult: null,
 
   isSending: false,
   jobs: [],
@@ -48,18 +49,10 @@ const elements = {
   messageInput: document.querySelector("#message-input"),
   sendButton: document.querySelector("#send-button"),
   toggleJdButton: document.querySelector("#toggle-jd-button"),
-  jobDescriptionPanel: document.querySelector(
-    "#job-description-panel",
-  ),
-  jobDescriptionSummary: document.querySelector(
-    "#job-description-summary",
-  ),
-  jobDescriptionInput: document.querySelector(
-    "#job-description-input",
-  ),
-  jobDescriptionCount: document.querySelector(
-    "#job-description-count",
-  ),
+  jobDescriptionPanel: document.querySelector("#job-description-panel"),
+  jobDescriptionSummary: document.querySelector("#job-description-summary"),
+  jobDescriptionInput: document.querySelector("#job-description-input"),
+  jobDescriptionCount: document.querySelector("#job-description-count"),
   editJdButton: document.querySelector("#edit-jd-button"),
   clearJdButton: document.querySelector("#clear-jd-button"),
 
@@ -83,18 +76,10 @@ const elements = {
   resultsTitle: document.querySelector("#results-title"),
   backToJobsButton: document.querySelector("#back-to-jobs-button"),
 
-  jobDetailOverlay: document.querySelector(
-    "#job-detail-overlay",
-  ),
-  jobDetailDrawer: document.querySelector(
-    "#job-detail-drawer",
-  ),
-  jobDetailContent: document.querySelector(
-    "#job-detail-content",
-  ),
-  closeJobDetailButton: document.querySelector(
-    "#close-job-detail",
-  ),
+  jobDetailOverlay: document.querySelector("#job-detail-overlay"),
+  jobDetailDrawer: document.querySelector("#job-detail-drawer"),
+  jobDetailContent: document.querySelector("#job-detail-content"),
+  closeJobDetailButton: document.querySelector("#close-job-detail"),
 };
 
 
@@ -313,7 +298,8 @@ async function handleSubmit(event) {
 
   if (state.matchingMode && !state.uploadedCvId) {
     showError(
-      "Hãy tải lên CV và chờ phân tích thành công trước khi so khớp.",
+      "Hãy tải lên CV và chờ phân tích thành công " +
+      "trước khi thực hiện yêu cầu với JD.",
     );
     return;
   }
@@ -377,6 +363,15 @@ async function handleSubmit(event) {
       renderCvAnalysisResult(
         conversation.cvAnalysisResult,
       )
+    }
+
+    if (
+      conversation.route === "cover_letter" &&
+      conversation.coverLetterResult
+    ) {
+      renderCoverLetterResult(
+        conversation.coverLetterResult,
+      );
     }
 
     if (
@@ -678,6 +673,25 @@ function updateJobDescriptionCount() {
 
 
 function handleSuggestionClick(event) {
+  const coverLetterButton = event.target.closest(
+    "[data-action='open-cover-letter']",
+  );
+
+  if (coverLetterButton) {
+    setMatchingMode(true);
+
+    elements.messageInput.value =
+      "Hãy viết thư ứng tuyển dựa trên CV " +
+      "và công việc này";
+
+    elements.suggestionList.hidden = true;
+    elements.messageInput.focus();
+
+    resizeMessageInput();
+    updateSendButton();
+    return;
+  }
+
   const matchingButton = event.target.closest(
     "[data-action='open-matching']",
   );
@@ -708,14 +722,31 @@ function handleSuggestionClick(event) {
 
 
 function handleJobResultClick(event) {
+  const coverLetterButton = event.target.closest(
+    "[data-action='cover-letter-job']",
+  );
+
+  const copyCoverLetterButton = event.target.closest(
+    "[data-action='copy-cover-letter']",
+  );
+
+  if (copyCoverLetterButton) {
+    copyCoverLetter(copyCoverLetterButton);
+    return;
+  }
+
   const matchingButton = event.target.closest(
     "[data-action='match-job']",
   );
+
   const detailButton = event.target.closest(
     "[data-action='view-job']",
   );
 
-  const actionButton = matchingButton || detailButton;
+  const actionButton =
+    coverLetterButton ||
+    matchingButton ||
+    detailButton;
 
   if (!actionButton) {
     return;
@@ -740,9 +771,99 @@ function handleJobResultClick(event) {
     return;
   }
 
+  if (coverLetterButton) {
+    generateCoverLetterForJob(hit);
+    return;
+  }
+
   openJobDetail(hit);
 }
 
+async function generateCoverLetterForJob(hit) {
+  const job = hit?.job ?? {};
+
+  const description = String(
+    job.description ?? "",
+  ).trim();
+
+  if (!state.uploadedCvId) {
+    showError(
+      "Hãy tải lên CV trước khi tạo thư ứng tuyển.",
+    );
+    return;
+  }
+
+  if (!description) {
+    showError(
+      "Công việc này chưa có JD để tạo thư ứng tuyển.",
+    );
+    return;
+  }
+
+  if (state.isSending) {
+    return;
+  }
+
+  clearError();
+  closeJobDetail();
+
+  const message =
+    `Viết thư ứng tuyển cho vị trí ${
+      job.title || "này"
+    }`;
+
+  state.isSending = true;
+
+  addMessage({
+    role: "user",
+    text: message,
+  });
+
+  elements.suggestionList.hidden = true;
+
+  setComposerDisabled(true);
+  showTypingIndicator();
+
+  try {
+    const conversation =
+      await sendConversationMessage({
+        message,
+        cvId: state.uploadedCvId,
+        jobDescription: description,
+      });
+
+    removeTypingIndicator();
+
+    addMessage({
+      role: "assistant",
+      text: conversation.answer,
+    });
+
+    if (conversation.coverLetterResult) {
+      renderCoverLetterResult(
+        conversation.coverLetterResult,
+      );
+    }
+  } catch (error) {
+    removeTypingIndicator();
+
+    showError(
+      error?.message ||
+        "Không thể tạo thư ứng tuyển.",
+    );
+
+    addMessage({
+      role: "assistant",
+      text:
+        "Mình chưa thể tạo thư ứng tuyển. " +
+        "Bạn hãy kiểm tra backend và thử lại.",
+    });
+  } finally {
+    state.isSending = false;
+    setComposerDisabled(false);
+    updateComposerContext();
+  }
+}
 
 async function matchSelectedJob(hit) {
   const job = hit?.job ?? {};
@@ -862,6 +983,188 @@ function renderJobSearchResult(result) {
   }
 
   elements.jobResults.innerHTML = items.map(renderJobCard).join("");
+}
+
+function renderCoverLetterResult(result) {
+  state.currentCoverLetterResult = result;
+  state.currentMatchingResult = null;
+  state.currentCvAnalysisResult = null;
+  state.currentCareerAdviceResult = null;
+
+  elements.resultsEyebrow.textContent =
+    "COVER LETTER";
+
+  elements.resultsTitle.textContent =
+    "Thư ứng tuyển";
+
+  elements.resultsSummary.hidden = true;
+  elements.jobSort.disabled = true;
+
+  elements.backToJobsButton.hidden =
+    !state.currentSearchResult ||
+    !state.jobs.length;
+
+  const confidence =
+    result.confidence === null
+      ? "Chưa xác định"
+      : `${Math.round(
+          result.confidence * 100,
+        )}%`;
+
+  elements.jobResults.innerHTML = `
+    <section
+      class="cover-letter-result"
+      aria-label="Thư ứng tuyển"
+    >
+      <header class="cover-letter-header">
+        <div>
+          <span class="cover-letter-badge">
+            ${escapeHtml(
+              getCoverLetterLanguageLabel(
+                result.language,
+              ),
+            )}
+          </span>
+
+          <span
+            class="cover-letter-badge secondary"
+          >
+            ${escapeHtml(
+              getCoverLetterToneLabel(
+                result.tone,
+              ),
+            )}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="primary-button"
+          data-action="copy-cover-letter"
+        >
+          Sao chép thư
+        </button>
+      </header>
+
+      <article class="cover-letter-paper">
+        <pre>${escapeHtml(
+          result.fullText,
+        )}</pre>
+      </article>
+
+      <div class="cover-letter-meta">
+        <span>
+          ${escapeHtml(result.wordCount)} từ
+        </span>
+
+        <span>
+          Độ tin cậy:
+          ${escapeHtml(confidence)}
+        </span>
+
+        <span>
+          ${
+            result.isPersonalized
+              ? "Cá nhân hóa theo CV"
+              : "Bản tổng quát"
+          }
+        </span>
+      </div>
+
+      <div class="cover-letter-evidence-grid">
+        ${renderCoverLetterEvidence(
+          "Bằng chứng CV đã sử dụng",
+          result.cvEvidenceUsed,
+        )}
+
+        ${renderCoverLetterEvidence(
+          "Yêu cầu công việc đã đề cập",
+          result.jobRequirementsAddressed,
+        )}
+      </div>
+    </section>
+  `;
+
+  updateMobileResultsBadge(1);
+  showResultsPanelOnMobile();
+}
+
+
+function renderCoverLetterEvidence(
+  title,
+  items,
+) {
+  return `
+    <section class="cover-letter-evidence">
+      <h3>${escapeHtml(title)}</h3>
+
+      ${
+        items?.length
+          ? `
+            <ul>
+              ${items
+                .map(
+                  (item) =>
+                    `<li>${escapeHtml(item)}</li>`,
+                )
+                .join("")}
+            </ul>
+          `
+          : "<p>Chưa có dữ liệu.</p>"
+      }
+    </section>
+  `;
+}
+
+
+async function copyCoverLetter(button) {
+  const fullText =
+    state.currentCoverLetterResult?.fullText;
+
+  if (!fullText) {
+    showError(
+      "Không có nội dung thư để sao chép.",
+    );
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(
+      fullText,
+    );
+
+    const originalText = button.textContent;
+
+    button.textContent = "Đã sao chép";
+
+    setTimeout(() => {
+      button.textContent = originalText;
+    }, 1800);
+  } catch {
+    showError(
+      "Trình duyệt không cho phép sao chép tự động.",
+    );
+  }
+}
+
+
+function getCoverLetterLanguageLabel(
+  language,
+) {
+  return language === "en"
+    ? "English"
+    : "Tiếng Việt";
+}
+
+
+function getCoverLetterToneLabel(tone) {
+  const labels = {
+    professional: "Chuyên nghiệp",
+    confident: "Tự tin",
+    enthusiastic: "Nhiệt huyết",
+  };
+
+  return labels[tone] ?? "Chuyên nghiệp";
 }
 
 function renderCareerAdviceResult(result) {
@@ -1900,6 +2203,16 @@ function renderJobCard(hit) {
             `
             : ""
         }
+
+        <button
+          type="button"
+          class="ghost-button"
+          data-action="cover-letter-job"
+          data-job-id="${escapeHtml(jobId)}"
+        >
+          Viết thư
+        </button>
+
       </footer>
     </article>
   `;
@@ -2081,8 +2394,24 @@ function openJobDetail(hit) {
       >
         Đóng
       </button>
+
+      <button
+        type="button"
+        class="ghost-button"
+        id="cover-letter-drawer-job"
+      >
+        Viết thư ứng tuyển
+      </button>
+
     </div>
   `;
+
+  elements.jobDetailContent
+  .querySelector("#cover-letter-drawer-job",)
+  ?.addEventListener(
+    "click",
+    () => generateCoverLetterForJob(hit),
+  );
 
   elements.jobDetailContent
     .querySelector("#match-drawer-job")
@@ -2518,6 +2847,7 @@ function resetConversation() {
   state.currentMatchingResult = null;
   state.currentCvAnalysisResult = null;
   state.currentCareerAdviceResult = null;
+  state.currentCoverLetterResult = null;
   state.matchingMode = false;
   state.jobDescription = "";
   state.isSending = false;
