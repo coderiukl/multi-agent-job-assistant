@@ -145,10 +145,65 @@ function normalizeConversationResponse(responseBody) {
     confidence: typeof intent?.confidence === "number" ? intent.confidence : null,
     cvId: data?.cv_id ?? null,
     missingInputs: Array.isArray(data?.missing_inputs) ? data.missing_inputs : [],
+    cvAnalysisResult: data?.cv_analysis_result ? normalizeCvAnalysisResult(data.cv_analysis_result) : null,
     jobSearchResult: data?.job_search_result ? normalizeJobSearchResult(data.job_search_result) : null,
     jobMatchingResult: data?.job_matching_result
       ? normalizeJobMatchingResult(data.job_matching_result)
       : null,
+  };
+}
+
+function normalizeCvAnalysisResult(data) {
+  const breakdown = data?.breakdown ?? {};
+
+  return {
+    overallScore: toNumber(data?.overall_score),
+    qualityLevel: data?.quality_level ?? "needs_improvement",
+
+    breakdown: {
+      completeness: toNumber(breakdown?.completeness),
+      professionalSummary: toNumber(breakdown?.professional_summary),
+      skills: toNumber(breakdown?.skills),
+      workExperience: toNumber(breakdown?.work_experience),
+      projects: toNumber(breakdown?.projects),
+      educationAndCredentials: toNumber(breakdown?.education_and_credentials),
+    },
+
+    strengths: Array.isArray(data?.strengths)
+      ? data.strengths.map(normalizeCvFinding) : [],
+
+    weaknesses: Array.isArray(data?.weaknesses)
+      ? data.weaknesses.map(normalizeCvFinding) : [],
+
+    improvements: Array.isArray(data?.improvements)
+      ? data.improvements.map(normalizeCvImprovement) : [],
+
+    summary: data?.summary ?? "",
+    confidence: toNullableNumber(data?.confidence),
+  };
+}
+
+
+function normalizeCvFinding(finding) {
+  return {
+    dimension: finding?.dimension ?? "completeness",
+    section: finding?.section ?? "general",
+    finding: finding?.finding ?? "",
+    cvEvidence: normalizeStringList(finding?.cv_evidence),
+  };
+}
+
+
+function normalizeCvImprovement(improvement) {
+  return {
+    section: improvement?.section ?? "general",
+    priority: improvement?.priority ?? "medium",
+    issue: improvement?.issue ?? "",
+    suggestion: improvement?.suggestion ?? "",
+    example:
+      typeof improvement?.example === "string"
+        ? improvement.example
+        : null,
   };
 }
 
