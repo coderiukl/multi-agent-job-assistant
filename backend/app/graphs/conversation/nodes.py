@@ -14,6 +14,7 @@ from app.schemas.job_search import JobSearchResult, JobSearchRequest
 from app.schemas.job_matching import JobMatchingInput, JobMatchingResult, JobMatchTarget, MatchRecommendation
 from app.schemas.cv_analysis import CVAnalysisInput, CVAnalysisResult, CVQualityLevel
 from app.schemas.career_advice import CareerAdviceInput, CareerAdviceResult
+from app.schemas.cover_letter import CoverLetterInput, CoverLetterResult
 
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.job_search import HybridJobSearchService
@@ -21,15 +22,11 @@ from app.services.job_search_context import build_job_search_context
 from app.services.job_matching import JobMatchingService
 from app.services.cv_analysis import CVAnalysisService
 from app.services.career_advice import CareerAdviceService
+from app.services.cover_letter import CoverLetterService
 
 
 logger = logging.getLogger(__name__)
 
-BUSINESS_ROUTE_MESSAGES: dict[ConversationRoute, str] = {
-    ConversationRoute.COVER_LETTER: (
-        "Yêu cầu tạo thư ứng tuyển đã được tiếp nhận."
-    ),
-}
 
 MATCH_RECOMMENDATION_LABELS: dict[MatchRecommendation, str] = {
     MatchRecommendation.STRONG_MATCH: "rất phù hợp",
@@ -53,6 +50,7 @@ class ConversationNodes:
         cv_repository: CVRepository,
         cv_analysis_service: CVAnalysisService,
         career_advice_service: CareerAdviceService,
+        cover_letter_service: CoverLetterService,
         job_search_service: HybridJobSearchService,
         job_matching_service: JobMatchingService,
     ) -> None:
@@ -60,6 +58,7 @@ class ConversationNodes:
         self._cv_repository = cv_repository
         self._cv_analysis_service = cv_analysis_service
         self._career_advice_service = career_advice_service
+        self._cover_letter_service = cover_letter_service
         self._job_search_service = job_search_service
         self._job_matching_service = job_matching_service
 
@@ -216,6 +215,56 @@ class ConversationNodes:
             "job_search_result": result,
         }
 
+    async def execute_cover_letter(self, state: ConversationState) -> dict[str, Any]:
+        cv_profile = state.get("cv_profile")
+        job_description = state.get("job_description")
+        missing_inputs: list[RequiredInput] = []
+
+        if cv_profile is None:
+            missing_inputs.append(RequiredInput.CV)
+
+        if not job_description:
+            missing_inputs.append(RequiredInput.JOB_DESCRIPTION)
+
+        if missing_inputs:
+            return {
+                "route": ConversationRoute.CLARIFICATION,
+                "status": ConversationStatus.NEEDS_CLARIFICATION,
+                "missing_inputs": missing_inputs,
+                "assistant_message": (
+                    self._build_clarification_message(
+                        missing_inputs=missing_inputs,
+                        generated_question=None,
+                    )
+                ),
+            }
+
+        letter_input = CoverLetterInput(
+            user_request=state["message"],
+            cv_profile=cv_profile,
+            job=JobMatchTarget(description=job_description),
+        )
+
+        result = await self._cover_letter_service.generate(letter_input)
+
+        logger.info(
+            "Conversation cover letter completed",
+            extra={
+                "cv_id": state.get("cv_id"),
+                "language": result.language.value,
+                "word_count": result.word_count,
+                "confidence": result.confidence,
+            },
+        )
+
+        return {
+            "route": ConversationRoute.COVER_LETTER,
+            "status": ConversationStatus.COMPLETED,
+            "missing_inputs": [],
+            "assistant_message": self._build_cover_letter_message(result),
+            "cover_letter_result": result,
+        }
+
     async def execute_job_matching(self, state: ConversationState) -> dict[str, Any]:
             cv_profile = state.get("cv_profile")
             job_description = state.get("job_description")
@@ -314,25 +363,6 @@ class ConversationNodes:
             ),
         }
 
-    async def dispatch_business_task(self, state: ConversationState) -> dict[str, Any]:
-        intent = state["intent"]
-
-        route = ConversationRoute(intent.primary_intent.value)
-
-        logger.info(
-            "Conversation task routed",
-            extra={
-                "route": route.value,
-            },
-        )
-
-        return {
-            "route": route,
-            "status": ConversationStatus.ROUTED,
-            "missing_inputs": [],
-            "assistant_message": BUSINESS_ROUTE_MESSAGES[route],
-        }
-
     @staticmethod
     def _build_clarification_message(*, missing_inputs: list[RequiredInput], generated_question: str | None) -> str:
         missing_cv = RequiredInput.CV in missing_inputs
@@ -419,3 +449,11 @@ class ConversationNodes:
             )
 
         return f"{prefix}{result.summary}"
+
+    @staticmethod
+    def _build_cover_letter_message(result: CoverLetterResult) -> str:
+        return (
+            "Tôi đã tạo thư ứng tuyển dựa trên CV và "
+            f"mô tả công việc của bạn "
+            f"({result.word_count} từ)."
+        )

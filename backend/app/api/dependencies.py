@@ -20,6 +20,7 @@ from app.graphs.conversation import ConversationNodes, build_conversation_graph
 from app.llm import LLMFactory
 
 from app.agents import (
+    CoverLetterAgent,
     CareerAdviceAgent,
     CVAnalysisAgent,
     CVParserAgent,
@@ -35,6 +36,7 @@ from app.services.cv_ingestion import CVIngestionService
 from app.services.cv_processing import CVProcessingService
 from app.services.career_advice import CareerAdviceService
 from app.services.cv_analysis import CVAnalysisService
+from app.services.cover_letter import CoverLetterService
 from app.services.job_search import HybridJobSearchService
 from app.services.job_matching import JobMatchingService
 from app.services.storage import LocalStorageService, StorageService
@@ -109,6 +111,20 @@ CareerAdviceServiceDependency = Annotated[
     CareerAdviceService,
     Depends(get_career_advice_service),
 ]
+
+@lru_cache
+def get_cover_letter_agent() -> CoverLetterAgent:
+    return CoverLetterAgent(
+        llm=get_chat_model(),
+        settings=get_settings(),
+    )
+
+
+@lru_cache
+def get_cover_letter_service() -> CoverLetterService:
+    return CoverLetterService(
+        agent=get_cover_letter_agent(),
+    )
 
 def get_cv_parser_agent(llm: BaseChatModel = Depends(get_chat_model)) -> CVParserAgent:
     return CVParserAgent(llm=llm, settings=get_settings())
@@ -241,6 +257,9 @@ async def close_job_search_resources() -> None:
     get_career_advice_service.cache_clear()
     get_career_advice_agent.cache_clear()
 
+    get_cover_letter_service.cache_clear()
+    get_cover_letter_agent.cache_clear()
+
     get_job_search_service.cache_clear()
     get_job_search_agent.cache_clear()
 
@@ -281,6 +300,7 @@ def get_conversation_graph() -> CompiledStateGraph:
         cv_repository=get_cv_repository(),
         cv_analysis_service=get_cv_analysis_service(),
         career_advice_service=get_career_advice_service(),
+        cover_letter_service=get_conversation_graph(),
         job_search_service=get_job_search_service(),
         job_matching_service=get_job_matching_service(),
     )

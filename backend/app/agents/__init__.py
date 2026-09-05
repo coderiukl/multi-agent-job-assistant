@@ -3,6 +3,7 @@ from app.agents.job_search_agent import JobSearchAgent
 from app.agents.job_matching_agent import JobMatchingAgent
 from app.agents.cv_analysis_agent import CVAnalysisAgent
 from app.agents.career_advice_agent import CareerAdviceAgent
+from app.agents.cover_letter_agent import CoverLetterAgent
 
 __all__ = [
     "CVParserAgent", 
@@ -10,4 +11,5 @@ __all__ = [
     "JobMatchingAgent", 
     "CVAnalysisAgent", 
     "CareerAdviceAgent",
+    "CoverLetterAgent",
 ]
