@@ -12,11 +12,13 @@ from app.schemas.conversations_intent import IntentAnalysisInput
 from app.schemas.conversation import ConversationRoute, ConversationStatus, RequiredInput
 from app.schemas.job_search import JobSearchResult, JobSearchRequest
 from app.schemas.job_matching import JobMatchingInput, JobMatchingResult, JobMatchTarget, MatchRecommendation
+from app.schemas.cv_analysis import CVAnalysisInput, CVAnalysisResult, CVQualityLevel
 
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.job_search import HybridJobSearchService
 from app.services.job_search_context import build_job_search_context
 from app.services.job_matching import JobMatchingService
+from app.services.cv_analysis import CVAnalysisService
 
 
 logger = logging.getLogger(__name__)
@@ -40,17 +42,26 @@ MATCH_RECOMMENDATION_LABELS: dict[MatchRecommendation, str] = {
     MatchRecommendation.LOW_MATCH: "mức độ phù hợp thấp",
 }
 
+CV_QUALITY_LABELS: dict[CVQualityLevel, str] = {
+    CVQualityLevel.EXCELLENT: "rất tốt",
+    CVQualityLevel.GOOD: "tốt",
+    CVQualityLevel.NEEDS_IMPROVEMENT: "cần cải thiện",
+    CVQualityLevel.WEAK: "còn yếu",
+}
+
 class ConversationNodes:
     def __init__(
         self,
         *,
         analyzer: ConversationIntentAnalyzer,
         cv_repository: CVRepository,
+        cv_analysis_service: CVAnalysisService,
         job_search_service: HybridJobSearchService,
         job_matching_service: JobMatchingService,
     ) -> None:
         self._analyzer = analyzer
         self._cv_repository = cv_repository
+        self._cv_analysis_service = cv_analysis_service
         self._job_search_service = job_search_service
         self._job_matching_service = job_matching_service
 
@@ -106,6 +117,50 @@ class ConversationNodes:
         )
 
         return {"intent": intent}
+
+    async def execute_cv_analysis(self, state: ConversationState) -> dict[str, Any]:
+        cv_profile = state.get("cv_profile")
+
+        if cv_profile is None:
+            missing_inputs = [RequiredInput.CV]
+
+            return {
+                "route": ConversationRoute.CLARIFICATION,
+                "status": ConversationStatus.NEEDS_CLARIFICATION,
+                "missing_inputs": missing_inputs,
+                "assistant_message": self._build_clarification_message(
+                    missing_inputs=missing_inputs,
+                    generated_question=None
+                ),
+            }
+
+        analysis_input = CVAnalysisInput(
+            cv_profile=cv_profile,
+            user_request=state["message"],
+        )
+
+        result = await self._cv_analysis_service.analyze(analysis_input)
+
+        assistant_message = self._build_cv_analysis_message(result)
+
+        logger.info(
+            "Conversation CV analysis completed",
+            extra={
+                "cv_id": state.get("cv_id"),
+                "overall_score": result.overall_score,
+                "quality_level": result.quality_level.value,
+                "confidence": result.confidence,
+            },
+        )
+
+        return {
+            "route": ConversationRoute.CV_ANALYSIS,
+            "status": ConversationStatus.COMPLETED,
+            "missing_inputs": [],
+            "assistant_message": assistant_message,
+            "cv_analysis_result": result,
+        }
+
 
     async def execute_job_search(self, state: ConversationState) -> dict[str, Any]:
         request = JobSearchRequest(
@@ -311,4 +366,14 @@ class ConversationNodes:
             f"Mức độ phù hợp của CV với công việc là "
             f"{result.overall_score:.2f}/100 "
             f"({recommendation_label}). {result.summary}"
+        )
+
+    @staticmethod
+    def _build_cv_analysis_message(result: CVAnalysisResult) -> str:
+        quality_label = CV_QUALITY_LABELS[result.quality_level]
+
+        return (
+            f"Điểm chất lượng nội dung CV của bạn là "
+            f"{result.overall_score:.2f}/100 "
+            f"(mức {quality_label}. {result.summary})"
         )
