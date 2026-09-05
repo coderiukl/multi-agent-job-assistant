@@ -24,9 +24,6 @@ from app.services.cv_analysis import CVAnalysisService
 logger = logging.getLogger(__name__)
 
 BUSINESS_ROUTE_MESSAGES: dict[ConversationRoute, str] = {
-    ConversationRoute.CV_ANALYSIS: (
-        "Yêu cầu phân tích CV đã được tiếp nhận."
-    ),
     ConversationRoute.CAREER_ADVICE: (
         "Yêu cầu tư vấn nghề nghiệp đã được tiếp nhận."
     ),
