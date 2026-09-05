@@ -1853,6 +1853,247 @@ a {
   font-size: 13px;
 }
 
+.career-advice-result {
+  display: grid;
+  gap: 22px;
+}
+
+.career-advice-overview {
+  padding: 24px;
+  border: 1px solid #dbe5f4;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.1), transparent 55%),
+    #ffffff;
+}
+
+.career-advice-overview h3 {
+  margin: 12px 0 8px;
+  color: #172033;
+  font-size: 1.4rem;
+}
+
+.career-advice-overview p {
+  margin: 0;
+  color: #4b5870;
+  line-height: 1.65;
+}
+
+.career-personalization-badge,
+.career-priority,
+.readiness-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.career-personalization-badge.personalized {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.career-personalization-badge.general {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.career-confidence {
+  display: block;
+  margin-top: 14px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.career-section {
+  display: grid;
+  gap: 14px;
+}
+
+.career-section > h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 1.05rem;
+}
+
+.career-skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.career-skill-chips span {
+  padding: 7px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.career-role-grid,
+.career-project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.career-role-card,
+.career-gap-card,
+.career-project-card,
+.career-next-action {
+  padding: 18px;
+  border: 1px solid #e1e8f2;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.career-role-card h4,
+.career-gap-card h4,
+.career-project-card h4,
+.career-next-action h4 {
+  margin: 0;
+  color: #172033;
+}
+
+.career-role-card > p,
+.career-gap-card > p,
+.career-project-card > p,
+.career-next-action p {
+  color: #526078;
+  line-height: 1.55;
+}
+
+.career-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.readiness-badge.ready {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.readiness-badge.nearly_ready {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.readiness-badge.developing {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.readiness-badge.exploring {
+  color: #5b21b6;
+  background: #ede9fe;
+}
+
+.career-gap-list,
+.career-next-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.career-priority.priority-high {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.career-priority.priority-medium {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.career-priority.priority-low {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.career-list {
+  margin-top: 14px;
+}
+
+.career-list strong {
+  color: #334155;
+  font-size: 0.86rem;
+}
+
+.career-list ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: #526078;
+}
+
+.career-list li + li {
+  margin-top: 6px;
+}
+
+.career-action-box {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f6f8fc;
+}
+
+.career-action-box p {
+  margin: 6px 0 0;
+}
+
+.career-roadmap {
+  display: grid;
+  gap: 12px;
+}
+
+.career-roadmap-step {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.career-phase {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #2563eb;
+  font-weight: 800;
+}
+
+.career-roadmap-content {
+  padding: 16px;
+  border: 1px solid #e1e8f2;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.career-roadmap-content > p {
+  color: #526078;
+}
+
+.career-roadmap-content .career-card-header span {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.career-next-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.career-next-action small {
+  color: #64748b;
+}
+
 /* Scrollbars */
 
 /* CV analysis result */
@@ -2327,6 +2568,24 @@ a {
   .cv-improvement-item .cv-section-label {
     margin-top: 0;
   }
+
+  .career-role-grid,
+  .career-project-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .career-advice-overview {
+    padding: 18px;
+  }
+
+  .career-card-header {
+    flex-direction: column;
+  }
+
+  .career-next-action {
+    flex-direction: column;
+  }
+  
   .evidence-item summary {
     align-items: flex-start;
     flex-direction: column;

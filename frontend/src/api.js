@@ -146,10 +146,92 @@ function normalizeConversationResponse(responseBody) {
     cvId: data?.cv_id ?? null,
     missingInputs: Array.isArray(data?.missing_inputs) ? data.missing_inputs : [],
     cvAnalysisResult: data?.cv_analysis_result ? normalizeCvAnalysisResult(data.cv_analysis_result) : null,
+    careerAdviceResult: data?.career_advice_result ? normalizeCareerAdviceResult(data.career_advice_result) : null,
     jobSearchResult: data?.job_search_result ? normalizeJobSearchResult(data.job_search_result) : null,
     jobMatchingResult: data?.job_matching_result
       ? normalizeJobMatchingResult(data.job_matching_result)
       : null,
+  };
+}
+
+function normalizeCareerAdviceResult(data) {
+  return {
+    careerGoal: data?.career_goal ?? "",
+    isPersonalized: Boolean(data?.is_personalized),
+    topPrioritySkills: normalizeStringList(data?.top_priority_skills),
+
+    recommendedRoles: Array.isArray(data?.recommended_roles)
+      ? data.recommended_roles.map(normalizeCareerRole)
+      : [],
+
+    skillGaps: Array.isArray(data?.skill_gaps)
+      ? data.skill_gaps.map(normalizeCareerSkillGap)
+      : [],
+
+    roadmap: Array.isArray(data?.roadmap)
+      ? data.roadmap.map(normalizeCareerRoadmapStep)
+      : [],
+
+    portfolioProjects: Array.isArray(data?.portfolio_projects)
+      ? data.portfolio_projects.map(normalizePortfolioProject)
+      : [],
+
+    nextActions: Array.isArray(data?.next_actions)
+      ? data.next_actions.map(normalizeCareerNextAction)
+      : [],
+
+    summary: data?.summary ?? "",
+    confidence: toNullableNumber(data?.confidence),
+  };
+}
+
+function normalizeCareerRole(data) {
+  return {
+    roleTitle: data?.role_title ?? "",
+    readinessLevel: data?.readiness_level ?? "exploring",
+    rationale: data?.rationale ?? "",
+    cvEvidence: normalizeStringList(data?.cv_evidence),
+    developmentNeeds: normalizeStringList(data?.development_needs),
+  };
+}
+
+function normalizeCareerSkillGap(data) {
+  return {
+    skill: data?.skill ?? "",
+    priority: data?.priority ?? "medium",
+    reason: data?.reason ?? "",
+    currentEvidence: normalizeStringList(data?.current_evidence),
+    recommendedAction: data?.recommended_action ?? "",
+  };
+}
+
+function normalizeCareerRoadmapStep(data) {
+  return {
+    phase: toNumber(data?.phase),
+    title: data?.title ?? "",
+    timeframe: data?.timeframe ?? "",
+    objective: data?.objective ?? "",
+    actions: normalizeStringList(data?.actions),
+    successCriteria: normalizeStringList(data?.success_criteria),
+  };
+}
+
+function normalizePortfolioProject(data) {
+  return {
+    title: data?.title ?? "",
+    purpose: data?.purpose ?? "",
+    skillsPracticed: normalizeStringList(data?.skills_practiced),
+    suggestedFeatures: normalizeStringList(data?.suggested_features),
+    expectedDeliverable: data?.expected_deliverable ?? "",
+  };
+}
+
+function normalizeCareerNextAction(data) {
+  return {
+    priority: data?.priority ?? "medium",
+    action: data?.action ?? "",
+    reason: data?.reason ?? "",
+    timeframe: data?.timeframe ?? null,
   };
 }
 
