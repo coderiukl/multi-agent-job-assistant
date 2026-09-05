@@ -300,7 +300,7 @@ def get_conversation_graph() -> CompiledStateGraph:
         cv_repository=get_cv_repository(),
         cv_analysis_service=get_cv_analysis_service(),
         career_advice_service=get_career_advice_service(),
-        cover_letter_service=get_conversation_graph(),
+        cover_letter_service=get_cover_letter_service(),
         job_search_service=get_job_search_service(),
         job_matching_service=get_job_matching_service(),
     )
