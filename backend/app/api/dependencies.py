@@ -10,7 +10,7 @@ from langgraph.graph.state import CompiledStateGraph
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.agents import CVParserAgent, JobSearchAgent, JobMatchingAgent
+from app.agents import CVParserAgent, JobSearchAgent, JobMatchingAgent, CVAnalysisAgent
 
 from app.core.config import get_settings
 from app.database import JobSessionFactory, create_job_database_engine, create_job_session_factory
@@ -25,6 +25,7 @@ from app.repositories.postgres_job_search import PostgresJobSearchRepository
 from app.services.conversation import ConversationIntentAnalyzer, ConversationService
 from app.services.cv_ingestion import CVIngestionService
 from app.services.cv_processing import CVProcessingService
+from app.services.cv_analysis import CVAnalysisService
 from app.services.job_search import HybridJobSearchService
 from app.services.job_matching import JobMatchingService
 from app.services.storage import LocalStorageService, StorageService
@@ -64,6 +65,21 @@ def get_pdf_text_merger() -> PdfTextMerger:
 @lru_cache
 def get_chat_model() -> BaseChatModel:
     return LLMFactory.create_chat_model(get_settings())
+
+@lru_cache
+def get_cv_analysis_agent() -> CVAnalysisAgent:
+    return CVAnalysisAgent(llm=get_chat_model(), settings=get_settings())
+
+
+@lru_cache
+def get_cv_analysis_service() -> CVAnalysisService:
+    return CVAnalysisService(agent=get_cv_analysis_agent())
+
+
+CVAnalysisServiceDependency = Annotated[
+    CVAnalysisService,
+    Depends(get_cv_analysis_service),
+]
 
 def get_cv_parser_agent(llm: BaseChatModel = Depends(get_chat_model)) -> CVParserAgent:
     return CVParserAgent(llm=llm, settings=get_settings())
@@ -189,6 +205,9 @@ async def close_job_search_resources() -> None:
 
     if get_job_database_engine.cache_info().currsize:
         await get_job_database_engine().dispose()
+
+    get_cv_analysis_service.cache_clear()
+    get_cv_analysis_agent.cache_clear()
 
     get_job_search_service.cache_clear()
     get_job_search_agent.cache_clear()
