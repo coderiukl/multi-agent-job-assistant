@@ -20,7 +20,7 @@
     <div class="app-shell">
       <header class="app-header">
         <a class="brand" href="/" aria-label="Job Search AI">
-          <span class="brand-logo">CP</span>
+          <span class="brand-logo">Job AI</span>
 
           <span class="brand-content">
             <strong>Job Search AI</strong>
@@ -44,8 +44,39 @@
         </div>
       </header>
 
-      <main class="workspace">
-        <section class="chat-panel" aria-label="Trợ lý hội thoại">
+      <nav
+        class="mobile-workspace-tabs"
+        aria-label="Chọn khu vực làm việc"
+        role="tablist"
+      >
+        <button
+          type="button"
+          class="mobile-tab is-active"
+          data-panel="chat"
+          aria-controls="chat-panel"
+          aria-selected="true"
+          role="tab"
+        >
+          Chat
+        </button>
+
+        <button
+          type="button"
+          class="mobile-tab"
+          data-panel="results"
+          aria-controls="results-panel"
+          aria-selected="false"
+          role="tab"
+        >
+          Kết quả
+          <span id="mobile-results-badge" class="mobile-tab-badge" hidden>
+            0
+          </span>
+        </button>
+      </nav>
+
+      <main class="workspace" data-active-panel="chat">
+        <section id="chat-panel" class="chat-panel" aria-label="Trợ lý hội thoại" role="tabpanel">
           <header class="panel-header">
             <div>
               <span class="eyebrow">AI CAREER ASSISTANT</span>
@@ -159,9 +190,16 @@
 
                 <div class="job-description-actions">
                   <span id="job-description-count">0/20.000</span>
+                  <button id="edit-jd-button" type="button" hidden>Chỉnh JD</button>
                   <button id="clear-jd-button" type="button">Xóa JD</button>
                 </div>
               </div>
+
+              <div
+                id="job-description-summary"
+                class="job-description-summary"
+                hidden
+              ></div>
 
               <textarea
                 id="job-description-input"
@@ -175,6 +213,29 @@
                 CV phải được tải lên thành công trước khi so khớp.
               </p>
             </section>
+
+            <div id="composer-actions" class="composer-actions" aria-label="Tác vụ nhanh">
+              <button
+                type="button"
+                data-action="open-matching"
+              >
+                So khớp JD
+              </button>
+
+              <button
+                type="button"
+                data-message="Tìm công việc phù hợp với CV của tôi"
+              >
+                Tìm theo CV
+              </button>
+
+              <button
+                type="button"
+                data-message="Tạo kế hoạch cải thiện CV trong 7 ngày"
+              >
+                Cải thiện CV
+              </button>
+            </div>
 
             <form id="chat-form" class="chat-form">
               <input
@@ -202,7 +263,7 @@
                 aria-label="Đính kèm CV"
                 title="Đính kèm CV"
               >
-                +
+                CV
               </button>
 
               <textarea
@@ -225,17 +286,28 @@
             </form>
 
             <p class="ai-warning">
-              CareerPilot có thể mắc lỗi. Hãy kiểm tra lại thông tin
+              Job Search AI có thể mắc lỗi. Hãy kiểm tra lại thông tin
               quan trọng trước khi ứng tuyển.
             </p>
           </footer>
         </section>
 
-        <section class="results-panel" aria-label="Kết quả công việc">
+        <section id="results-panel" class="results-panel" aria-label="Kết quả công việc" role="tabpanel">
           <header class="results-header">
-            <div>
-              <span id="results-eyebrow" class="eyebrow">JOB DISCOVERY</span>
-              <h2 id="results-title">Công việc phù hợp</h2>
+            <div class="results-heading">
+              <button
+                id="back-to-jobs-button"
+                class="back-to-jobs-button"
+                type="button"
+                hidden
+              >
+                ← Danh sách job
+              </button>
+
+              <div>
+                <span id="results-eyebrow" class="eyebrow">JOB DISCOVERY</span>
+                <h2 id="results-title">Công việc phù hợp</h2>
+              </div>
             </div>
 
             <select
@@ -294,6 +366,9 @@
       class="job-detail-drawer"
       aria-label="Chi tiết công việc"
       aria-hidden="true"
+      aria-modal="true"
+      role="dialog"
+      tabindex="-1"
     >
       <header class="drawer-header">
         <span>Chi tiết công việc</span>
