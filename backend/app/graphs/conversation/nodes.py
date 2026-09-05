@@ -372,5 +372,5 @@ class ConversationNodes:
         return (
             f"Điểm chất lượng nội dung CV của bạn là "
             f"{result.overall_score:.2f}/100 "
-            f"(mức {quality_label}. {result.summary})"
+            f"(mức {quality_label}). {result.summary}"
         )
