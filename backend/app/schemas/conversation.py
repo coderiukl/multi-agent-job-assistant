@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.job_search import JobSearchResult
 from app.schemas.job_matching import JobMatchingResult
+from app.schemas.cv_analysis import CVAnalysisResult
 
 class ConversationRoute(StrEnum):
     CLARIFICATION = "clarification"
@@ -39,5 +40,6 @@ class ConversationResponseData(BaseModel):
 
     job_search_result: JobSearchResult | None = None
     job_matching_result: JobMatchingResult | None = None
+    cv_analysis_result: CVAnalysisResult | None = None
     
     
