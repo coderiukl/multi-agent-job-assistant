@@ -20,6 +20,7 @@ const state = {
   matchingMode: false,
   jobDescription: "",
   currentMatchingResult: null,
+  currentCvAnalysisResult: null,
 
   isSending: false,
   jobs: [],
@@ -366,6 +367,15 @@ async function handleSubmit(event) {
         message,
         conversation.jobSearchResult,
       );
+    }
+
+    if (
+      conversation.route === "cv_analysis" &&
+      conversation.cvAnalysisResult
+    ) {
+      renderCvAnalysisResult(
+        conversation.cvAnalysisResult,
+      )
     }
 
     if (
@@ -846,6 +856,284 @@ function renderJobSearchResult(result) {
   elements.jobResults.innerHTML = items.map(renderJobCard).join("");
 }
 
+function renderCvAnalysisResult(result) {
+  state.currentCvAnalysisResult = result;
+  state.currentMatchingResult = null;
+
+  const score = clampMatchingScore(result?.overallScore);
+  const breakdown = result?.breakdown ?? {};
+  const strengths = Array.isArray(result?.strengths)
+    ? result.strengths : [];
+
+  const weaknesses = Array.isArray(result?.weaknesses)
+    ? result.weaknesses : [];
+
+  const improvements = Array.isArray(result?.improvements)
+    ? result.improvements : [];
+
+  const qualityLevel = result?.qualityLevel ?? "needs_improvement";
+
+  elements.resultsEyebrow.textContent = "CV ANALYSIS";
+  elements.resultsTitle.textContent = "Phân tích CV";
+  elements.resultsSummary.hidden = true;
+  elements.jobSort.disabled = true;
+
+  elements.backToJobsButton.hidden =
+    !state.currentSearchResult ||
+    !state.jobs.length;
+
+  updateMobileResultsBadge(1);
+  showResultsPanelOnMobile();
+
+  elements.jobResults.innerHTML = `
+    <section
+      class="matching-result cv-analysis-result"
+      aria-label="Kết quả phân tích CV"
+    >
+      <header class="matching-overview">
+        <div
+          class="matching-score-ring"
+          style="--matching-score: ${score}"
+          aria-label="Điểm chất lượng CV ${score.toFixed(2)} trên 100"
+        >
+          <strong>${score.toFixed(2)}</strong>
+          <span>/100</span>
+        </div>
+
+        <div class="matching-summary">
+          <span
+            class="recommendation-badge ${getCvQualityBadgeClass(
+              qualityLevel,
+            )}"
+          >
+            ${escapeHtml(
+              getCvQualityLabel(qualityLevel),
+            )}
+          </span>
+
+          <h3>Chất lượng nội dung CV</h3>
+
+          <p>
+            ${escapeHtml(
+              result?.summary ||
+                "Chưa có nhận xét tổng quan.",
+            )}
+          </p>
+
+          ${
+            result?.confidence === null ||
+            result?.confidence === undefined
+              ? ""
+              : `
+                <small>
+                  Độ tin cậy đánh giá:
+                  ${Math.round(
+                    result.confidence * 100,
+                  )}%
+                </small>
+              `
+          }
+        </div>
+      </header>
+
+      <section class="matching-section">
+        <h3>Điểm thành phần</h3>
+
+        <div class="breakdown-grid">
+          ${renderBreakdownItem(
+            "Độ đầy đủ",
+            breakdown.completeness,
+          )}
+
+          ${renderBreakdownItem(
+            "Giới thiệu bản thân",
+            breakdown.professionalSummary,
+          )}
+
+          ${renderBreakdownItem(
+            "Kỹ năng",
+            breakdown.skills,
+          )}
+
+          ${renderBreakdownItem(
+            "Kinh nghiệm",
+            breakdown.workExperience,
+          )}
+
+          ${renderBreakdownItem(
+            "Dự án",
+            breakdown.projects,
+          )}
+
+          ${renderBreakdownItem(
+            "Học vấn & chứng chỉ",
+            breakdown.educationAndCredentials,
+          )}
+        </div>
+      </section>
+
+      <div class="matching-columns">
+        ${renderCvFindingList(
+          "Điểm mạnh",
+          strengths,
+          "strength",
+          "Chưa xác định được điểm mạnh nổi bật.",
+        )}
+
+        ${renderCvFindingList(
+          "Điểm cần cải thiện",
+          weaknesses,
+          "gap",
+          "Chưa ghi nhận điểm yếu quan trọng.",
+        )}
+      </div>
+
+      <section class="matching-section cv-improvements">
+        <h3>Đề xuất cải thiện</h3>
+
+        ${
+          improvements.length
+            ? `
+              <div class="cv-improvement-list">
+                ${improvements
+                  .map(renderCvImprovement)
+                  .join("")}
+              </div>
+            `
+            : `
+              <p class="matching-empty-text">
+                Chưa có đề xuất cải thiện.
+              </p>
+            `
+        }
+      </section>
+    </section>
+  `;
+}
+
+function renderCvFindingList(
+  title,
+  items,
+  variant,
+  emptyMessage,
+) {
+  return `
+    <section
+      class="matching-list-card ${escapeHtml(variant)}"
+    >
+      <h3>${escapeHtml(title)}</h3>
+
+      ${
+        items.length
+          ? `
+            <ul class="cv-finding-list">
+              ${items
+                .map((item) => {
+                  const evidence = Array.isArray(
+                    item?.cvEvidence,
+                  )
+                    ? item.cvEvidence
+                    : [];
+
+                  return `
+                    <li>
+                      <strong>
+                        ${escapeHtml(
+                          item?.finding ||
+                            "Chưa có nhận xét.",
+                        )}
+                      </strong>
+
+                      <span class="cv-section-label">
+                        ${escapeHtml(
+                          getCvSectionLabel(
+                            item?.section,
+                          ),
+                        )}
+                      </span>
+
+                      ${
+                        evidence.length
+                          ? `
+                            <ul class="cv-finding-evidence">
+                              ${evidence
+                                .map(
+                                  (value) => `
+                                    <li>
+                                      ${escapeHtml(value)}
+                                    </li>
+                                  `,
+                                )
+                                .join("")}
+                            </ul>
+                          `
+                          : ""
+                      }
+                    </li>
+                  `;
+                })
+                .join("")}
+            </ul>
+          `
+          : `<p>${escapeHtml(emptyMessage)}</p>`
+      }
+    </section>
+  `;
+}
+
+function renderCvImprovement(item) {
+  const priority = item?.priority ?? "medium";
+
+  return `
+    <article
+      class="cv-improvement-item priority-${escapeHtml(
+        priority,
+      )}"
+    >
+      <header>
+        <span
+          class="cv-priority-badge ${escapeHtml(
+            priority,
+          )}"
+        >
+          ${escapeHtml(
+            getImprovementPriorityLabel(priority),
+          )}
+        </span>
+
+        <span class="cv-section-label">
+          ${escapeHtml(
+            getCvSectionLabel(item?.section),
+          )}
+        </span>
+      </header>
+
+      <h4>
+        ${escapeHtml(
+          item?.issue || "Nội dung cần cải thiện",
+        )}
+      </h4>
+
+      <p>
+        ${escapeHtml(
+          item?.suggestion ||
+            "Chưa có hướng dẫn cụ thể.",
+        )}
+      </p>
+
+      ${
+        item?.example
+          ? `
+            <div class="cv-improvement-example">
+              <strong>Ví dụ tham khảo</strong>
+              <p>${escapeHtml(item.example)}</p>
+            </div>
+          `
+          : ""
+      }
+    </article>
+  `;
+}
 
 function renderJobMatchingResult(result) {
   state.currentMatchingResult = result;
@@ -1897,6 +2185,7 @@ function resetConversation() {
   state.currentSort = "relevance";
   state.selectedJob = null;
   state.currentMatchingResult = null;
+  state.currentCvAnalysisResult = null;
   state.matchingMode = false;
   state.jobDescription = "";
   state.isSending = false;
@@ -2215,6 +2504,56 @@ function getStrategyLabel(strategy) {
   return labels[strategy] ?? "Tìm kiếm công việc";
 }
 
+function getCvQualityLabel(value) {
+  const labels = {
+    excellent: "Rất tốt",
+    good: "Tốt",
+    needs_improvement: "Cần cải thiện",
+    weak: "Còn yếu",
+  };
+
+  return labels[value] ?? "Chưa xác định";
+}
+
+
+function getCvQualityBadgeClass(value) {
+  const classes = {
+    excellent: "strong_match",
+    good: "good_match",
+    needs_improvement: "partial_match",
+    weak: "low_match",
+  };
+
+  return classes[value] ?? "partial_match";
+}
+
+
+function getImprovementPriorityLabel(value) {
+  const labels = {
+    high: "Ưu tiên cao",
+    medium: "Ưu tiên vừa",
+    low: "Ưu tiên thấp",
+  };
+
+  return labels[value] ?? "Ưu tiên vừa";
+}
+
+
+function getCvSectionLabel(value) {
+  const labels = {
+    personal_information: "Thông tin cá nhân",
+    professional_summary: "Giới thiệu",
+    skills: "Kỹ năng",
+    work_experience: "Kinh nghiệm",
+    education: "Học vấn",
+    projects: "Dự án",
+    certifications: "Chứng chỉ",
+    languages: "Ngoại ngữ",
+    general: "Tổng thể",
+  };
+
+  return labels[value] ?? "Tổng thể";
+}
 
 function getRecommendationLabel(value) {
   const labels = {
