@@ -13,20 +13,19 @@ from app.schemas.conversation import ConversationRoute, ConversationStatus, Requ
 from app.schemas.job_search import JobSearchResult, JobSearchRequest
 from app.schemas.job_matching import JobMatchingInput, JobMatchingResult, JobMatchTarget, MatchRecommendation
 from app.schemas.cv_analysis import CVAnalysisInput, CVAnalysisResult, CVQualityLevel
+from app.schemas.career_advice import CareerAdviceInput, CareerAdviceResult
 
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.job_search import HybridJobSearchService
 from app.services.job_search_context import build_job_search_context
 from app.services.job_matching import JobMatchingService
 from app.services.cv_analysis import CVAnalysisService
+from app.services.career_advice import CareerAdviceService
 
 
 logger = logging.getLogger(__name__)
 
 BUSINESS_ROUTE_MESSAGES: dict[ConversationRoute, str] = {
-    ConversationRoute.CAREER_ADVICE: (
-        "Yêu cầu tư vấn nghề nghiệp đã được tiếp nhận."
-    ),
     ConversationRoute.COVER_LETTER: (
         "Yêu cầu tạo thư ứng tuyển đã được tiếp nhận."
     ),
@@ -53,12 +52,14 @@ class ConversationNodes:
         analyzer: ConversationIntentAnalyzer,
         cv_repository: CVRepository,
         cv_analysis_service: CVAnalysisService,
+        career_advice_service: CareerAdviceService,
         job_search_service: HybridJobSearchService,
         job_matching_service: JobMatchingService,
     ) -> None:
         self._analyzer = analyzer
         self._cv_repository = cv_repository
         self._cv_analysis_service = cv_analysis_service
+        self._career_advice_service = career_advice_service
         self._job_search_service = job_search_service
         self._job_matching_service = job_matching_service
 
@@ -158,6 +159,32 @@ class ConversationNodes:
             "cv_analysis_result": result,
         }
 
+    async def execute_career_advice(self, state: ConversationState) -> dict[str, Any]:
+        advice_input = CareerAdviceInput(
+            user_request=state["message"],
+            cv_profile=state.get("cv_profile"),
+        )
+
+        result = await self._career_advice_service.advise(advice_input)
+        assistant_message = self._build_career_advice_message(result)
+
+        logger.info(
+            "Conversation career advice completed",
+            extra={
+                "cv_id": state.get("cv_id"),
+                "is_personalized": result.is_personalized,
+                "recommended_role_count": len(result.recommended_roles),
+                "confidence": result.confidence,
+            },
+        )
+
+        return {
+            "route": ConversationRoute.CAREER_ADVICE,
+            "status": ConversationStatus.COMPLETED,
+            "missing_inputs": [],
+            "assistant_message": assistant_message,
+            "career_advice_result": result,
+        }
 
     async def execute_job_search(self, state: ConversationState) -> dict[str, Any]:
         request = JobSearchRequest(
@@ -374,3 +401,21 @@ class ConversationNodes:
             f"{result.overall_score:.2f}/100 "
             f"(mức {quality_label}). {result.summary}"
         )
+
+    @staticmethod
+    def _build_career_advice_message(result: CareerAdviceResult) -> str:
+        prefix = (
+            "Dựa trên thông tin trong CV của bạn, "
+            if result.is_personalized
+            else "Dựa trên mục tiêu bạn cung cấp, "
+        )
+
+        if result.recommended_roles:
+            primary_role = result.recommended_roles[0].role_title
+
+            return (
+                f"{prefix}hướng ưu tiên là "
+                f"{primary_role}. {result.summary}"
+            )
+
+        return f"{prefix}{result.summary}"

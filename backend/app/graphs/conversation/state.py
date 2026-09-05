@@ -8,6 +8,7 @@ from app.schemas.conversation import (
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cv_profile import CVProfile
 from app.schemas.cv_analysis import CVAnalysisResult
+from app.schemas.career_advice import CareerAdviceResult
 from app.schemas.job_search import JobSearchResult
 from app.schemas.job_matching import JobMatchingResult
 
@@ -32,6 +33,7 @@ class ConversationState(TypedDict, total=False):
 
     # Kết quả của các business agent
     cv_analysis_result: CVAnalysisResult | None
+    career_advice_result: CareerAdviceResult | None
     job_search_result: JobSearchResult | None
     job_matching_result: JobMatchingResult | None
 

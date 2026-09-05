@@ -16,6 +16,7 @@ def build_conversation_graph(nodes: ConversationNodes) -> CompiledStateGraph:
     graph.add_node("general_question", nodes.respond_general_question)
     graph.add_node("business_task", nodes.dispatch_business_task)
     graph.add_node("cv_analysis", nodes.execute_cv_analysis)
+    graph.add_node("career_advice", nodes.execute_career_advice)
     graph.add_node("job_search", nodes.execute_job_search)
     graph.add_node("job_matching", nodes.execute_job_matching)
 
@@ -33,7 +34,7 @@ def build_conversation_graph(nodes: ConversationNodes) -> CompiledStateGraph:
             ConversationRoute.CV_ANALYSIS: "cv_analysis",
             ConversationRoute.JOB_SEARCH: "job_search",
             ConversationRoute.JOB_MATCHING: "job_matching",
-            ConversationRoute.CAREER_ADVICE: "business_task",
+            ConversationRoute.CAREER_ADVICE: "career_advice",
             ConversationRoute.COVER_LETTER: "business_task",
         },
     )
@@ -44,6 +45,7 @@ def build_conversation_graph(nodes: ConversationNodes) -> CompiledStateGraph:
     graph.add_edge("general_question", END)
     graph.add_edge("business_task", END)
     graph.add_edge("cv_analysis", END)
+    graph.add_edge("career_advice", END)
     graph.add_edge("job_search", END)
     graph.add_edge("job_matching", END)
 

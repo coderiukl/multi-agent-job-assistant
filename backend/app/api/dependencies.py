@@ -19,12 +19,21 @@ from app.embeddings import EmbeddingFactory
 from app.graphs.conversation import ConversationNodes, build_conversation_graph
 from app.llm import LLMFactory
 
+from app.agents import (
+    CareerAdviceAgent,
+    CVAnalysisAgent,
+    CVParserAgent,
+    JobMatchingAgent,
+    JobSearchAgent,
+)
+
 from app.repositories.cv import CVRepository, LocalJsonCVRepository
 from app.repositories.postgres_job_search import PostgresJobSearchRepository
 
 from app.services.conversation import ConversationIntentAnalyzer, ConversationService
 from app.services.cv_ingestion import CVIngestionService
 from app.services.cv_processing import CVProcessingService
+from app.services.career_advice import CareerAdviceService
 from app.services.cv_analysis import CVAnalysisService
 from app.services.job_search import HybridJobSearchService
 from app.services.job_matching import JobMatchingService
@@ -79,6 +88,26 @@ def get_cv_analysis_service() -> CVAnalysisService:
 CVAnalysisServiceDependency = Annotated[
     CVAnalysisService,
     Depends(get_cv_analysis_service),
+]
+
+@lru_cache
+def get_career_advice_agent() -> CareerAdviceAgent:
+    return CareerAdviceAgent(
+        llm=get_chat_model(),
+        settings=get_settings(),
+    )
+
+
+@lru_cache
+def get_career_advice_service() -> CareerAdviceService:
+    return CareerAdviceService(
+        agent=get_career_advice_agent(),
+    )
+
+
+CareerAdviceServiceDependency = Annotated[
+    CareerAdviceService,
+    Depends(get_career_advice_service),
 ]
 
 def get_cv_parser_agent(llm: BaseChatModel = Depends(get_chat_model)) -> CVParserAgent:
@@ -209,6 +238,9 @@ async def close_job_search_resources() -> None:
     get_cv_analysis_service.cache_clear()
     get_cv_analysis_agent.cache_clear()
 
+    get_career_advice_service.cache_clear()
+    get_career_advice_agent.cache_clear()
+
     get_job_search_service.cache_clear()
     get_job_search_agent.cache_clear()
 
@@ -248,6 +280,7 @@ def get_conversation_graph() -> CompiledStateGraph:
         analyzer=analyzer,
         cv_repository=get_cv_repository(),
         cv_analysis_service=get_cv_analysis_service(),
+        career_advice_service=get_career_advice_service(),
         job_search_service=get_job_search_service(),
         job_matching_service=get_job_matching_service(),
     )
