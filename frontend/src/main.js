@@ -1,21 +1,5 @@
-import {
-  deleteConversationHistory,
-  getConversationHistory,
-  searchJobs,
-  sendConversationMessage,
-  uploadCv,
-} from "./api.js";
-
-import {
-  MAX_CONVERSATION_TITLE_LENGTH,
-  MAX_SAVED_CONVERSATIONS,
-} from "./core/constants.js";
-
-import {
-  createThreadId,
-  persistConversationThreads,
-  persistThreadId,
-} from "./core/conversation-storage.js";
+import { searchJobs } from "./api.js";
+import { createThreadId } from "./core/conversation-storage.js";
 
 import { state } from "./core/state.js";
 import { elements } from "./core/elements.js";
@@ -41,7 +25,9 @@ import {
   getStrategyLabel,
   getWorkModeLabel,
 } from "./shared/labels.js";
-import { validateCvFile } from "./features/cv/cv-validator.js";
+import { createChatController } from "./features/chat/chat-controller.js";
+import { createHistoryController } from "./features/conversation-history/history-controller.js";
+import { createCvController } from "./features/cv/cv-controller.js";
 import {
   appendMessage,
   removeTypingIndicator as removeTyping,
@@ -52,226 +38,39 @@ import {
 import "./css/index.css";
 
 
-function saveThreadId(threadId) {
-  state.threadId = threadId;
-  persistThreadId(threadId);
-}
+const historyController = createHistoryController({
+  addMessage,
+  resetConversation,
+  showError,
+});
 
+const chatController = createChatController({
+  addMessage,
+  clearError,
+  closeJobDetail,
+  handleJobSearchConversation,
+  rememberConversationThread:
+    historyController.rememberConversationThread,
+  removeTypingIndicator,
+  renderCareerAdviceResult,
+  renderCoverLetterResult,
+  renderCvAnalysisResult,
+  renderJobMatchingResult,
+  renderWorkflowJobRecommendations,
+  resizeMessageInput,
+  saveThreadId: historyController.saveThreadId,
+  setComposerDisabled,
+  showError,
+  showTypingIndicator,
+  updateComposerContext,
+});
 
-function saveConversationThreads() {
-  persistConversationThreads(state.conversationThreads);
-}
-
-
-function rememberConversationThread({
-  threadId,
-  firstMessage,
-}) {
-  const existingThread = state.conversationThreads.find(
-    (thread) => thread.threadId === threadId,
-  );
-
-  const nextThread = {
-    threadId,
-    title:
-      existingThread?.title ??
-      createConversationTitle(firstMessage),
-    updatedAt: new Date().toISOString(),
-  };
-
-  state.conversationThreads = [
-    nextThread,
-    ...state.conversationThreads.filter(
-      (thread) => thread.threadId !== threadId,
-    ),
-  ].slice(0, MAX_SAVED_CONVERSATIONS);
-
-  saveConversationThreads();
-  renderConversationHistory();
-}
-
-function createConversationTitle(message) {
-  const normalizedMessage = String(message ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!normalizedMessage) {
-    return "Cuộc trò chuyện mới";
-  }
-
-  if (
-    normalizedMessage.length <=
-    MAX_CONVERSATION_TITLE_LENGTH
-  ) {
-    return normalizedMessage;
-  }
-
-  return (
-    normalizedMessage.slice(
-      0,
-      MAX_CONVERSATION_TITLE_LENGTH - 1,
-    ).trimEnd() + "…"
-  );
-}
-
-function renderConversationHistory() {
-  const list = elements.conversationHistoryList;
-  const emptyState = elements.conversationHistoryEmpty;
-
-  if (!list || !emptyState) {
-    return;
-  }
-
-  list.innerHTML = "";
-
-  emptyState.hidden =
-    state.conversationThreads.length > 0;
-
-  for (const thread of state.conversationThreads) {
-    const row = document.createElement("div");
-    const button = document.createElement("button");
-    const deleteButton = document.createElement("button");
-
-    row.className = "conversation-history-row";
-    button.type = "button";
-    button.className = "conversation-history-item";
-    button.dataset.threadId = thread.threadId;
-
-    deleteButton.type = "button";
-    deleteButton.className = "conversation-history-delete";
-    deleteButton.dataset.deleteThreadId = thread.threadId;
-    deleteButton.setAttribute(
-      "aria-label",
-      `Xóa cuộc trò chuyện ${thread.title}`,
-    );
-    deleteButton.title = "Xóa cuộc trò chuyện";
-    deleteButton.textContent = "×";
-
-    const isActive = thread.threadId === state.threadId;
-
-    button.classList.toggle("is-active", isActive);
-
-    if (isActive) {
-      button.setAttribute("aria-current", "true");
-    }
-
-    const title = document.createElement("span");
-
-    title.className = "conversation-history-title";
-    title.textContent = thread.title;
-
-    const time = document.createElement("span");
-
-    time.className = "conversation-history-time";
-    time.textContent = formatConversationTime(
-      thread.updatedAt,
-    );
-
-    button.append(title, time);
-    row.append(button, deleteButton);
-    list.append(row);
-  }
-}
-
-
-function formatConversationTime(value) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const today = new Date();
-  const isToday =
-    date.getFullYear() === today.getFullYear() &&
-    date.getMonth() === today.getMonth() &&
-    date.getDate() === today.getDate();
-
-  if (isToday) {
-    return new Intl.DateTimeFormat("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date);
-  }
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
-}
-
-async function handleConversationHistoryClick(event) {
-  const deleteButton = event.target.closest(
-    "[data-delete-thread-id]",
-  );
-
-  if (deleteButton) {
-    await deleteConversationThread(
-      deleteButton.dataset.deleteThreadId,
-    );
-    return;
-  }
-
-  const button = event.target.closest(
-    "[data-thread-id]",
-  );
-
-  if (!button) {
-    return;
-  }
-
-  const threadId = button.dataset.threadId;
-
-  if (!threadId || threadId === state.threadId) {
-    return;
-  }
-
-  saveThreadId(threadId);
-
-  // Reload để reset toàn bộ workspace và gọi API restore history.
-  window.location.reload();
-}
-
-
-async function deleteConversationThread(threadId) {
-  if (!threadId) {
-    return;
-  }
-
-  const thread = state.conversationThreads.find(
-    (item) => item.threadId === threadId,
-  );
-  const confirmed = window.confirm(
-    `Xóa cuộc trò chuyện “${thread?.title ?? "này"}”?`,
-  );
-
-  if (!confirmed) {
-    return;
-  }
-
-  try {
-    await deleteConversationHistory(threadId);
-  } catch (error) {
-    showError(
-      error?.message ??
-      "Không thể xóa cuộc trò chuyện.",
-    );
-    return;
-  }
-
-  state.conversationThreads = state.conversationThreads.filter(
-    (item) => item.threadId !== threadId,
-  );
-  saveConversationThreads();
-
-  if (threadId === state.threadId) {
-    resetConversation();
-    return;
-  }
-
-  renderConversationHistory();
-}
+const cvController = createCvController({
+  addMessage,
+  clearError,
+  showError,
+  updateComposerContext,
+});
 
 initializeApplication().catch((error) => {
   console.error(
@@ -287,58 +86,14 @@ async function initializeApplication() {
   setActiveWorkspacePanel("chat");
   updateComposerContext();
   showInitialJobState();
-  renderConversationHistory();
+  historyController.renderConversationHistory();
 
-  const restored = await restoreConversationHistory();
+  const restored = await historyController.restoreConversationHistory();
 
   if (!restored) {
     addWelcomeMessage();
   }
 }
-
-async function restoreConversationHistory() {
-  try {
-    const history = await getConversationHistory(
-      state.threadId,
-    );
-
-    if (!history.messages.length) {
-      return false;
-    }
-
-    saveThreadId(history.threadId);
-
-    for (const message of history.messages) {
-      addMessage({
-        role: message.role,
-        text: message.text,
-      });
-    }
-
-    const firstUserMessage = history.messages.find(
-      (message) => message.role === "user",
-    );
-
-    if (firstUserMessage) {
-      rememberConversationThread({
-        threadId: history.threadId,
-        firstMessage: firstUserMessage.text,
-      });
-    }
-
-    elements.suggestionList.hidden = true;
-
-    return true;
-  } catch (error) {
-    console.warn(
-      "Conversation history could not be restored:",
-      error,
-    );
-
-    return false;
-  }
-}
-
 
 function addWelcomeMessage() {
   addMessage({
@@ -373,7 +128,7 @@ function bindEvents() {
 
   elements.chatForm.addEventListener(
     "submit",
-    handleSubmit,
+    chatController.handleSubmit,
   );
 
   elements.toggleJdButton.addEventListener(
@@ -410,12 +165,12 @@ function bindEvents() {
 
   elements.cvInput.addEventListener(
     "change",
-    handleCvSelection,
+    cvController.handleSelection,
   );
 
   elements.removeCvButton.addEventListener(
     "click",
-    removeCv,
+    cvController.remove,
   );
 
   elements.newChatButton.addEventListener(
@@ -440,7 +195,7 @@ function bindEvents() {
 
   elements.conversationHistoryList?.addEventListener(
     "click",
-    handleConversationHistoryClick,
+    historyController.handleHistoryClick,
   );
 
   elements.suggestionList.addEventListener(
@@ -651,272 +406,6 @@ function updateMobileResultsBadge(count) {
     normalizedCount > 99 ? "99+" : String(normalizedCount);
 }
 
-function readComposerInput() {
-  const typedMessage = elements.messageInput.value.trim();
-  const jobDescription = state.matchingMode
-    ? elements.jobDescriptionInput.value.trim()
-    : null;
-  const defaultMatchingMessage =
-    "Hãy đánh giá mức độ phù hợp giữa CV của tôi và công việc này";
-
-  return {
-    message: typedMessage || (jobDescription ? defaultMatchingMessage : ""),
-    jobDescription,
-  };
-}
-
-function validateComposerInput({message, jobDescription}) {
-  if (!message) {
-    return null;
-  }
-
-  if (state.isSending) {
-    return null;
-  }
-
-  if (state.matchingMode && !state.uploadedCvId) {
-    return "Hãy tải lên CV và chờ phân tích thành công trước khi thực hiện yêu cầu với JD.";
-  }
-
-  if (state.matchingMode && !jobDescription) {
-    return "Hãy dán Job Description cần so khớp";
-  }
-
-  if (state.cvUploadStatus === "uploading") {
-    return "CV đang được tải lên và xử lý. Vui lòng chờ hoàn tất.";
-  }
-
-  return null;
-}
-
-function canSubmitComposer(input) {
-  return Boolean(input.message) && !state.isSending;
-}
-
-function clearComposerAfterSubmit() {
-  elements.messageInput.value = "";
-  elements.suggestionList.hidden = true;
-
-  resizeMessageInput();
-  updateComposerContext();
-}
-
-async function handleConversationResult(conversation, originalMessage) {
-  state.currentWorkflow = conversation.workflow;
-  state.workflowJobMatches = conversation.workflowJobMatches;
-
-  switch (conversation.route) {
-    case "job_search":
-      await handleJobSearchRoute(conversation, originalMessage);
-      break;
-
-    case "cv_analysis":
-      if (conversation.cvAnalysisResult) {
-        renderCvAnalysisResult(conversation.cvAnalysisResult);
-      }
-      break;
-
-    case "cover_letter":
-      if (conversation.coverLetterResult) {
-        renderCoverLetterResult(conversation.coverLetterResult);
-      }
-      break;
-
-    case "career_advice":
-      if (conversation.careerAdviceResult) {
-        renderCareerAdviceResult(conversation.careerAdviceResult);
-      }
-      break;
-
-    case "job_matching":
-      if (conversation.jobMatchingResult) {
-        renderJobMatchingResult(conversation.jobMatchingResult);
-      }
-      break;
-
-    default:
-      break;
-  }
-}
-
-async function handleJobSearchRoute(conversation, originalMessage) {
-  if (conversation.workflowJobMatches.length) {
-    renderWorkflowJobRecommendations(
-      conversation.jobSearchResult,
-      conversation.workflowJobMatches,
-      conversation.careerAdviceResult,
-    );
-
-    return;
-  }
-
-  await handleJobSearchConversation(
-    originalMessage,
-    conversation.jobSearchResult,
-  );
-}
-
-async function handleSubmit(event) {
-  event.preventDefault();
-
-  const input = readComposerInput();
-
-  if (!canSubmitComposer(input)) {
-    return;
-  }
-
-  const validationError = validateComposerInput(input);
-
-  if (validationError) {
-    showError(validationError);
-
-    if (state.matchingMode && !input.jobDescription) {
-      elements.jobDescriptionInput.focus();
-    }
-
-    return;
-  }
-
-  clearError();
-  state.isSending = true;
-
-  addMessage({
-    role: "user",
-    text: input.message,
-  });
-
-  rememberConversationThread({
-    threadId: state.threadId,
-    firstMessage: input.message,
-  });
-
-  clearComposerAfterSubmit();
-  setComposerDisabled(true);
-  showTypingIndicator();
-
-  try {
-    const conversation = await sendConversationMessage({
-      threadId: state.threadId,
-      message: input.message,
-      cvId: state.uploadedCvId,
-      jobDescription: input.jobDescription,
-    });
-
-    if (conversation.threadId) {
-      saveThreadId(conversation.threadId);
-    }
-
-    addMessage({
-      role: "assistant",
-      text: conversation.answer,
-    });
-
-    await handleConversationResult(conversation, input.message);
-  } catch (error) {
-    handleConversationError(error);
-  } finally {
-    removeTypingIndicator();
-
-    state.isSending = false;
-
-    setComposerDisabled(false);
-    updateComposerContext();
-    elements.messageInput.focus();
-  }
-}
-
-function handleConversationError(error) {
-  const errorMessage = error?.message || "Đã xảy ra lỗi khi xử lý yêu cầu.";
-
-  showError(errorMessage);
-
-  addMessage({
-    role: "assistant",
-    text: "Mình chưa thể xử lý yêu cầu này. Bạn hãy kiểm tra backend và thử lại.",
-  });
-}
-
-async function runJobConversation({
-  hit, message, getResult,
-  renderResult, missingDescriptionMessage,
-  requestErrorMessage, assistantErrorMessage,
-}) {
-  const job = hit?.job ?? {};
-  const description = String(job.description ?? "").trim();
-
-  if (!state.uploadedCvId) {
-    showError("Hãy tải lên CV trước khi thực hiện yêu cầu này.");
-    return;
-  }
-
-  if (!description) {
-    showError(missingDescriptionMessage);
-    return;
-  }
-
-  if (state.isSending) {
-    return;
-  }
-
-  clearError();
-  closeJobDetail();
-
-  state.isSending = true;
-
-  addMessage({
-    role: "user",
-    text: message,
-  });
-
-  rememberConversationThread({
-    threadId: state.threadId,
-    firstMessage: message,
-  });
-
-  elements.suggestionList.hidden = true;
-
-  setComposerDisabled(true);
-  showTypingIndicator();
-
-  try {
-    const conversation = await sendConversationMessage({
-      threadId: state.threadId,
-      message,
-      cvId: state.uploadedCvId,
-      jobDescription: description,
-    });
-
-    if (conversation.threadId) {
-      saveThreadId(conversation.threadId);
-    }
-
-    addMessage({
-      role: "assistant",
-      text: conversation.answer,
-    });
-
-    const result = getResult(conversation);
-
-    if (result) {
-      renderResult(result);
-    }
-  } catch (error) {
-    showError(error?.message || requestErrorMessage);
-
-    addMessage({
-      role: "assistant",
-      text: assistantErrorMessage,
-    });
-  } finally {
-    removeTypingIndicator();
-
-    state.isSending = false;
-
-    setComposerDisabled(false);
-    updateComposerContext();
-  }
-}
-
 async function handleJobSearchConversation(
   query,
   conversationSearchResult,
@@ -978,139 +467,6 @@ async function handleSortChange(event) {
   } finally {
     state.isSending = false;
   }
-}
-
-
-async function handleCvSelection(event) {
-  const file = event.target.files?.[0];
-
-  if (!file) {
-    return;
-  }
-
-  const validationError = validateCvFile(file);
-
-  if (validationError) {
-    showError(validationError);
-    elements.cvInput.value = "";
-    return;
-  }
-
-  clearError();
-
-  const requestId = state.cvUploadRequestId + 1;
-
-  state.cvUploadRequestId = requestId;
-  state.selectedCvFile = file;
-  state.uploadedCvId = null;
-  state.cvUploadStatus = "uploading";
-
-  renderCvStatus();
-
-  try {
-    const result = await uploadCv(file);
-
-    if (state.cvUploadRequestId !== requestId) {
-      return;
-    }
-
-    if (!result.fileId) {
-      throw new Error(
-        "Backend không trả về file_id của CV.",
-      );
-    }
-
-    state.uploadedCvId = result.fileId;
-    state.cvUploadStatus = "uploaded";
-
-    renderCvStatus();
-
-    addMessage({
-      role: "assistant",
-      text:
-        `CV “${result.fileName}” đã được tải lên ` +
-        "và phân tích thành công.",
-    });
-  } catch (error) {
-    if (state.cvUploadRequestId !== requestId) {
-      return;
-    }
-
-    state.uploadedCvId = null;
-    state.cvUploadStatus = "failed";
-
-    renderCvStatus();
-
-    showError(
-      error?.message ||
-      "Không thể tải CV lên backend.",
-    );
-  }
-}
-
-
-function removeCv() {
-  state.cvUploadRequestId += 1;
-  state.selectedCvFile = null;
-  state.uploadedCvId = null;
-  state.cvUploadStatus = "idle";
-
-  elements.cvInput.value = "";
-
-  renderCvStatus();
-  clearError();
-  updateComposerContext();
-}
-
-
-function renderCvStatus() {
-  const file = state.selectedCvFile;
-
-  if (!file) {
-    elements.selectedCv.hidden = true;
-    elements.cvStatusBadge.textContent = "Chưa có CV";
-    elements.cvStatusBadge.className = "cv-status-badge";
-    updateComposerContext();
-    return;
-  }
-
-  elements.selectedCv.hidden = false;
-  elements.selectedCvName.textContent = file.name;
-
-  if (state.cvUploadStatus === "uploading") {
-    elements.selectedCvStatus.textContent =
-      "Đang tải lên và phân tích...";
-
-    elements.cvStatusBadge.textContent =
-      "Đang xử lý CV";
-
-    elements.cvStatusBadge.className = "cv-status-badge is-busy";
-    updateComposerContext();
-    return;
-  }
-
-  if (state.cvUploadStatus === "uploaded") {
-    elements.selectedCvStatus.textContent =
-      "Đã tải lên và phân tích thành công";
-
-    elements.cvStatusBadge.textContent = "CV sẵn sàng";
-    elements.cvStatusBadge.className = "cv-status-badge is-ready";
-    updateComposerContext();
-    return;
-  }
-
-  if (state.cvUploadStatus === "failed") {
-    elements.selectedCvStatus.textContent =
-      "Tải lên hoặc phân tích thất bại";
-
-    elements.cvStatusBadge.textContent = "CV bị lỗi";
-    elements.cvStatusBadge.className = "cv-status-badge is-error";
-    updateComposerContext();
-    return;
-  }
-
-  elements.selectedCvStatus.textContent = "Đã chọn CV";
-  updateComposerContext();
 }
 
 
@@ -1279,7 +635,7 @@ function handleJobResultClick(event) {
 async function generateCoverLetterForJob(hit) {
   const job = hit?.job ?? {};
 
-  await runJobConversation({
+  await chatController.runJobConversation({
     hit,
     message: `Viết thư ứng tuyển cho vị trí ${job.title || "này"}`,
     getResult: (conversation) => conversation.coverLetterResult,
@@ -1293,7 +649,7 @@ async function generateCoverLetterForJob(hit) {
 async function matchSelectedJob(hit) {
   const job = hit?.job ?? {};
 
-  await runJobConversation({
+  await chatController.runJobConversation({
     hit,
     message: `Đánh giá CV của tôi với vị trí ${job.title || "này"}`,
     getResult: (conversation) => conversation.jobMatchingResult,
@@ -3452,7 +2808,7 @@ function showJobErrorState() {
 function resetConversation() {
   const nextThreadId = createThreadId();
 
-  saveThreadId(nextThreadId);
+  historyController.saveThreadId(nextThreadId);
   state.messages = [];
   state.jobs = [];
   state.currentSearchResult = null;
