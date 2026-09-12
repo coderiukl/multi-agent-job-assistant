@@ -14,6 +14,8 @@ import {
   getStrategyLabel,
 } from "./shared/labels.js";
 import { createChatController } from "./features/chat/chat-controller.js";
+import { createCareerAdviceRenderer } from "./features/career-advice/career-advice-renderer.js";
+import { createCoverLetterRenderer } from "./features/cover-letter/cover-letter-renderer.js";
 import { createHistoryController } from "./features/conversation-history/history-controller.js";
 import { createCvController } from "./features/cv/cv-controller.js";
 import { createJobRenderer } from "./features/jobs/job-renderer.js";
@@ -48,6 +50,16 @@ const {
   updateMobileResultsBadge,
 } = createWorkspaceController();
 
+const coverLetterRenderer = createCoverLetterRenderer({
+  openResultsPanel,
+  showError,
+  updateMobileResultsBadge,
+});
+
+const careerAdviceRenderer = createCareerAdviceRenderer({
+  openResultsPanel,
+  updateMobileResultsBadge,
+});
 
 const historyController = createHistoryController({
   addMessage,
@@ -67,13 +79,13 @@ const chatController = createChatController({
   addMessage,
   clearError,
   closeJobDetail,
-  handleJobSearchConversation:
-    jobsController.handleConversationSearch,
-  rememberConversationThread:
-    historyController.rememberConversationThread,
+  handleJobSearchConversation: jobsController.handleConversationSearch,
+  rememberConversationThread: historyController.rememberConversationThread,
   removeTypingIndicator,
-  renderCareerAdviceResult,
-  renderCoverLetterResult,
+  renderCareerAdviceResult:
+    careerAdviceRenderer.renderCareerAdviceResult,
+  renderCoverLetterResult:
+    coverLetterRenderer.renderCoverLetterResult,
   renderCvAnalysisResult,
   renderJobMatchingResult,
   renderWorkflowJobRecommendations,
@@ -399,7 +411,9 @@ function handleJobResultClick(event) {
   );
 
   if (copyCoverLetterButton) {
-    copyCoverLetter(copyCoverLetterButton);
+    coverLetterRenderer.copyCoverLetter(
+      copyCoverLetterButton,
+    );
     return;
   }
 
@@ -454,7 +468,8 @@ async function generateCoverLetterForJob(hit) {
     hit,
     message: `Viết thư ứng tuyển cho vị trí ${job.title || "này"}`,
     getResult: (conversation) => conversation.coverLetterResult,
-    renderResult: renderCoverLetterResult,
+    renderResult:
+      coverLetterRenderer.renderCoverLetterResult,
     missingDescriptionMessage: "Công việc này chưa có JD để tạo thư ứng tuyển.",
     requestErrorMessage: "Không thể tạo thư ứng tuyển.",
     assistantErrorMessage: "Mình chưa thể tạo thư ứng tuyển. Bạn hãy kiểm tra backend và thử lại.",
@@ -516,7 +531,7 @@ function renderWorkflowJobRecommendations(
     normalizedMatches.length,
   );
 
-  showResultsPanelOnMobile();
+  openResultsPanel();
 
   if (!normalizedMatches.length) {
     showNoJobResults();
@@ -755,7 +770,7 @@ function renderJobSearchResult(result) {
 
   elements.searchStrategy.textContent = getStrategyLabel(result.strategy);
   updateMobileResultsBadge(total);
-  showResultsPanelOnMobile();
+  openResultsPanel();
 
   renderMatchedTermChips(items);
 
@@ -868,7 +883,7 @@ function renderCoverLetterResult(result) {
   `;
 
   updateMobileResultsBadge(1);
-  showResultsPanelOnMobile();
+  openResultsPanel();
 }
 
 
@@ -1003,7 +1018,7 @@ function renderCareerAdviceResult(result) {
   `;
 
   updateMobileResultsBadge(1);
-  showResultsPanelOnMobile();
+  openResultsPanel();
 }
 
 function renderTopPrioritySkills(skills) {
@@ -1299,7 +1314,7 @@ function renderCvAnalysisResult(result) {
     !state.jobs.length;
 
   updateMobileResultsBadge(1);
-  showResultsPanelOnMobile();
+  openResultsPanel();
 
   elements.jobResults.innerHTML = `
     <section
@@ -1579,7 +1594,7 @@ function renderJobMatchingResult(result) {
     !state.currentSearchResult ||
     !state.jobs.length;
   updateMobileResultsBadge(1);
-  showResultsPanelOnMobile();
+  openResultsPanel();
 
   elements.jobResults.innerHTML = `
     <section class="matching-result" aria-label="Kết quả so khớp CV">
@@ -1697,7 +1712,7 @@ function showJobSearchResultsFromState() {
   }
 
   renderJobSearchResult(state.currentSearchResult);
-  showResultsPanelOnMobile();
+  openResultsPanel();
 }
 
 
