@@ -6,187 +6,60 @@ import {
   uploadCv,
 } from "./api.js";
 
-import "./styles.css";
+import {
+  MAX_CONVERSATION_TITLE_LENGTH,
+  MAX_SAVED_CONVERSATIONS,
+} from "./core/constants.js";
 
+import {
+  createThreadId,
+  persistConversationThreads,
+  persistThreadId,
+} from "./core/conversation-storage.js";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const CONVERSATION_THREAD_KEY = "multi-agent-job-assistant-thread-id";
-const CONVERSATION_THREADS_KEY = "multi-agent-job-assistant-conversation-threads";
+import { state } from "./core/state.js";
+import { elements } from "./core/elements.js";
+import { escapeHtml, safeExternalUrl } from "./shared/html.js";
+import {
+  clampMatchingScore,
+  formatDate,
+  formatMoney,
+  formatSalary,
+  formatScore,
+  toFiniteNumber,
+} from "./shared/formatters.js";
+import {
+  getCvQualityBadgeClass,
+  getCvQualityLabel,
+  getCvSectionLabel,
+  getEmploymentTypeLabel,
+  getEvidenceStatusLabel,
+  getImprovementPriorityLabel,
+  getRecommendationLabel,
+  getSalaryPeriodLabel,
+  getSeniorityLabel,
+  getStrategyLabel,
+  getWorkModeLabel,
+} from "./shared/labels.js";
+import { validateCvFile } from "./features/cv/cv-validator.js";
+import {
+  appendMessage,
+  removeTypingIndicator as removeTyping,
+  scrollMessagesToBottom as scrollToBottom,
+  showTypingIndicator as showTyping,
+} from "./features/chat/chat-renderer.js";
 
-const MAX_SAVED_CONVERSATIONS = 30;
-const MAX_CONVERSATION_TITLE_LENGTH = 55;
-
-const state = {
-  threadId: getOrCreateThreadId(),
-  conversationThreads: loadConversationThreads(),
-  messages: [],
-
-  selectedCvFile: null,
-  uploadedCvId: null,
-  cvUploadStatus: "idle",
-  cvUploadRequestId: 0,
-
-  matchingMode: false,
-  jobDescription: "",
-  currentMatchingResult: null,
-  currentCvAnalysisResult: null,
-  currentCareerAdviceResult: null,
-  currentCoverLetterResult: null,
-
-  currentWorkflow: null,
-  workflowJobMatches: [],
-
-  isSending: false,
-  jobs: [],
-  currentSearchResult: null,
-  lastSearchQuery: "",
-  currentSort: "relevance",
-
-  selectedJob: null,
-  activeWorkspacePanel: "chat",
-  historyOpen: true,
-  resultsOpen: false,
-  resultsAvailable: false,
-  lastFocusedBeforeDrawer: null,
-};
-
-const elements = {
-  sidebarNewChatButton: document.querySelector("#sidebar-new-chat-button"),
-  toggleHistoryButton: document.querySelector("#toggle-history-button"),
-  conversationHistoryList: document.querySelector("#conversation-history-list"),
-  conversationHistoryEmpty: document.querySelector("#conversation-history-empty"),
-
-  newChatButton: document.querySelector("#new-chat-button"),
-  toggleResultsButton: document.querySelector("#toggle-results-button"),
-  workspace: document.querySelector(".workspace"),
-  mobileTabs: document.querySelector(".mobile-workspace-tabs"),
-  mobileTabButtons: document.querySelectorAll(".mobile-tab"),
-  mobileResultsTab: document.querySelector("#mobile-results-tab"),
-  mobileResultsBadge: document.querySelector("#mobile-results-badge"),
-
-  messageList: document.querySelector("#message-list"),
-  suggestionList: document.querySelector("#suggestion-list"),
-  composerActions: document.querySelector("#composer-actions"),
-  chatForm: document.querySelector("#chat-form"),
-  messageInput: document.querySelector("#message-input"),
-  sendButton: document.querySelector("#send-button"),
-  toggleJdButton: document.querySelector("#toggle-jd-button"),
-  jobDescriptionPanel: document.querySelector("#job-description-panel"),
-  jobDescriptionSummary: document.querySelector("#job-description-summary"),
-  jobDescriptionInput: document.querySelector("#job-description-input"),
-  jobDescriptionCount: document.querySelector("#job-description-count"),
-  editJdButton: document.querySelector("#edit-jd-button"),
-  clearJdButton: document.querySelector("#clear-jd-button"),
-
-  cvInput: document.querySelector("#cv-input"),
-  attachCvButton: document.querySelector("#attach-cv-button"),
-  removeCvButton: document.querySelector("#remove-cv-button"),
-  selectedCv: document.querySelector("#selected-cv"),
-  selectedCvName: document.querySelector("#selected-cv-name"),
-  selectedCvStatus: document.querySelector("#selected-cv-status"),
-  cvStatusBadge: document.querySelector("#cv-status-badge"),
-
-  globalError: document.querySelector("#global-error"),
-
-  resultsPanel: document.querySelector("#results-panel"),
-  jobResults: document.querySelector("#job-results"),
-  resultsSummary: document.querySelector("#results-summary"),
-  resultCount: document.querySelector("#result-count"),
-  searchStrategy: document.querySelector("#search-strategy"),
-  activeFilters: document.querySelector("#active-filters"),
-  jobSort: document.querySelector("#job-sort"),
-  resultsEyebrow: document.querySelector("#results-eyebrow"),
-  resultsTitle: document.querySelector("#results-title"),
-  backToJobsButton: document.querySelector("#back-to-jobs-button"),
-  closeResultsButton: document.querySelector("#close-results-button"),
-
-  jobDetailOverlay: document.querySelector("#job-detail-overlay"),
-  jobDetailDrawer: document.querySelector("#job-detail-drawer"),
-  jobDetailContent: document.querySelector("#job-detail-content"),
-  closeJobDetailButton: document.querySelector("#close-job-detail"),
-};
-
-function createThreadId() {
-  return crypto.randomUUID();
-}
-
-function getOrCreateThreadId() {
-  try {
-    const storedThreadId = localStorage.getItem(
-      CONVERSATION_THREAD_KEY,
-    );
-
-    if (storedThreadId) {
-      return storedThreadId;
-    }
-
-    const threadId = createThreadId();
-
-    localStorage.setItem(
-      CONVERSATION_THREAD_KEY,
-      threadId,
-    );
-
-    return threadId;
-  } catch {
-    return createThreadId();
-  }
-}
+import "./css/index.css";
 
 
 function saveThreadId(threadId) {
   state.threadId = threadId;
-
-  try {
-    localStorage.setItem(
-      CONVERSATION_THREAD_KEY,
-      threadId,
-    );
-  } catch {
-    // The current tab can still use the generated thread ID.
-  }
-}
-
-function loadConversationThreads() {
-  try {
-    const storedValue = localStorage.getItem(
-      CONVERSATION_THREADS_KEY,
-    );
-
-    if (!storedValue) {
-      return [];
-    }
-
-    const parsedValue = JSON.parse(storedValue);
-
-    if (!Array.isArray(parsedValue)) {
-      return [];
-    }
-
-    return parsedValue
-      .filter(
-        (item) =>
-          typeof item?.threadId === "string" &&
-          typeof item?.title === "string" &&
-          typeof item?.updatedAt === "string" &&
-          item?.isDraft !== true,
-      )
-      .slice(0, MAX_SAVED_CONVERSATIONS);
-  } catch {
-    return [];
-  }
+  persistThreadId(threadId);
 }
 
 
 function saveConversationThreads() {
-  try {
-    localStorage.setItem(
-      CONVERSATION_THREADS_KEY,
-      JSON.stringify(state.conversationThreads),
-    );
-  } catch {
-    // The conversation itself can still work without the sidebar index.
-  }
+  persistConversationThreads(state.conversationThreads);
 }
 
 
@@ -778,47 +651,215 @@ function updateMobileResultsBadge(count) {
     normalizedCount > 99 ? "99+" : String(normalizedCount);
 }
 
-
-async function handleSubmit(event) {
-  event.preventDefault();
-
+function readComposerInput() {
   const typedMessage = elements.messageInput.value.trim();
   const jobDescription = state.matchingMode
     ? elements.jobDescriptionInput.value.trim()
     : null;
-  const message = typedMessage || (
-    jobDescription
-      ? "Hãy đánh giá mức độ phù hợp giữa CV của tôi và công việc này"
-      : ""
-  );
+  const defaultMatchingMessage =
+    "Hãy đánh giá mức độ phù hợp giữa CV của tôi và công việc này";
 
-  if (!message || state.isSending) {
-    return;
+  return {
+    message: typedMessage || (jobDescription ? defaultMatchingMessage : ""),
+    jobDescription,
+  };
+}
+
+function validateComposerInput({message, jobDescription}) {
+  if (!message) {
+    return null;
+  }
+
+  if (state.isSending) {
+    return null;
   }
 
   if (state.matchingMode && !state.uploadedCvId) {
-    showError(
-      "Hãy tải lên CV và chờ phân tích thành công " +
-      "trước khi thực hiện yêu cầu với JD.",
-    );
-    return;
+    return "Hãy tải lên CV và chờ phân tích thành công trước khi thực hiện yêu cầu với JD.";
   }
 
   if (state.matchingMode && !jobDescription) {
-    showError("Hãy dán Job Description cần so khớp.");
-    elements.jobDescriptionInput.focus();
-    return;
+    return "Hãy dán Job Description cần so khớp";
   }
 
   if (state.cvUploadStatus === "uploading") {
-    showError(
-      "CV đang được tải lên và xử lý. " +
-      "Vui lòng chờ hoàn tất.",
+    return "CV đang được tải lên và xử lý. Vui lòng chờ hoàn tất.";
+  }
+
+  return null;
+}
+
+function canSubmitComposer(input) {
+  return Boolean(input.message) && !state.isSending;
+}
+
+function clearComposerAfterSubmit() {
+  elements.messageInput.value = "";
+  elements.suggestionList.hidden = true;
+
+  resizeMessageInput();
+  updateComposerContext();
+}
+
+async function handleConversationResult(conversation, originalMessage) {
+  state.currentWorkflow = conversation.workflow;
+  state.workflowJobMatches = conversation.workflowJobMatches;
+
+  switch (conversation.route) {
+    case "job_search":
+      await handleJobSearchRoute(conversation, originalMessage);
+      break;
+
+    case "cv_analysis":
+      if (conversation.cvAnalysisResult) {
+        renderCvAnalysisResult(conversation.cvAnalysisResult);
+      }
+      break;
+
+    case "cover_letter":
+      if (conversation.coverLetterResult) {
+        renderCoverLetterResult(conversation.coverLetterResult);
+      }
+      break;
+
+    case "career_advice":
+      if (conversation.careerAdviceResult) {
+        renderCareerAdviceResult(conversation.careerAdviceResult);
+      }
+      break;
+
+    case "job_matching":
+      if (conversation.jobMatchingResult) {
+        renderJobMatchingResult(conversation.jobMatchingResult);
+      }
+      break;
+
+    default:
+      break;
+  }
+}
+
+async function handleJobSearchRoute(conversation, originalMessage) {
+  if (conversation.workflowJobMatches.length) {
+    renderWorkflowJobRecommendations(
+      conversation.jobSearchResult,
+      conversation.workflowJobMatches,
+      conversation.careerAdviceResult,
     );
+
+    return;
+  }
+
+  await handleJobSearchConversation(
+    originalMessage,
+    conversation.jobSearchResult,
+  );
+}
+
+async function handleSubmit(event) {
+  event.preventDefault();
+
+  const input = readComposerInput();
+
+  if (!canSubmitComposer(input)) {
+    return;
+  }
+
+  const validationError = validateComposerInput(input);
+
+  if (validationError) {
+    showError(validationError);
+
+    if (state.matchingMode && !input.jobDescription) {
+      elements.jobDescriptionInput.focus();
+    }
+
     return;
   }
 
   clearError();
+  state.isSending = true;
+
+  addMessage({
+    role: "user",
+    text: input.message,
+  });
+
+  rememberConversationThread({
+    threadId: state.threadId,
+    firstMessage: input.message,
+  });
+
+  clearComposerAfterSubmit();
+  setComposerDisabled(true);
+  showTypingIndicator();
+
+  try {
+    const conversation = await sendConversationMessage({
+      threadId: state.threadId,
+      message: input.message,
+      cvId: state.uploadedCvId,
+      jobDescription: input.jobDescription,
+    });
+
+    if (conversation.threadId) {
+      saveThreadId(conversation.threadId);
+    }
+
+    addMessage({
+      role: "assistant",
+      text: conversation.answer,
+    });
+
+    await handleConversationResult(conversation, input.message);
+  } catch (error) {
+    handleConversationError(error);
+  } finally {
+    removeTypingIndicator();
+
+    state.isSending = false;
+
+    setComposerDisabled(false);
+    updateComposerContext();
+    elements.messageInput.focus();
+  }
+}
+
+function handleConversationError(error) {
+  const errorMessage = error?.message || "Đã xảy ra lỗi khi xử lý yêu cầu.";
+
+  showError(errorMessage);
+
+  addMessage({
+    role: "assistant",
+    text: "Mình chưa thể xử lý yêu cầu này. Bạn hãy kiểm tra backend và thử lại.",
+  });
+}
+
+async function runJobConversation({
+  hit, message, getResult,
+  renderResult, missingDescriptionMessage,
+  requestErrorMessage, assistantErrorMessage,
+}) {
+  const job = hit?.job ?? {};
+  const description = String(job.description ?? "").trim();
+
+  if (!state.uploadedCvId) {
+    showError("Hãy tải lên CV trước khi thực hiện yêu cầu này.");
+    return;
+  }
+
+  if (!description) {
+    showError(missingDescriptionMessage);
+    return;
+  }
+
+  if (state.isSending) {
+    return;
+  }
+
+  clearError();
+  closeJobDetail();
 
   state.isSending = true;
 
@@ -832,10 +873,7 @@ async function handleSubmit(event) {
     firstMessage: message,
   });
 
-  elements.messageInput.value = "";
-  resizeMessageInput();
   elements.suggestionList.hidden = true;
-  updateComposerContext();
 
   setComposerDisabled(true);
   showTypingIndicator();
@@ -845,92 +883,39 @@ async function handleSubmit(event) {
       threadId: state.threadId,
       message,
       cvId: state.uploadedCvId,
-      jobDescription,
+      jobDescription: description,
     });
 
     if (conversation.threadId) {
       saveThreadId(conversation.threadId);
     }
 
-    removeTypingIndicator();
-
     addMessage({
       role: "assistant",
       text: conversation.answer,
     });
 
-    state.currentWorkflow = conversation.workflow;
-    state.workflowJobMatches = conversation.workflowJobMatches;
+    const result = getResult(conversation);
 
-    if (conversation.route === "job_search" && conversation.workflowJobMatches.length) {
-      renderWorkflowJobRecommendations(
-        conversation.jobSearchResult,
-        conversation.workflowJobMatches,
-        conversation.careerAdviceResult,
-      );
-    } else if (conversation.route === "job_search") {
-      await handleJobSearchConversation(
-        message,
-        conversation.jobSearchResult,
-      );
-    }
-
-    if (
-      conversation.route === "cv_analysis" &&
-      conversation.cvAnalysisResult
-    ) {
-      renderCvAnalysisResult(
-        conversation.cvAnalysisResult,
-      )
-    }
-
-    if (
-      conversation.route === "cover_letter" &&
-      conversation.coverLetterResult
-    ) {
-      renderCoverLetterResult(
-        conversation.coverLetterResult,
-      );
-    }
-
-    if (
-      conversation.route === "career_advice" &&
-      conversation.careerAdviceResult
-    ) {
-      renderCareerAdviceResult(conversation.careerAdviceResult);
-    }
-
-    if (
-      conversation.route === "job_matching" &&
-      conversation.jobMatchingResult
-    ) {
-      renderJobMatchingResult(
-        conversation.jobMatchingResult,
-      );
+    if (result) {
+      renderResult(result);
     }
   } catch (error) {
-    removeTypingIndicator();
-
-    const errorMessage =
-      error?.message ||
-      "Đã xảy ra lỗi khi xử lý yêu cầu.";
-
-    showError(errorMessage);
+    showError(error?.message || requestErrorMessage);
 
     addMessage({
       role: "assistant",
-      text:
-        "Mình chưa thể xử lý yêu cầu này. " +
-        "Bạn hãy kiểm tra backend và thử lại.",
+      text: assistantErrorMessage,
     });
   } finally {
+    removeTypingIndicator();
+
     state.isSending = false;
+
     setComposerDisabled(false);
     updateComposerContext();
-    elements.messageInput.focus();
   }
 }
-
 
 async function handleJobSearchConversation(
   query,
@@ -944,13 +929,6 @@ async function handleJobSearchConversation(
     renderJobSearchResult(conversationSearchResult);
     return;
   }
-
-  /*
-   * Fallback:
-   * Nếu Conversation Graph mới chỉ route sang job_search
-   * nhưng chưa trả job_search_result, frontend gọi trực tiếp
-   * endpoint /jobs/search.
-   */
 
   showJobLoading();
 
@@ -1301,172 +1279,29 @@ function handleJobResultClick(event) {
 async function generateCoverLetterForJob(hit) {
   const job = hit?.job ?? {};
 
-  const description = String(
-    job.description ?? "",
-  ).trim();
-
-  if (!state.uploadedCvId) {
-    showError(
-      "Hãy tải lên CV trước khi tạo thư ứng tuyển.",
-    );
-    return;
-  }
-
-  if (!description) {
-    showError(
-      "Công việc này chưa có JD để tạo thư ứng tuyển.",
-    );
-    return;
-  }
-
-  if (state.isSending) {
-    return;
-  }
-
-  clearError();
-  closeJobDetail();
-
-  const message =
-    `Viết thư ứng tuyển cho vị trí ${
-      job.title || "này"
-    }`;
-
-  state.isSending = true;
-
-  addMessage({
-    role: "user",
-    text: message,
+  await runJobConversation({
+    hit,
+    message: `Viết thư ứng tuyển cho vị trí ${job.title || "này"}`,
+    getResult: (conversation) => conversation.coverLetterResult,
+    renderResult: renderCoverLetterResult,
+    missingDescriptionMessage: "Công việc này chưa có JD để tạo thư ứng tuyển.",
+    requestErrorMessage: "Không thể tạo thư ứng tuyển.",
+    assistantErrorMessage: "Mình chưa thể tạo thư ứng tuyển. Bạn hãy kiểm tra backend và thử lại.",
   });
-
-  elements.suggestionList.hidden = true;
-
-  setComposerDisabled(true);
-  showTypingIndicator();
-
-  try {
-    const conversation =
-      await sendConversationMessage({
-        message,
-        cvId: state.uploadedCvId,
-        jobDescription: description,
-      });
-
-    removeTypingIndicator();
-
-    addMessage({
-      role: "assistant",
-      text: conversation.answer,
-    });
-
-    if (conversation.coverLetterResult) {
-      renderCoverLetterResult(
-        conversation.coverLetterResult,
-      );
-    }
-  } catch (error) {
-    removeTypingIndicator();
-
-    showError(
-      error?.message ||
-        "Không thể tạo thư ứng tuyển.",
-    );
-
-    addMessage({
-      role: "assistant",
-      text:
-        "Mình chưa thể tạo thư ứng tuyển. " +
-        "Bạn hãy kiểm tra backend và thử lại.",
-    });
-  } finally {
-    state.isSending = false;
-    setComposerDisabled(false);
-    updateComposerContext();
-  }
 }
 
 async function matchSelectedJob(hit) {
   const job = hit?.job ?? {};
-  const description = String(
-    job.description ?? "",
-  ).trim();
 
-  if (!state.uploadedCvId) {
-    showError(
-      "Hãy tải lên CV trước khi đánh giá độ phù hợp với công việc.",
-    );
-    return;
-  }
-
-  if (!description) {
-    showError(
-      "Công việc này chưa có JD để thực hiện so khớp.",
-    );
-    return;
-  }
-
-  if (state.isSending) {
-    return;
-  }
-
-  clearError();
-  closeJobDetail();
-
-  const message =
-    `Đánh giá CV của tôi với vị trí ${job.title || "này"}`;
-
-  state.isSending = true;
-
-  addMessage({
-    role: "user",
-    text: message,
+  await runJobConversation({
+    hit,
+    message: `Đánh giá CV của tôi với vị trí ${job.title || "này"}`,
+    getResult: (conversation) => conversation.jobMatchingResult,
+    renderResult: renderJobMatchingResult,
+    missingDescriptionMessage: "Công việc này chưa có JD để thực hiện so khớp.",
+    requestErrorMessage: "Không thể so khớp CV với công việc này.",
+    assistantErrorMessage: "Mình chưa thể so khớp CV với công việc này. Bạn hãy kiểm tra backend và thử lại.",
   });
-
-  elements.messageInput.value = "";
-  resizeMessageInput();
-  elements.suggestionList.hidden = true;
-  updateComposerContext();
-
-  setComposerDisabled(true);
-  showTypingIndicator();
-
-  try {
-    const conversation = await sendConversationMessage({
-      message,
-      cvId: state.uploadedCvId,
-      jobDescription: description,
-    });
-
-    removeTypingIndicator();
-
-    addMessage({
-      role: "assistant",
-      text: conversation.answer,
-    });
-
-    if (conversation.jobMatchingResult) {
-      renderJobMatchingResult(
-        conversation.jobMatchingResult,
-      );
-    }
-  } catch (error) {
-    removeTypingIndicator();
-
-    showError(
-      error?.message ||
-      "Không thể so khớp CV với công việc này.",
-    );
-
-    addMessage({
-      role: "assistant",
-      text:
-        "Mình chưa thể so khớp CV với công việc này. " +
-        "Bạn hãy kiểm tra backend và thử lại.",
-    });
-  } finally {
-    state.isSending = false;
-    setComposerDisabled(false);
-    updateComposerContext();
-  }
 }
 
 function renderWorkflowJobRecommendations(
@@ -3668,71 +3503,23 @@ function addMessage({ role, text }) {
 
   state.messages.push(message);
 
-  const article = document.createElement("article");
-
-  article.className =
-    `message ${role}-message`;
-
-  if (role === "assistant") {
-    const avatar = document.createElement("div");
-
-    avatar.className = "assistant-avatar";
-    avatar.textContent = "AI";
-
-    article.append(avatar);
-  }
-
-  const bubble = document.createElement("div");
-  bubble.className = "message-bubble";
-
-  const paragraph = document.createElement("p");
-  paragraph.textContent = text;
-
-  bubble.append(paragraph);
-  article.append(bubble);
-
-  elements.messageList.append(article);
+  appendMessage(elements.messageList, message);
 
   scrollMessagesToBottom();
 }
-
 
 function showTypingIndicator() {
-  if (document.querySelector("#typing-indicator")) {
-    return;
-  }
-
-  const article = document.createElement("article");
-
-  article.id = "typing-indicator";
-  article.className =
-    "message assistant-message";
-
-  article.innerHTML = `
-    <div class="assistant-avatar">AI</div>
-
-    <div
-      class="typing-indicator"
-      aria-label="Job Search AI đang xử lý"
-    >
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-  `;
-
-  elements.messageList.append(article);
-
+  showTyping(elements.messageList);
   scrollMessagesToBottom();
 }
 
-
 function removeTypingIndicator() {
-  document
-    .querySelector("#typing-indicator")
-    ?.remove();
+  removeTyping(elements.messageList);
 }
 
+function scrollMessagesToBottom() {
+  scrollToBottom(elements.messageList);
+}
 
 function setComposerDisabled(disabled) {
   elements.messageInput.disabled = disabled;
@@ -3742,10 +3529,8 @@ function setComposerDisabled(disabled) {
   elements.clearJdButton.disabled = disabled;
 
   elements.sendButton.disabled =
-    disabled ||
-    !hasComposerContent();
+    disabled || !hasComposerContent();
 }
-
 
 function updateComposerContext() {
   if (!elements.messageInput) {
@@ -3770,6 +3555,7 @@ function updateComposerContext() {
       ? "Tìm việc phù hợp với CV, kỹ năng hoặc mục tiêu tiếp theo..."
       : "Nhập vị trí, kỹ năng, địa điểm hoặc câu hỏi nghề nghiệp...";
 }
+
 
 
 function resizeMessageInput() {
@@ -3807,307 +3593,4 @@ function showError(message) {
 function clearError() {
   elements.globalError.textContent = "";
   elements.globalError.hidden = true;
-}
-
-
-function scrollMessagesToBottom() {
-  elements.messageList.scrollTo({
-    top: elements.messageList.scrollHeight,
-    behavior: "smooth",
-  });
-}
-
-
-function validateCvFile(file) {
-  const isPdf =
-    file.type === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf");
-
-  if (!isPdf) {
-    return "CV phải là tệp PDF.";
-  }
-
-  if (file.size > MAX_FILE_SIZE) {
-    return "Dung lượng CV không được vượt quá 10 MB.";
-  }
-
-  return null;
-}
-
-
-function formatScore(value) {
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) {
-    return "0%";
-  }
-
-  const normalized = Math.max(
-    0,
-    Math.min(1, number),
-  );
-
-  return `${Math.round(normalized * 100)}%`;
-}
-
-
-function clampMatchingScore(value) {
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, number));
-}
-
-
-function formatSalary(job) {
-  const minimum = toFiniteNumber(job.salary_min);
-  const maximum = toFiniteNumber(job.salary_max);
-
-  if (minimum === null && maximum === null) {
-    return "";
-  }
-
-  const currency = job.salary_currency ?? "";
-  const period = getSalaryPeriodLabel(
-    job.salary_period,
-  );
-
-  if (minimum !== null && maximum !== null) {
-    return (
-      `${formatMoney(minimum)} – ` +
-      `${formatMoney(maximum)} ${currency}${period}`
-    );
-  }
-
-  if (minimum !== null) {
-    return (
-      `Từ ${formatMoney(minimum)} ` +
-      `${currency}${period}`
-    );
-  }
-
-  return (
-    `Đến ${formatMoney(maximum)} ` +
-    `${currency}${period}`
-  );
-}
-
-
-function formatMoney(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-
-function formatDate(value) {
-  if (!value) {
-    return "Không xác định";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Không xác định";
-  }
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
-}
-
-
-function toFiniteNumber(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const number = Number(value);
-
-  return Number.isFinite(number)
-    ? number
-    : null;
-}
-
-
-function getStrategyLabel(strategy) {
-  const labels = {
-    hybrid: "Tìm kiếm kết hợp PostgreSQL và Qdrant",
-    semantic: "Tìm kiếm ngữ nghĩa bằng Qdrant",
-    postgres: "Tìm kiếm bằng PostgreSQL",
-  };
-
-  return labels[strategy] ?? "Tìm kiếm công việc";
-}
-
-function getCvQualityLabel(value) {
-  const labels = {
-    excellent: "Rất tốt",
-    good: "Tốt",
-    needs_improvement: "Cần cải thiện",
-    weak: "Còn yếu",
-  };
-
-  return labels[value] ?? "Chưa xác định";
-}
-
-
-function getCvQualityBadgeClass(value) {
-  const classes = {
-    excellent: "strong_match",
-    good: "good_match",
-    needs_improvement: "partial_match",
-    weak: "low_match",
-  };
-
-  return classes[value] ?? "partial_match";
-}
-
-
-function getImprovementPriorityLabel(value) {
-  const labels = {
-    high: "Ưu tiên cao",
-    medium: "Ưu tiên vừa",
-    low: "Ưu tiên thấp",
-  };
-
-  return labels[value] ?? "Ưu tiên vừa";
-}
-
-
-function getCvSectionLabel(value) {
-  const labels = {
-    personal_information: "Thông tin cá nhân",
-    professional_summary: "Giới thiệu",
-    skills: "Kỹ năng",
-    work_experience: "Kinh nghiệm",
-    education: "Học vấn",
-    projects: "Dự án",
-    certifications: "Chứng chỉ",
-    languages: "Ngoại ngữ",
-    general: "Tổng thể",
-  };
-
-  return labels[value] ?? "Tổng thể";
-}
-
-function getRecommendationLabel(value) {
-  const labels = {
-    strong_match: "Rất phù hợp",
-    good_match: "Phù hợp",
-    partial_match: "Phù hợp một phần",
-    low_match: "Mức độ phù hợp thấp",
-  };
-
-  return labels[value] ?? "Chưa xác định";
-}
-
-
-function getEvidenceStatusLabel(value) {
-  const labels = {
-    matched: "Đáp ứng",
-    partial: "Một phần",
-    missing: "Còn thiếu",
-    not_applicable: "Không áp dụng",
-  };
-
-  return labels[value] ?? "Chưa xác định";
-}
-
-
-function getSeniorityLabel(value) {
-  const labels = {
-    intern: "Thực tập",
-    fresher: "Fresher",
-    junior: "Junior",
-    middle: "Middle",
-    senior: "Senior",
-    lead: "Lead",
-    manager: "Quản lý",
-    director: "Giám đốc",
-    unknown: "Không xác định",
-  };
-
-  return labels[value] ?? "Không xác định";
-}
-
-
-function getWorkModeLabel(value) {
-  const labels = {
-    onsite: "Tại văn phòng",
-    remote: "Từ xa",
-    hybrid: "Kết hợp",
-    unknown: "Không xác định",
-  };
-
-  return labels[value] ?? "Không xác định";
-}
-
-
-function getEmploymentTypeLabel(value) {
-  const labels = {
-    full_time: "Toàn thời gian",
-    part_time: "Bán thời gian",
-    contract: "Hợp đồng",
-    internship: "Thực tập",
-    freelance: "Freelance",
-    temporary: "Tạm thời",
-    other: "Khác",
-  };
-
-  return labels[value] ?? "Không xác định";
-}
-
-
-function getSalaryPeriodLabel(value) {
-  const labels = {
-    hourly: "/giờ",
-    weekly: "/tuần",
-    fortnightly: "/2 tuần",
-    monthly: "/tháng",
-    annual: "/năm",
-  };
-
-  return labels[value] ?? "";
-}
-
-
-function safeExternalUrl(value) {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    const url = new URL(value);
-
-    if (
-      url.protocol !== "http:" &&
-      url.protocol !== "https:"
-    ) {
-      return null;
-    }
-
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }

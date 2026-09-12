@@ -1,0 +1,59 @@
+/* Shared headings */
+
+.panel-header,
+.results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 74px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-header h1,
+.results-header h2 {
+  margin: 4px 0 0;
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.eyebrow {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.cv-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cv-status-badge.is-ready {
+  border-color: #bbf7d0;
+  background: var(--success-light);
+  color: #15803d;
+}
+
+.cv-status-badge.is-busy {
+  border-color: #fed7aa;
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
+.cv-status-badge.is-error {
+  border-color: #fecaca;
+  background: var(--danger-light);
+  color: var(--danger);
+}
