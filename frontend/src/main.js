@@ -1,4 +1,3 @@
-import { searchJobs } from "./api.js";
 import { createThreadId } from "./core/conversation-storage.js";
 
 import { state } from "./core/state.js";
@@ -28,6 +27,14 @@ import {
 import { createChatController } from "./features/chat/chat-controller.js";
 import { createHistoryController } from "./features/conversation-history/history-controller.js";
 import { createCvController } from "./features/cv/cv-controller.js";
+import { renderJobDescription } from "./features/jobs/job-description.js";
+import { createJobsController } from "./features/jobs/jobs-controller.js";
+import {
+  renderInitialJobState,
+  renderJobErrorState,
+  renderJobLoading,
+  renderNoJobResults,
+} from "./features/jobs/job-states-renderer.js";
 import {
   appendMessage,
   removeTypingIndicator as removeTyping,
@@ -44,11 +51,20 @@ const historyController = createHistoryController({
   showError,
 });
 
+const jobsController = createJobsController({
+  clearError,
+  renderJobSearchResult,
+  showError,
+  showJobErrorState,
+  showJobLoading,
+});
+
 const chatController = createChatController({
   addMessage,
   clearError,
   closeJobDetail,
-  handleJobSearchConversation,
+  handleJobSearchConversation:
+    jobsController.handleConversationSearch,
   rememberConversationThread:
     historyController.rememberConversationThread,
   removeTypingIndicator,
@@ -215,7 +231,7 @@ function bindEvents() {
 
   elements.jobSort.addEventListener(
     "change",
-    handleSortChange,
+    jobsController.handleSortChange,
   );
 
   elements.backToJobsButton?.addEventListener(
@@ -405,70 +421,6 @@ function updateMobileResultsBadge(count) {
   elements.mobileResultsBadge.textContent =
     normalizedCount > 99 ? "99+" : String(normalizedCount);
 }
-
-async function handleJobSearchConversation(
-  query,
-  conversationSearchResult,
-) {
-  state.lastSearchQuery = query;
-  state.currentSort = "relevance";
-  elements.jobSort.value = "relevance";
-
-  if (conversationSearchResult) {
-    renderJobSearchResult(conversationSearchResult);
-    return;
-  }
-
-  showJobLoading();
-
-  const searchResult = await searchJobs({
-    query,
-    sort: state.currentSort,
-    page: 1,
-    pageSize: 10,
-  });
-
-  renderJobSearchResult(searchResult);
-}
-
-
-async function handleSortChange(event) {
-  const sort = event.target.value;
-
-  if (
-    !state.lastSearchQuery ||
-    state.isSending
-  ) {
-    return;
-  }
-
-  state.currentSort = sort;
-  state.isSending = true;
-
-  clearError();
-  showJobLoading();
-
-  try {
-    const result = await searchJobs({
-      query: state.lastSearchQuery,
-      sort,
-      page: 1,
-      pageSize: 10,
-    });
-
-    renderJobSearchResult(result);
-  } catch (error) {
-    showError(
-      error?.message ||
-      "Không thể sắp xếp lại kết quả.",
-    );
-
-    showJobErrorState();
-  } finally {
-    state.isSending = false;
-  }
-}
-
 
 function setMatchingMode(
   enabled,
@@ -2408,43 +2360,6 @@ function openJobDetail(hit) {
 }
 
 
-function renderJobDescription(description) {
-  const sections = parseJobDescriptionSections(description);
-
-  if (!sections.length) {
-    return `
-      <p class="job-description-empty">
-        Công việc chưa có mô tả chi tiết.
-      </p>
-    `;
-  }
-
-  return `
-    <div class="job-description">
-      ${sections
-        .map(
-          (section) => `
-            <section class="jd-block">
-              <h4>${escapeHtml(section.title)}</h4>
-
-              <ul class="jd-list">
-                ${section.items
-                  .map(
-                    (item) => `
-                      <li>${escapeHtml(item)}</li>
-                    `,
-                  )
-                  .join("")}
-              </ul>
-            </section>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-
 function renderJobDescriptionComposerSummary(job) {
   if (
     !state.matchingMode ||
@@ -2523,113 +2438,6 @@ function showJobDescriptionEditor() {
 }
 
 
-function parseJobDescriptionSections(description) {
-  const lines = String(description ?? "")
-    .split(/\r?\n/)
-    .map((line) => normalizeDescriptionLine(line))
-    .filter(Boolean);
-
-  if (!lines.length) {
-    return [];
-  }
-
-  const sections = [];
-  let currentSection = createDescriptionSection("Thông tin công việc");
-
-  for (const line of lines) {
-    const heading = normalizeDescriptionHeading(line);
-
-    if (heading) {
-      if (currentSection.items.length) {
-        sections.push(currentSection);
-      }
-
-      currentSection = createDescriptionSection(heading);
-      continue;
-    }
-
-    currentSection.items.push(line);
-  }
-
-  if (currentSection.items.length) {
-    sections.push(currentSection);
-  }
-
-  return sections;
-}
-
-
-function createDescriptionSection(title) {
-  return {
-    title,
-    items: [],
-  };
-}
-
-
-function normalizeDescriptionLine(line) {
-  return String(line ?? "")
-    .replace(/^[\s•*+-]+/, "")
-    .replace(/^\d+[.)]\s+/, "")
-    .trim();
-}
-
-
-function normalizeDescriptionHeading(line) {
-  const text = line.replace(/:$/, "").trim();
-  const key = text.toLowerCase();
-
-  const headings = {
-    "about us": "Giới thiệu công ty",
-    "about the company": "Giới thiệu công ty",
-    "about the role": "Tổng quan vai trò",
-    "the role": "Tổng quan vai trò",
-    "job description": "Mô tả công việc",
-    "what you will do": "Công việc sẽ làm",
-    "your responsibilities": "Trách nhiệm chính",
-    responsibilities: "Trách nhiệm chính",
-    requirements: "Yêu cầu công việc",
-    qualifications: "Yêu cầu công việc",
-    "your profile": "Yêu cầu ứng viên",
-    "what you bring": "Yêu cầu ứng viên",
-    "must have": "Yêu cầu bắt buộc",
-    "nice to have": "Điểm cộng",
-    "preferred qualifications": "Điểm cộng",
-    "tech stack": "Công nghệ sử dụng",
-    skills: "Kỹ năng yêu cầu",
-    benefits: "Quyền lợi",
-    "what we offer": "Quyền lợi",
-    "we offer": "Quyền lợi",
-    perks: "Quyền lợi",
-    "why us?": "Vì sao nên ứng tuyển?",
-    "why us": "Vì sao nên ứng tuyển?",
-    "why join us?": "Vì sao nên ứng tuyển?",
-    "why join us": "Vì sao nên ứng tuyển?",
-    "mô tả công việc": "Mô tả công việc",
-    "trách nhiệm": "Trách nhiệm chính",
-    "yêu cầu": "Yêu cầu công việc",
-    "yêu cầu công việc": "Yêu cầu công việc",
-    "yêu cầu ứng viên": "Yêu cầu ứng viên",
-    "quyền lợi": "Quyền lợi",
-    "phúc lợi": "Quyền lợi",
-  };
-
-  if (headings[key]) {
-    return headings[key];
-  }
-
-  if (
-    line.endsWith(":") &&
-    text.length <= 80 &&
-    text.split(/\s+/).length <= 10
-  ) {
-    return text;
-  }
-
-  return null;
-}
-
-
 function closeJobDetail() {
   const wasOpen = isJobDetailOpen();
 
@@ -2701,107 +2509,23 @@ function trapJobDetailFocus(event) {
 
 function showJobLoading() {
   openResultsPanel();
-  elements.resultsSummary.hidden = true;
-  elements.jobSort.disabled = true;
-
-  elements.jobResults.innerHTML = `
-    <section
-      class="job-loading"
-      aria-label="Đang tìm công việc"
-    >
-      <div class="loading-status">
-        <span class="loading-spinner"></span>
-
-        <div>
-          <strong>Đang tìm công việc phù hợp</strong>
-          <small>
-            Phân tích yêu cầu và xếp hạng kết quả...
-          </small>
-        </div>
-      </div>
-
-      ${createSkeletonCards(3)}
-    </section>
-  `;
-}
-
-
-function createSkeletonCards(count) {
-  return Array.from(
-    { length: count },
-    () => `
-      <article class="job-card skeleton-card">
-        <div class="skeleton skeleton-title"></div>
-        <div class="skeleton skeleton-company"></div>
-        <div class="skeleton skeleton-row"></div>
-        <div class="skeleton skeleton-row short"></div>
-      </article>
-    `,
-  ).join("");
+  renderJobLoading();
 }
 
 
 function showInitialJobState() {
-  elements.resultsEyebrow.textContent = "JOB DISCOVERY";
-  elements.resultsTitle.textContent = "Công việc phù hợp";
-  elements.resultsSummary.hidden = true;
-  elements.jobSort.disabled = true;
-  elements.backToJobsButton.hidden = true;
-  elements.activeFilters.innerHTML = "";
   updateMobileResultsBadge(0);
-
-  elements.jobResults.innerHTML = `
-    <section class="empty-state">
-      <div class="empty-illustration">⌕</div>
-
-      <h3>Bắt đầu tìm công việc</h3>
-
-      <p>
-        Hãy mô tả vị trí, địa điểm, kỹ năng hoặc
-        cấp độ kinh nghiệm bạn mong muốn.
-      </p>
-
-      <div class="example-query">
-        “Tìm công việc AI tại Hồ Chí Minh phù hợp
-        với sinh viên mới ra trường.”
-      </div>
-    </section>
-  `;
+  renderInitialJobState();
 }
 
 
 function showNoJobResults() {
-  elements.jobResults.innerHTML = `
-    <section class="empty-state">
-      <div class="empty-illustration">0</div>
-
-      <h3>Chưa tìm thấy công việc phù hợp</h3>
-
-      <p>
-        Bạn có thể thử mở rộng địa điểm, kỹ năng,
-        cấp độ kinh nghiệm hoặc hình thức làm việc.
-      </p>
-    </section>
-  `;
+  renderNoJobResults();
 }
 
 
 function showJobErrorState() {
-  elements.resultsSummary.hidden = true;
-  elements.jobSort.disabled = true;
-
-  elements.jobResults.innerHTML = `
-    <section class="empty-state">
-      <div class="empty-illustration">!</div>
-
-      <h3>Không thể tải kết quả</h3>
-
-      <p>
-        Hãy kiểm tra FastAPI, PostgreSQL và Qdrant,
-        sau đó thử tìm kiếm lại.
-      </p>
-    </section>
-  `;
+  renderJobErrorState();
 }
 
 
@@ -2824,6 +2548,7 @@ function resetConversation() {
   state.matchingMode = false;
   state.jobDescription = "";
   state.isSending = false;
+  state.isJobSearchLoading = false;
 
   elements.messageList.innerHTML = "";
   elements.suggestionList.hidden = false;

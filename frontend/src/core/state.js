@@ -22,6 +22,7 @@ export const state = {
     workflowJobMatches: [],
 
     isSending: false,
+    isJobSearchLoading: false,
     
     jobs: [],
     currentSearchResult: null,
