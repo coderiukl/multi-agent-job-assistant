@@ -2,32 +2,21 @@ import { createThreadId } from "./core/conversation-storage.js";
 
 import { state } from "./core/state.js";
 import { elements } from "./core/elements.js";
-import { escapeHtml, safeExternalUrl } from "./shared/html.js";
-import {
-  clampMatchingScore,
-  formatDate,
-  formatMoney,
-  formatSalary,
-  formatScore,
-  toFiniteNumber,
-} from "./shared/formatters.js";
+import { escapeHtml } from "./shared/html.js";
+import { clampMatchingScore } from "./shared/formatters.js";
 import {
   getCvQualityBadgeClass,
   getCvQualityLabel,
   getCvSectionLabel,
-  getEmploymentTypeLabel,
   getEvidenceStatusLabel,
   getImprovementPriorityLabel,
   getRecommendationLabel,
-  getSalaryPeriodLabel,
-  getSeniorityLabel,
   getStrategyLabel,
-  getWorkModeLabel,
 } from "./shared/labels.js";
 import { createChatController } from "./features/chat/chat-controller.js";
 import { createHistoryController } from "./features/conversation-history/history-controller.js";
 import { createCvController } from "./features/cv/cv-controller.js";
-import { renderJobDescription } from "./features/jobs/job-description.js";
+import { createJobRenderer } from "./features/jobs/job-renderer.js";
 import { createJobsController } from "./features/jobs/jobs-controller.js";
 import {
   renderInitialJobState,
@@ -35,6 +24,7 @@ import {
   renderJobLoading,
   renderNoJobResults,
 } from "./features/jobs/job-states-renderer.js";
+import { createWorkspaceController } from "./features/workspace/workspace-controller.js";
 import {
   appendMessage,
   removeTypingIndicator as removeTyping,
@@ -43,6 +33,20 @@ import {
 } from "./features/chat/chat-renderer.js";
 
 import "./css/index.css";
+
+const {
+  closeJobDetail,
+  closeResultsPanel,
+  handleMobileTabClick,
+  isJobDetailOpen,
+  openResultsPanel,
+  setActiveWorkspacePanel,
+  setResultsAvailability,
+  toggleConversationHistory,
+  toggleResultsPanel,
+  trapJobDetailFocus,
+  updateMobileResultsBadge,
+} = createWorkspaceController();
 
 
 const historyController = createHistoryController({
@@ -79,6 +83,17 @@ const chatController = createChatController({
   showError,
   showTypingIndicator,
   updateComposerContext,
+});
+
+const {
+  openJobDetail,
+  renderJobCard,
+  renderJobDescriptionComposerSummary,
+  showJobDescriptionEditor,
+} = createJobRenderer({
+  closeJobDetail,
+  generateCoverLetterForJob,
+  matchSelectedJob,
 });
 
 const cvController = createCvController({
@@ -269,158 +284,6 @@ function bindEvents() {
   });
 }
 
-
-function handleMobileTabClick(event) {
-  const button = event.target.closest("[data-panel]");
-
-  if (!button) {
-    return;
-  }
-
-  if (button.dataset.panel === "results") {
-    openResultsPanel();
-    return;
-  }
-
-  setActiveWorkspacePanel("chat");
-}
-
-
-function toggleConversationHistory() {
-  state.historyOpen = !state.historyOpen;
-
-  elements.workspace?.setAttribute(
-    "data-history-open",
-    String(state.historyOpen),
-  );
-
-  if (!elements.toggleHistoryButton) {
-    return;
-  }
-
-  const label = state.historyOpen
-    ? "Thu gọn lịch sử"
-    : "Mở lịch sử";
-
-  elements.toggleHistoryButton.setAttribute(
-    "aria-expanded",
-    String(state.historyOpen),
-  );
-  elements.toggleHistoryButton.setAttribute("aria-label", label);
-  elements.toggleHistoryButton.title = label;
-  elements.toggleHistoryButton.querySelector("span").textContent =
-    state.historyOpen ? "‹" : "☰";
-}
-
-
-function setActiveWorkspacePanel(panel) {
-  const nextPanel = panel === "results"
-    ? "results"
-    : "chat";
-
-  state.activeWorkspacePanel = nextPanel;
-  elements.workspace?.setAttribute(
-    "data-active-panel",
-    nextPanel,
-  );
-
-  for (const button of elements.mobileTabButtons) {
-    const isActive = button.dataset.panel === nextPanel;
-
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-selected", String(isActive));
-  }
-}
-
-
-function showResultsPanelOnMobile() {
-  openResultsPanel();
-}
-
-
-function openResultsPanel() {
-  setResultsAvailability(true);
-  state.resultsOpen = true;
-  elements.workspace?.setAttribute("data-results-open", "true");
-  elements.resultsPanel?.setAttribute("aria-hidden", "false");
-  updateResultsToggleButton();
-
-  if (window.matchMedia("(max-width: 640px)").matches) {
-    setActiveWorkspacePanel("results");
-  }
-}
-
-
-function closeResultsPanel() {
-  state.resultsOpen = false;
-  elements.workspace?.setAttribute("data-results-open", "false");
-  elements.resultsPanel?.setAttribute("aria-hidden", "true");
-  updateResultsToggleButton();
-
-  setActiveWorkspacePanel("chat");
-}
-
-
-function toggleResultsPanel() {
-  if (state.resultsOpen) {
-    closeResultsPanel();
-    return;
-  }
-
-  openResultsPanel();
-}
-
-
-function setResultsAvailability(isAvailable) {
-  state.resultsAvailable = isAvailable;
-
-  if (elements.toggleResultsButton) {
-    elements.toggleResultsButton.hidden = !isAvailable;
-  }
-
-  if (elements.mobileResultsTab) {
-    elements.mobileResultsTab.hidden = !isAvailable;
-  }
-}
-
-
-function updateResultsToggleButton() {
-  if (!elements.toggleResultsButton) {
-    return;
-  }
-
-  elements.toggleResultsButton.setAttribute(
-    "aria-expanded",
-    String(state.resultsOpen),
-  );
-  elements.toggleResultsButton.classList.toggle(
-    "is-active",
-    state.resultsOpen,
-  );
-
-  const label = elements.toggleResultsButton.querySelector(
-    ".results-toggle-label",
-  );
-
-  if (label) {
-    label.textContent = state.resultsOpen
-      ? "Ẩn kết quả"
-      : "Xem kết quả";
-  }
-}
-
-
-function updateMobileResultsBadge(count) {
-  if (!elements.mobileResultsBadge) {
-    return;
-  }
-
-  const normalizedCount = Math.max(0, Number(count) || 0);
-
-  elements.mobileResultsBadge.hidden = normalizedCount === 0;
-  elements.mobileResultsBadge.textContent =
-    normalizedCount > 99 ? "99+" : String(normalizedCount);
-}
 
 function setMatchingMode(
   enabled,
@@ -1982,527 +1845,6 @@ function renderMatchedTermChips(items) {
     chip.textContent = term;
 
     elements.activeFilters.append(chip);
-  }
-}
-
-
-function renderJobCard(hit) {
-  const job = hit?.job ?? {};
-  const score = hit?.score ?? {};
-  const reasons = Array.isArray(hit?.reasons)
-    ? hit.reasons.slice(0, 3)
-    : [];
-
-  const skills = Array.isArray(job.skills)
-    ? job.skills.slice(0, 7)
-    : [];
-
-  const jobId = String(job.job_id ?? "");
-  const sourceUrl = safeExternalUrl(job.source_url);
-  const matchPercentage = formatScore(score.final);
-  const matchTone = getMatchTone(score.final);
-
-  const salary = formatSalary(job);
-
-  return `
-    <article class="job-card">
-      <header class="job-card-header">
-        <div class="job-heading">
-          <h3 class="job-title">
-            ${escapeHtml(job.title || "Chưa có chức danh")}
-          </h3>
-
-          <span class="job-company">
-            ${escapeHtml(job.company || "Chưa có công ty")}
-          </span>
-        </div>
-
-        <div class="match-score ${matchTone}">
-          <strong>${matchPercentage}</strong>
-          <small>${escapeHtml(getMatchLabel(score.final))}</small>
-        </div>
-      </header>
-
-      <div class="job-meta job-meta-priority">
-        ${
-          salary
-            ? renderMetaItem("Lương", salary)
-            : ""
-        }
-
-        ${renderMetaItem(
-          "Địa điểm",
-          job.location || "Không xác định",
-        )}
-
-        ${renderMetaItem(
-          "Cấp độ",
-          getSeniorityLabel(job.seniority_level),
-        )}
-
-        ${renderMetaItem(
-          "Hình thức",
-          getWorkModeLabel(job.work_mode),
-        )}
-
-        ${renderMetaItem(
-          "Loại việc",
-          getEmploymentTypeLabel(job.employment_type),
-        )}
-
-      </div>
-
-      ${
-        skills.length
-          ? `
-            <div class="skill-list">
-              ${skills
-                .map(
-                  (skill) => `
-                    <span class="skill-chip">
-                      ${escapeHtml(skill)}
-                    </span>
-                  `,
-                )
-                .join("")}
-            </div>
-          `
-          : ""
-      }
-
-      ${
-        reasons.length
-          ? `
-            <div class="reason-block">
-              <strong>Vì sao nên xem?</strong>
-              <ul class="reason-list">
-              ${reasons
-                .map(
-                  (reason) => `
-                    <li>${escapeHtml(reason)}</li>
-                  `,
-                )
-                .join("")}
-              </ul>
-            </div>
-          `
-          : ""
-      }
-
-      <footer class="job-card-actions">
-        <button
-          type="button"
-          class="ghost-button"
-          data-action="view-job"
-          data-job-id="${escapeHtml(jobId)}"
-        >
-          Xem chi tiết
-        </button>
-
-        <button
-          type="button"
-          class="primary-button"
-          data-action="match-job"
-          data-job-id="${escapeHtml(jobId)}"
-        >
-          So khớp CV
-        </button>
-
-        ${
-          sourceUrl
-            ? `
-              <a
-                class="primary-button"
-                href="${escapeHtml(sourceUrl)}"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Ứng tuyển
-              </a>
-            `
-            : ""
-        }
-
-        <button
-          type="button"
-          class="ghost-button"
-          data-action="cover-letter-job"
-          data-job-id="${escapeHtml(jobId)}"
-        >
-          Viết thư
-        </button>
-
-      </footer>
-    </article>
-  `;
-}
-
-
-function renderMetaItem(label, value) {
-  if (!value) {
-    return "";
-  }
-
-  return `
-    <span class="job-meta-item ${label === "Lương" ? "is-salary" : ""}">
-      <span class="job-meta-label">
-        ${escapeHtml(label)}:
-      </span>
-
-      ${escapeHtml(value)}
-    </span>
-  `;
-}
-
-
-function getMatchTone(value) {
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) {
-    return "is-low";
-  }
-
-  if (number >= 0.78) {
-    return "is-strong";
-  }
-
-  if (number >= 0.58) {
-    return "is-good";
-  }
-
-  return "is-low";
-}
-
-
-function getMatchLabel(value) {
-  const tone = getMatchTone(value);
-
-  if (tone === "is-strong") {
-    return "rất khớp";
-  }
-
-  if (tone === "is-good") {
-    return "đáng xem";
-  }
-
-  return "cần lọc";
-}
-
-
-function openJobDetail(hit) {
-  const job = hit?.job ?? {};
-  const sourceUrl = safeExternalUrl(job.source_url);
-
-  state.selectedJob = hit;
-  state.lastFocusedBeforeDrawer = document.activeElement;
-
-  elements.jobDetailContent.innerHTML = `
-    <section class="drawer-job-heading">
-      <h2>${escapeHtml(job.title || "Công việc")}</h2>
-      <p>${escapeHtml(job.company || "Chưa có công ty")}</p>
-    </section>
-
-    <div class="job-meta">
-      ${renderMetaItem(
-        "Địa điểm",
-        job.location || "Không xác định",
-      )}
-
-      ${renderMetaItem(
-        "Cấp độ",
-        getSeniorityLabel(job.seniority_level),
-      )}
-
-      ${renderMetaItem(
-        "Hình thức",
-        getWorkModeLabel(job.work_mode),
-      )}
-
-      ${renderMetaItem(
-        "Loại việc",
-        getEmploymentTypeLabel(job.employment_type),
-      )}
-
-      ${renderMetaItem(
-        "Ngày đăng",
-        formatDate(job.posted_at),
-      )}
-
-      ${renderMetaItem(
-        "Nguồn",
-        job.source || "Không xác định",
-      )}
-    </div>
-
-    ${
-      Array.isArray(job.skills) && job.skills.length
-        ? `
-          <section class="drawer-section">
-            <h3>Kỹ năng</h3>
-
-            <div class="skill-list">
-              ${job.skills
-                .map(
-                  (skill) => `
-                    <span class="skill-chip">
-                      ${escapeHtml(skill)}
-                    </span>
-                  `,
-                )
-                .join("")}
-            </div>
-          </section>
-        `
-        : ""
-    }
-
-    ${
-      Array.isArray(hit.reasons) && hit.reasons.length
-        ? `
-          <section class="drawer-section">
-            <h3>Vì sao công việc này phù hợp?</h3>
-
-            <ul class="reason-list">
-              ${hit.reasons
-                .map(
-                  (reason) => `
-                    <li>${escapeHtml(reason)}</li>
-                  `,
-                )
-                .join("")}
-            </ul>
-          </section>
-        `
-        : ""
-    }
-
-    <section class="drawer-section">
-      <h3>Chi tiết JD</h3>
-
-      ${renderJobDescription(job.description)}
-    </section>
-
-    <div class="drawer-actions">
-      <button
-        type="button"
-        class="primary-button"
-        id="match-drawer-job"
-      >
-        So khớp với CV
-      </button>
-
-      ${
-        sourceUrl
-          ? `
-            <a
-              class="primary-button"
-              href="${escapeHtml(sourceUrl)}"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Đi đến trang ứng tuyển
-            </a>
-          `
-          : ""
-      }
-
-      <button
-        type="button"
-        class="ghost-button"
-        id="close-drawer-action"
-      >
-        Đóng
-      </button>
-
-      <button
-        type="button"
-        class="ghost-button"
-        id="cover-letter-drawer-job"
-      >
-        Viết thư ứng tuyển
-      </button>
-
-    </div>
-  `;
-
-  elements.jobDetailContent
-  .querySelector("#cover-letter-drawer-job",)
-  ?.addEventListener(
-    "click",
-    () => generateCoverLetterForJob(hit),
-  );
-
-  elements.jobDetailContent
-    .querySelector("#match-drawer-job")
-    ?.addEventListener(
-      "click",
-      () => matchSelectedJob(hit),
-    );
-
-  elements.jobDetailContent
-    .querySelector("#close-drawer-action")
-    ?.addEventListener(
-      "click",
-      closeJobDetail,
-    );
-
-  elements.jobDetailOverlay.hidden = false;
-
-  elements.jobDetailDrawer.classList.add("is-open");
-  elements.jobDetailDrawer.setAttribute(
-    "aria-hidden",
-    "false",
-  );
-
-  requestAnimationFrame(() => {
-    elements.closeJobDetailButton.focus();
-  });
-}
-
-
-function renderJobDescriptionComposerSummary(job) {
-  if (
-    !state.matchingMode ||
-    !job ||
-    !elements.jobDescriptionSummary
-  ) {
-    elements.jobDescriptionSummary.hidden = true;
-    elements.jobDescriptionSummary.innerHTML = "";
-    elements.jobDescriptionInput.hidden = false;
-
-    if (elements.editJdButton) {
-      elements.editJdButton.hidden = true;
-    }
-
-    return;
-  }
-
-  const skills = Array.isArray(job.skills)
-    ? job.skills.slice(0, 4)
-    : [];
-  const salary = formatSalary(job);
-
-  elements.jobDescriptionSummary.hidden = false;
-  elements.jobDescriptionInput.hidden = true;
-
-  if (elements.editJdButton) {
-    elements.editJdButton.hidden = false;
-  }
-
-  elements.jobDescriptionSummary.innerHTML = `
-    <div>
-      <span class="jd-summary-kicker">JD đã tự điền</span>
-      <strong>${escapeHtml(job.title || "Công việc đang chọn")}</strong>
-      <small>${escapeHtml(job.company || "Chưa có công ty")}</small>
-    </div>
-
-    <dl>
-      ${renderSummaryMetric("Địa điểm", job.location)}
-      ${renderSummaryMetric("Hình thức", getWorkModeLabel(job.work_mode))}
-      ${renderSummaryMetric("Cấp độ", getSeniorityLabel(job.seniority_level))}
-      ${salary ? renderSummaryMetric("Lương", salary) : ""}
-    </dl>
-
-    ${
-      skills.length
-        ? `<div class="jd-summary-skills">
-            ${skills
-              .map((skill) => `<span>${escapeHtml(skill)}</span>`)
-              .join("")}
-          </div>`
-        : ""
-    }
-  `;
-}
-
-
-function renderSummaryMetric(label, value) {
-  if (!value) {
-    return "";
-  }
-
-  return `
-    <div>
-      <dt>${escapeHtml(label)}</dt>
-      <dd>${escapeHtml(value)}</dd>
-    </div>
-  `;
-}
-
-
-function showJobDescriptionEditor() {
-  elements.jobDescriptionSummary.hidden = true;
-  elements.jobDescriptionInput.hidden = false;
-  elements.editJdButton.hidden = true;
-  elements.jobDescriptionInput.focus();
-}
-
-
-function closeJobDetail() {
-  const wasOpen = isJobDetailOpen();
-
-  elements.jobDetailOverlay.hidden = true;
-
-  elements.jobDetailDrawer.classList.remove("is-open");
-  elements.jobDetailDrawer.setAttribute(
-    "aria-hidden",
-    "true",
-  );
-
-  state.selectedJob = null;
-
-  if (
-    wasOpen &&
-    state.lastFocusedBeforeDrawer instanceof HTMLElement
-  ) {
-    state.lastFocusedBeforeDrawer.focus();
-  }
-
-  state.lastFocusedBeforeDrawer = null;
-}
-
-
-function isJobDetailOpen() {
-  return elements.jobDetailDrawer.classList.contains("is-open");
-}
-
-
-function trapJobDetailFocus(event) {
-  const focusableElements = elements.jobDetailDrawer.querySelectorAll(
-    [
-      "a[href]",
-      "button:not([disabled])",
-      "textarea:not([disabled])",
-      "input:not([disabled])",
-      "select:not([disabled])",
-      "[tabindex]:not([tabindex='-1'])",
-    ].join(","),
-  );
-
-  if (!focusableElements.length) {
-    event.preventDefault();
-    elements.jobDetailDrawer.focus();
-    return;
-  }
-
-  const firstElement = focusableElements[0];
-  const lastElement = focusableElements[focusableElements.length - 1];
-
-  if (
-    event.shiftKey &&
-    document.activeElement === firstElement
-  ) {
-    event.preventDefault();
-    lastElement.focus();
-    return;
-  }
-
-  if (
-    !event.shiftKey &&
-    document.activeElement === lastElement
-  ) {
-    event.preventDefault();
-    firstElement.focus();
   }
 }
 

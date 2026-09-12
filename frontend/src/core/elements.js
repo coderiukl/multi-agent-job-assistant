@@ -1,5 +1,5 @@
 export const elements = {
-    sidebarNewChatButton: doccument.querySelector(
+    sidebarNewChatButton: document.querySelector(
         "#sidebar-new-chat-button",
     ),
     toggleHistoryButton: document.querySelector(
