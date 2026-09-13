@@ -9,6 +9,12 @@ export async function sendConversationMessage({
   cvId = null,
   jobDescription = null,
 }) {
+  if (typeof threadId !== "string" || !threadId.trim()) {
+    throw new TypeError(
+      "threadId is required when sending a conversation message.",
+    );
+  } 
+
   const responseBody = await requestJson(
     CONVERSATION_ENDPOINT,
     {
@@ -30,6 +36,10 @@ export async function sendConversationMessage({
 }
 
 export async function getConversationHistory(threadId) {
+  if (typeof threadId !== "string" || !threadId.trim()) {
+    throw new TypeError("threadId is required when sending a conversation message.");
+  }
+
   const encodedThreadId = encodeURIComponent(threadId);
 
   const responseBody = await requestJson(
@@ -47,6 +57,10 @@ export async function getConversationHistory(threadId) {
 }
 
 export async function deleteConversationHistory(threadId) {
+  if (typeof threadId !== "string" || !threadId.trim()) {
+    throw new TypeError("threadId is required when sending a conversation message.");
+  }
+  
   const encodedThreadId = encodeURIComponent(threadId);
 
   await requestJson(

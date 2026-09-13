@@ -739,9 +739,11 @@ class ConversationNodes:
         return {
             "conversation_history": conversation_history,
             "contextual_message": contextual_message,
-            # Clear transient output from the previous turn.
             "workflow": None,
             "missing_inputs": [],
+            "cv_profile": None,
+            "has_cv": False,
+            "has_jd": False,
             "cv_analysis_result": None,
             "career_advice_result": None,
             "cover_letter_result": None,

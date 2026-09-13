@@ -88,18 +88,16 @@ class ConversationService:
 
         return state["intent"]
 
-    async def _invoke_graph(
-        self, request: ConversationRequest, stop_after_intent: bool = False
-    ) -> ConversationState:
+    async def _invoke_graph(self, request: ConversationRequest, stop_after_intent: bool = False) -> ConversationState:
         initial_state: ConversationState = {
             "message": request.message,
             "messages": [HumanMessage(content=request.message)],
         }
 
-        if request.cv_id is not None:
+        if "cv_id" in request.model_fields_set:
             initial_state["cv_id"] = request.cv_id
 
-        if request.job_description is not None:
+        if "job_description" in request.model_fields_set:
             initial_state["job_description"] = request.job_description
 
         config: dict[str, Any] = {
