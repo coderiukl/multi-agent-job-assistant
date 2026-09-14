@@ -54,6 +54,13 @@ General rules:
    - Use low priority for optional or differentiating skills.
    - Distinguish between a completely missing skill and a skill that has limited supporting evidence.
    - Every recommended action must be concrete and achievable.
+   - When job matching results are supplied, use their gaps and evidence as the primary basis for identifying skill gaps.
+   - Prioritize gaps that appear across multiple job matching results.
+   - Do not conclude that something is a skill gap unless a supplied
+     matching result explicitly identifies it as a gap or supports it
+     with partial or missing evidence.
+   - Synthesize the matching evidence into career advice. Do not repeat
+     the complete job matching results, scores, breakdowns, or summaries.
 
 6. Roadmap:
    - Return ordered phases starting from phase 1.
@@ -134,8 +141,20 @@ Structured candidate CV:
 {cv_profile}
 </CANDIDATE_CV>
 
+Job matching results:
+
+<MATCHING_RESULTS>
+{matching_results}
+</MATCHING_RESULTS>
+
 When CANDIDATE_CV is null, provide general advice without claiming
 knowledge of the candidate's current qualifications.
+
+When MATCHING_RESULTS is empty, identify skill gaps only from the
+user's explicit goal and available CV evidence.
+
+When MATCHING_RESULTS is not empty, synthesize its gaps and evidence
+into actionable advice without repeating the complete matching output.
 
 Return a structured CareerAdviceAssessment.
 """.strip(),

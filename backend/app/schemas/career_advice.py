@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.cv_profile import CVProfile
 from app.schemas.job import normalize_multiline
-
+from app.schemas.job_matching import JobMatchingResult
 
 class CareerAdviceSchema(BaseModel):
     model_config = ConfigDict(
@@ -29,6 +29,7 @@ class CareerReadinessLevel(StrEnum):
 class CareerAdviceInput(CareerAdviceSchema):
     user_request: str = Field(min_length=1, max_length=2000)
     cv_profile: CVProfile | None = None
+    matching_results: list[JobMatchingResult] = Field(default_factory=list, max_length=3)
 
     @field_validator("user_request")
     @classmethod

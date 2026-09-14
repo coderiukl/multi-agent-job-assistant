@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -32,10 +33,22 @@ class CareerAdviceAgent:
             else "null"
         )
 
+        matching_results = json.dumps(
+            [
+                result.model_dump(
+                    mode="json",
+                    exclude_none=True
+                )
+                for result in advice_input.matching_results
+            ],
+            ensure_ascii=False,
+        )
+
         prompt_value = CAREER_ADVICE_AGENT_PROMPT.invoke(
             {
                 "user_request": advice_input.user_request,
                 "cv_profile": cv_profile,
+                "matching_results": matching_results,
             }
         )
 
