@@ -26,6 +26,8 @@ class WorkflowRoute(StrEnum):
     JOB_SEARCH = "job_search"
     JOB_MATCHING = "job_matching"
     CAREER_ADVICE = "career_advice"
+    CV_ANALYSIS = "cv_analysis"
+    COVER_LETTER = "cover_letter"
     END = "end"
 
 def collect_missing_inputs(state: ConversationState) -> list[RequiredInput]:
@@ -72,6 +74,12 @@ def route_workflow_start(state: ConversationState) -> WorkflowRoute:
     if workflow.current_step == WorkflowStep.CAREER_ADVICE:
         return WorkflowRoute.CAREER_ADVICE
 
+    if workflow.current_step == WorkflowStep.CV_ANALYSIS:
+        return WorkflowRoute.CV_ANALYSIS
+
+    if workflow.current_step == WorkflowStep.COVER_LETTER:
+        return WorkflowRoute.COVER_LETTER
+
     return WorkflowRoute.END
 
 def route_next_workflow_step(state: ConversationState) -> WorkflowRoute:
@@ -88,5 +96,11 @@ def route_next_workflow_step(state: ConversationState) -> WorkflowRoute:
 
     if workflow.current_step == WorkflowStep.CAREER_ADVICE:
         return WorkflowRoute.CAREER_ADVICE
+
+    if workflow.current_step == WorkflowStep.CV_ANALYSIS:
+        return WorkflowRoute.CV_ANALYSIS
+    
+    if workflow.current_step == WorkflowStep.COVER_LETTER:
+        return WorkflowRoute.COVER_LETTER
 
     return WorkflowRoute.END

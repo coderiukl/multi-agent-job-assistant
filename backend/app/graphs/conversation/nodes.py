@@ -569,47 +569,164 @@ class ConversationNodes:
             "workflow": updated_workflow,
         }
 
-    async def build_workflow_response(self, state: ConversationState) -> dict[str, Any]:
-        matches = state.get("workflow_job_matches", [])
-        career_advice = state.get("career_advice_result")
+    async def execute_workflow_cv_analysis(self, state: ConversationState) -> dict[str, Any]:
+        workflow = state.get("workflow")
+        cv_profile = state.get("cv_profile")
+
+        if workflow is None:
+            raise ValueError("Workflow plan is required for workflow CV analysis")
+
+        if cv_profile is None:
+            raise ValueError(
+                "CV profile is required for workflow job matching."
+            )
+
+        analysis_input = CVAnalysisInput(
+            cv_profile=cv_profile,
+            user_request=self._get_contextual_message(state),
+        )
+
+        result = await self._cv_analysis_service.analyze(analysis_input)
+
+        updated_workflow = advance_workflow(
+            workflow,
+            WorkflowStep.CV_ANALYSIS,
+        )
+
+        logger.info(
+            "Workflow CV analysis completed",
+            extra={
+                "cv_id": state.get("cv_id"),
+                "overall_score": result.overall_score,
+                "quality_level": result.quality_level.value,
+                "confidence": result.confidence,
+                "next_step": updated_workflow.current_step.value,
+            },
+        )
+
+        return {
+            "cv_analysis_result": result,
+            "workflow": updated_workflow,
+        }
+
+    async def execute_workflow_cover_letter(self, state: ConversationState) -> dict[str, Any]:
+        workflow = state.get("workflow")
+        cv_profile = state.get("cv_profile")
+        job_description = state.get("job_description")
+        workflow_matches = state.get("workflow_job_matches", [])
         search_result = state.get("job_search_result")
 
+        if workflow is None:
+            raise ValueError("Workflow plan is required for workflow cover letter.")
+
+        if cv_profile is None:
+            raise ValueError("CV profile is required for workflow cover letter.")
+
+        if workflow_matches:
+            job = JobMatchTarget.from_normalized_job(workflow_matches[0].job)
+
+        elif search_result is not None and search_result.items:
+            job = JobMatchTarget.from_normalized_job(search_result.items[0].job)
+
+        elif job_description:
+            job = JobMatchTarget(
+                description=job_description,
+            )
+        else:
+            raise ValueError(
+                "A matched job, job search result, or job description is required for workflow cover letter generation."
+            )
+        
+        letter_input = CoverLetterInput(
+            user_request=self._get_contextual_message(state),
+            cv_profile=cv_profile,
+            job=job,
+        )
+
+        result = await self._cover_letter_service.generate(letter_input)
+
+        updated_workflow = advance_workflow(
+            workflow,
+            WorkflowStep.COVER_LETTER,
+        )
+
+        logger.info(
+            "Workflow cover letter completed",
+            extra={
+                "cv_id": state.get("cv_id"),
+                "language": result.language.value,
+                "word_count": result.word_count,
+                "confidence": result.confidence,
+                "next_step": updated_workflow.current_step.value,
+            },
+        )
+
+        return {
+            "cover_letter_result": result,
+            "workflow": updated_workflow,
+        }
+
+    async def build_workflow_response(self, state: ConversationState) -> dict[str, Any]:
+        cv_analysis = state.get("cv_analysis_result")
+        search_result = state.get("job_search_result")
+        matches = state.get("workflow_job_matches", [])
+        career_advice = state.get("career_advice_result")
+        cover_letter = state.get("cover_letter_result")
+
+        response_sections: list[str] = []
+
+        if cv_analysis is not None:
+            response_sections.append(
+                self._build_cv_analysis_message(cv_analysis)
+            )
+
         if matches:
-            lines = [
+            match_lines = [
                 "Tôi đã tìm và đánh giá các công việc phù hợp nhất với CV của bạn:"
             ]
 
             for index, item in enumerate(matches, start=1):
                 job = item.job
                 match = item.match
-
                 company = job.company or "Không rõ công ty"
 
-                lines.append(
+                match_lines.append(
                     f"{index}. {job.title} - {company}: {match.overall_score:.1f}/100"
                 )
 
-            if career_advice is not None:
-                advice_message = self._build_career_advice_message(career_advice)
-
-                lines.extend(["", advice_message])
-
-            assistant_message = "\n".join(lines)
+            response_sections.append("\n".join(match_lines))
 
         elif search_result is not None:
-            assistant_message = self._build_job_search_message(
-                search_result,
-                used_cv=state.get("cv_profile") is not None,
+            response_sections.append(
+                self._build_job_search_message(
+                    search_result,
+                    used_cv=state.get("cv_profile") is not None,
+                )
             )
 
+        if career_advice is not None:
+            response_sections.append(
+                self._build_career_advice_message(career_advice)
+            )
+
+        if cover_letter is not None:
+            response_sections.append(
+                self._build_cover_letter_message(cover_letter)
+            )
+
+        if response_sections:
+            assistant_message = "\n\n".join(response_sections)
         else:
             assistant_message = "Workflow đã hoàn thành nhưng chưa có kết quả phù hợp."
 
         logger.info(
             "Workflow response built",
             extra={
+                "has_cv_analysis": cv_analysis is not None,
+                "has_job_search": search_result is not None,
                 "matched_jobs": len(matches),
                 "has_career_advice": career_advice is not None,
+                "has_cover_letter": cover_letter is not None,
             },
         )
 

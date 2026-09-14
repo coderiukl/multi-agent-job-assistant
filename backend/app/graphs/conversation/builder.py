@@ -35,6 +35,8 @@ def build_conversation_graph(
     graph.add_node("workflow_job_search", nodes.execute_workflow_job_search)
     graph.add_node("workflow_job_matching", nodes.execute_workflow_job_matching)
     graph.add_node("workflow_career_advice", nodes.execute_workflow_career_advice)
+    graph.add_node("workflow_cv_analysis", nodes.execute_workflow_cv_analysis)
+    graph.add_node("workflow_cover_letter", nodes.execute_workflow_cover_letter)
     graph.add_node("workflow_response", nodes.build_workflow_response)
 
     # Existing single-agent nodes
@@ -61,18 +63,25 @@ def build_conversation_graph(
         },
     )
 
+    # Multi-agent workflow
+    workflow_step_routes = {
+        WorkflowRoute.JOB_SEARCH: "workflow_job_search",
+        WorkflowRoute.JOB_MATCHING: "workflow_job_matching",
+        WorkflowRoute.CAREER_ADVICE: "workflow_career_advice",
+        WorkflowRoute.CV_ANALYSIS: "workflow_cv_analysis",
+        WorkflowRoute.COVER_LETTER: "workflow_cover_letter",
+        WorkflowRoute.END: "workflow_response",
+    }
+
     graph.add_conditional_edges(
         "plan_workflow",
         route_workflow_start,
         {
             WorkflowRoute.SINGLE_AGENT: "single_agent_dispatch",
-            WorkflowRoute.JOB_SEARCH: "workflow_job_search",
-            WorkflowRoute.JOB_MATCHING: "workflow_job_matching",
-            WorkflowRoute.CAREER_ADVICE: "workflow_career_advice",
-            WorkflowRoute.END: "workflow_response",
-        },
+            **workflow_step_routes,
+        }
     )
-    # Multi-agent workflow
+
     graph.add_conditional_edges(
         "single_agent_dispatch",
         route_after_intent,
@@ -89,54 +98,39 @@ def build_conversation_graph(
         },
     )
 
-    graph.add_conditional_edges(
+    workflow_nodes = [
         "workflow_job_search",
-        route_next_workflow_step,
-        {
-            WorkflowRoute.JOB_SEARCH: "workflow_job_search",
-            WorkflowRoute.JOB_MATCHING: "workflow_job_matching",
-            WorkflowRoute.CAREER_ADVICE: "workflow_career_advice",
-            WorkflowRoute.END: "workflow_response",
-        },
-    )
-
-    graph.add_conditional_edges(
         "workflow_job_matching",
-        route_next_workflow_step,
-        {
-            WorkflowRoute.JOB_SEARCH: "workflow_job_search",
-            WorkflowRoute.JOB_MATCHING: "workflow_job_matching",
-            WorkflowRoute.CAREER_ADVICE: "workflow_career_advice",
-            WorkflowRoute.END: "workflow_response",
-        },
-    )
-
-    graph.add_conditional_edges(
         "workflow_career_advice",
-        route_next_workflow_step,
-        {
-            WorkflowRoute.JOB_SEARCH: "workflow_job_search",
-            WorkflowRoute.JOB_MATCHING: "workflow_job_matching",
-            WorkflowRoute.CAREER_ADVICE: "workflow_career_advice",
-            WorkflowRoute.END: "workflow_response",
-        },
-    )
-    # Terminal nodes
-    terminal_nodes = [
+        "workflow_cv_analysis",
+        "workflow_cover_letter",
+    ]
+
+    for node_name in workflow_nodes:
+        graph.add_conditional_edges(
+            node_name,
+            route_next_workflow_step,
+            workflow_step_routes
+        )
+
+    terminal_nodes = (
         "workflow_response",
         "clarification",
         "small_talk",
         "out_of_scope",
         "general_question",
         "cv_analysis",
-        "career_advice",
-        "cover_letter",
         "job_search",
         "job_matching",
-    ]
+        "career_advice",
+        "cover_letter"
+    )
 
     for node_name in terminal_nodes:
-        graph.add_edge(node_name, "record_assistant_message")
+        graph.add_edge(
+            node_name,
+            "record_assistant_message",
+        )
 
     graph.add_edge("record_assistant_message", END)
 

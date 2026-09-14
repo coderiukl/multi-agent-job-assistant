@@ -2,53 +2,56 @@ from app.graphs.conversation.state import ConversationState
 from app.schemas.conversations_intent import ConversationIntent, IntentAnalysisResult
 from app.schemas.workflow import WorkflowPlan, WorkflowStep, WorkflowType
 
+INTENT_STEP_ORDER = (
+    (ConversationIntent.CV_ANALYSIS, WorkflowStep.CV_ANALYSIS),
+    (ConversationIntent.JOB_SEARCH, WorkflowStep.JOB_SEARCH),
+    (ConversationIntent.JOB_MATCHING, WorkflowStep.JOB_MATCHING),
+    (ConversationIntent.CAREER_ADVICE, WorkflowStep.CAREER_ADVICE),
+    (ConversationIntent.COVER_LETTER, WorkflowStep.COVER_LETTER),
+)
+
 def _collect_requested_intents(intent: IntentAnalysisResult) -> set[ConversationIntent]:
     return {
         intent.primary_intent,
         *intent.secondary_intents,
     }
 
+def _build_workflow_steps(intents: set[ConversationIntent]) -> list[WorkflowStep]:
+    return [
+        workflow_step
+        for conversation_intent, workflow_step in INTENT_STEP_ORDER
+        if conversation_intent in intents
+    ]
+
 def create_workflow_plan(intent: IntentAnalysisResult) -> WorkflowPlan:
     intents = _collect_requested_intents(intent)
+    steps = _build_workflow_steps(intents)
 
-    has_job_search = ConversationIntent.JOB_SEARCH in intents
-    has_job_matching = ConversationIntent.JOB_MATCHING in intents
-    has_career_advice = ConversationIntent.CAREER_ADVICE in intents
-
-    if has_job_search and has_job_matching and has_career_advice:
-        return WorkflowPlan(
-            workflow_type=WorkflowType.FULL_CAREER,
-            steps=[
-                WorkflowStep.JOB_SEARCH,
-                WorkflowStep.JOB_MATCHING,
-                WorkflowStep.CAREER_ADVICE,
-            ],
-            current_step=WorkflowStep.JOB_SEARCH,
-        )
-
-    if has_job_search and has_job_matching:
-        return WorkflowPlan(
-            workflow_type=WorkflowType.JOB_RECOMMENDATION,
-            steps=[
-                WorkflowStep.JOB_SEARCH,
-                WorkflowStep.JOB_MATCHING,
-            ],
-            current_step=WorkflowStep.JOB_SEARCH,
-        )
-
-    if has_job_search:
+    if steps == [WorkflowStep.JOB_SEARCH]:
         return WorkflowPlan(
             workflow_type=WorkflowType.JOB_DISCOVERY,
-            steps=[
-                WorkflowStep.JOB_SEARCH,
-            ],
-            current_step=WorkflowStep.JOB_SEARCH
+            steps=steps,
+            current_step=steps[0],
+        )
+
+    if steps == [WorkflowStep.JOB_SEARCH, WorkflowStep.JOB_MATCHING]:
+        return WorkflowPlan(
+            workflow_type=WorkflowType.JOB_RECOMMENDATION,
+            steps=steps,
+            current_step=steps[0],
+        )
+
+    if len(steps) <= 1:
+        return WorkflowPlan(
+            workflow_type=WorkflowType.SINGLE_AGENT,
+            steps=[],
+            current_step=None,
         )
 
     return WorkflowPlan(
-        workflow_type=WorkflowType.SINGLE_AGENT,
-        steps=[],
-        current_step=None,
+        workflow_type=WorkflowType.FULL_CAREER,
+        steps=steps,
+        current_step=steps[0],
     )
 
 def plan_workflow(state: ConversationState) -> WorkflowPlan:

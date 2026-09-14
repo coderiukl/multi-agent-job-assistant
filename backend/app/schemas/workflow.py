@@ -14,6 +14,7 @@ class WorkflowType(StrEnum):
 class WorkflowStep(StrEnum):
     RESOLVE_CONTEXT = "resolve_context"
     INTENT_ANALYSIS = "intent_analysis"
+    CV_ANALYSIS = "cv_analysis"
     JOB_SEARCH = "job_search"
     JOB_MATCHING = "job_matching"
     CAREER_ADVICE = "career_advice"
