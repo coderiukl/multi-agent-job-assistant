@@ -374,18 +374,22 @@ class ConversationNodes:
             ),
         }
 
-    async def respond_general_question(
-        self, state: ConversationState
-    ) -> dict[str, Any]:
+    async def respond_general_question(self, state: ConversationState) -> dict[str, Any]:
+        advice_input = CareerAdviceInput(
+            user_request=self._get_contextual_message(state),
+            cv_profile=state.get("cv_profile"),
+        )
+
+        result = await self._career_advice_service.advise(advice_input)
+
+        assistant_message = self._build_career_advice_message(result)
+
         return {
             "route": ConversationRoute.GENERAL_QUESTION,
             "status": ConversationStatus.COMPLETED,
             "missing_inputs": [],
-            "assistant_message": (
-                "Tôi là trợ lý hỗ trợ tìm việc. Bạn có thể gửi CV, "
-                "mô tả công việc hoặc đặt câu hỏi về quá trình "
-                "ứng tuyển và phát triển nghề nghiệp."
-            ),
+            "assistant_message": assistant_message,
+            "career_advice_result": result,
         }
 
     async def create_workflow(self, state: ConversationState) -> dict[str, Any]:
