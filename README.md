@@ -39,7 +39,8 @@ Airflow để thu thập dữ liệu việc làm theo lịch.
 Mỗi Agent có input/output được định nghĩa bằng Pydantic và không trao đổi với nhau
 thông qua văn bản tự do.
 
-## Kiến trúc hệ thống
+## Kiến trúc hệ thống 
+Xem mô tả chi tiết tại: [Kiến trúc hệ thống hiện tại](docs/architecture-as-is.md).
 
 ```mermaid
 flowchart TD
