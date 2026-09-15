@@ -64,3 +64,5 @@ backend/data/jobs/
 airflow/.env
 airflow/logs/
 airflow/config/airflow.cfg
+
+docs/system*
