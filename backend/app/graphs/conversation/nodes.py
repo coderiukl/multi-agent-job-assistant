@@ -741,16 +741,6 @@ class ConversationNodes:
             "assistant_message": assistant_message,
         }
 
-    async def dispatch_single_agent(self, state: ConversationState) -> dict[str, Any]:
-        logger.info(
-            "Dispatching single-agent workflow",
-            extra={
-                "primary_intent": state["intent"].primary_intent.value,
-            },
-        )
-
-        return {}
-
     @staticmethod
     def _build_clarification_message(
         *, missing_inputs: list[RequiredInput], generated_question: str | None

@@ -90,8 +90,8 @@ class ConversationService:
 
     async def _invoke_graph(self, request: ConversationRequest, stop_after_intent: bool = False) -> ConversationState:
         initial_state: ConversationState = {
-            "message": request.message,
-            "messages": [HumanMessage(content=request.message)],
+            "message": request.message, 
+            "messages": [HumanMessage(content=request.message)], 
         }
 
         if "cv_id" in request.model_fields_set:

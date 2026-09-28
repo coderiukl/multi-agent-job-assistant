@@ -7,7 +7,6 @@ from app.graphs.conversation.routing import (
     IntentGateRoute,
     WorkflowRoute,
     route_after_analysis,
-    route_after_intent,
     route_next_workflow_step,
     route_workflow_start,
 )
@@ -31,7 +30,6 @@ def build_conversation_graph(
 
     # Workflow orchestration nodes
     graph.add_node("plan_workflow", nodes.create_workflow)
-    graph.add_node("single_agent_dispatch", nodes.dispatch_single_agent)
     graph.add_node("workflow_job_search", nodes.execute_workflow_job_search)
     graph.add_node("workflow_job_matching", nodes.execute_workflow_job_matching)
     graph.add_node("workflow_career_advice", nodes.execute_workflow_career_advice)
@@ -63,6 +61,19 @@ def build_conversation_graph(
         },
     )
 
+    # Single Agent Routes
+    single_agent_routes = {
+        ConversationRoute.CLARIFICATION: "clarification",
+        ConversationRoute.SMALL_TALK: "small_talk",
+        ConversationRoute.OUT_OF_SCOPE: "out_of_scope",
+        ConversationRoute.GENERAL_QUESTION: "general_question",
+        ConversationRoute.CV_ANALYSIS: "cv_analysis",
+        ConversationRoute.JOB_SEARCH: "job_search",
+        ConversationRoute.JOB_MATCHING: "job_matching",
+        ConversationRoute.CAREER_ADVICE: "career_advice",
+        ConversationRoute.COVER_LETTER: "cover_letter",
+    }
+
     # Multi-agent workflow
     workflow_step_routes = {
         WorkflowRoute.JOB_SEARCH: "workflow_job_search",
@@ -73,29 +84,18 @@ def build_conversation_graph(
         WorkflowRoute.END: "workflow_response",
     }
 
+    workflow_start_routes = {
+        **single_agent_routes,
+        **{
+            node_name: node_name
+            for node_name in workflow_step_routes.values()
+        }
+    }
+
     graph.add_conditional_edges(
         "plan_workflow",
         route_workflow_start,
-        {
-            WorkflowRoute.SINGLE_AGENT: "single_agent_dispatch",
-            **workflow_step_routes,
-        }
-    )
-
-    graph.add_conditional_edges(
-        "single_agent_dispatch",
-        route_after_intent,
-        {
-            ConversationRoute.CLARIFICATION: "clarification",
-            ConversationRoute.SMALL_TALK: "small_talk",
-            ConversationRoute.OUT_OF_SCOPE: "out_of_scope",
-            ConversationRoute.GENERAL_QUESTION: "general_question",
-            ConversationRoute.CV_ANALYSIS: "cv_analysis",
-            ConversationRoute.JOB_SEARCH: "job_search",
-            ConversationRoute.JOB_MATCHING: "job_matching",
-            ConversationRoute.CAREER_ADVICE: "career_advice",
-            ConversationRoute.COVER_LETTER: "cover_letter",
-        },
+        workflow_start_routes,    
     )
 
     workflow_nodes = [
