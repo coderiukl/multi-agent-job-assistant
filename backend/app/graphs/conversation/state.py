@@ -16,6 +16,7 @@ from app.schemas.cv_profile import CVProfile
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.job_search import JobSearchResult
 from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
+from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
 
 
 class ConversationState(TypedDict, total=False):
@@ -55,3 +56,7 @@ class ConversationState(TypedDict, total=False):
 
     # Nội dung trả về người dùng
     assistant_message: str
+
+    # Human-in-the-loop
+    human_review_request: HumanReviewRequest | None
+    human_review_decision: HumanReviewDecision | None

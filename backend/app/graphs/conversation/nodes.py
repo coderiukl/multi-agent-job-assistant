@@ -874,6 +874,8 @@ class ConversationNodes:
             "cv_profile": None,
             "has_cv": False,
             "has_jd": False,
+            "human_review_request": None,
+            "human_review_decision": None,
             "cv_analysis_result": None,
             "career_advice_result": None,
             "cover_letter_result": None,
