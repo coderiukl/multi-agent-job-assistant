@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from langchain_core.messages import AIMessage
+from langgraph.types import interrupt
 
 from app.core.exceptions import ResourceNotFoundException
 from app.graphs.conversation.planning import plan_workflow
@@ -31,6 +32,8 @@ from app.schemas.job_matching import (
 )
 from app.schemas.job_search import JobSearchRequest, JobSearchResult
 from app.schemas.workflow import WorkflowJobMatch, WorkflowStep
+from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
+
 from app.services.career_advice import CareerAdviceService
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.cover_letter import CoverLetterService
@@ -739,6 +742,35 @@ class ConversationNodes:
             "status": ConversationStatus.COMPLETED,
             "missing_inputs": [],
             "assistant_message": assistant_message,
+        }
+
+    async def review_before_cover_letter(self, state: ConversationState) -> dict[str, object]:
+        review_request = HumanReviewRequest(
+            review_type="cover_letter_confirmation",
+            messag="Tôi đã hoàn thành quá trình phân tích công việc. Bạn có muốn tiếp tục tạo Cover Letter không?",
+            data=self._build_review_data(state),
+        )
+        decision_payload = interrupt(review_request.model_dump(mode="json"))
+        decision = HumanReviewDecision.model_validate(decision_payload)
+
+        return {
+            "human_review_request": review_request,
+            "human_review_decision": decision
+        }
+
+    @staticmethod
+    def _build_review_data(state: ConversationState) -> dict[str, object]:
+        matches = state.get("workflow_job_matches", [])
+
+        if not matches:
+            return {}
+
+        selected_match = matches[0]
+
+        return {
+            "job_title": selected_match.job.title,
+            "company": selected_match.job.company,
+            "match_score": selected_match.match.overall_score
         }
 
     @staticmethod
