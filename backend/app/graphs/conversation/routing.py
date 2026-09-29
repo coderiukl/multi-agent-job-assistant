@@ -4,6 +4,7 @@ from app.graphs.conversation.state import ConversationState
 from app.schemas.conversation import ConversationRoute, RequiredInput
 from app.schemas.conversations_intent import ConversationIntent
 from app.schemas.workflow import WorkflowStep, WorkflowType
+from app.schemas.human_review import HumanReviewAction
 
 INTENT_TO_STATE: dict[ConversationIntent, ConversationRoute] = {
     ConversationIntent.CV_ANALYSIS: ConversationRoute.CV_ANALYSIS,
@@ -28,6 +29,11 @@ class WorkflowRoute(StrEnum):
     CV_ANALYSIS = "cv_analysis"
     COVER_LETTER = "cover_letter"
     END = "end"
+
+class HumanReviewRoute(StrEnum):
+    WORKFLOW_COVER_LETTER = "workflow_cover_letter"
+    SINGLE_COVER_LETTER = "single_cover_letter"
+    REJECTED = "rejected"
 
 def collect_missing_inputs(state: ConversationState) -> list[RequiredInput]:
     intent = state["intent"]
@@ -96,3 +102,19 @@ def route_next_workflow_step(state: ConversationState) -> WorkflowRoute:
         return WorkflowRoute.COVER_LETTER
 
     return WorkflowRoute.END
+
+def route_after_human_review(state: ConversationState) -> HumanReviewRoute:
+    decision = state.get("human_review_decision")
+
+    if decision is None:
+        return HumanReviewRoute.REJECTED
+
+    if decision.action != HumanReviewAction.APPROVE:
+        return HumanReviewRoute.REJECTED
+
+    workflow = state.get("workflow")
+
+    if workflow is None:
+        return HumanReviewRoute.SINGLE_COVER_LETTER
+
+    return HumanReviewRoute.WORKFLOW_COVER_LETTER

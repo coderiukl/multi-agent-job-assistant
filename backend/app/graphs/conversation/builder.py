@@ -6,9 +6,11 @@ from app.graphs.conversation.nodes import ConversationNodes
 from app.graphs.conversation.routing import (
     IntentGateRoute,
     WorkflowRoute,
+    HumanReviewRoute,
     route_after_analysis,
     route_next_workflow_step,
     route_workflow_start,
+    route_after_human_review,
 )
 from app.graphs.conversation.state import ConversationState
 from app.schemas.conversation import ConversationRoute
@@ -48,6 +50,10 @@ def build_conversation_graph(
     graph.add_node("job_search", nodes.execute_job_search)
     graph.add_node("job_matching", nodes.execute_job_matching)
 
+    # Human-in-the-loop
+    graph.add_node("human_review", nodes.review_before_cover_letter)
+    graph.add_node("human_review_rejected", nodes.respond_human_review_rejected)
+
     graph.add_edge(START, "prepare_turn")
     graph.add_edge("prepare_turn", "resolve_context")
     graph.add_edge("resolve_context", "analyze_intent")
@@ -71,7 +77,7 @@ def build_conversation_graph(
         ConversationRoute.JOB_SEARCH: "job_search",
         ConversationRoute.JOB_MATCHING: "job_matching",
         ConversationRoute.CAREER_ADVICE: "career_advice",
-        ConversationRoute.COVER_LETTER: "cover_letter",
+        ConversationRoute.COVER_LETTER: "human_review",
     }
 
     # Multi-agent workflow
@@ -80,7 +86,7 @@ def build_conversation_graph(
         WorkflowRoute.JOB_MATCHING: "workflow_job_matching",
         WorkflowRoute.CAREER_ADVICE: "workflow_career_advice",
         WorkflowRoute.CV_ANALYSIS: "workflow_cv_analysis",
-        WorkflowRoute.COVER_LETTER: "workflow_cover_letter",
+        WorkflowRoute.COVER_LETTER: "human_review",
         WorkflowRoute.END: "workflow_response",
     }
 
@@ -96,6 +102,16 @@ def build_conversation_graph(
         "plan_workflow",
         route_workflow_start,
         workflow_start_routes,    
+    )
+
+    graph.add_conditional_edges(
+        "human_review",
+        route_after_human_review,
+        {
+            HumanReviewRoute.WORKFLOW_COVER_LETTER: "workflow_cover_letter",
+            HumanReviewRoute.SINGLE_COVER_LETTER: "cover_letter",
+            HumanReviewRoute.REJECTED: "human_review_rejected",
+        },
     )
 
     workflow_nodes = [
@@ -123,7 +139,8 @@ def build_conversation_graph(
         "job_search",
         "job_matching",
         "career_advice",
-        "cover_letter"
+        "cover_letter",
+        "human_review_rejected",
     )
 
     for node_name in terminal_nodes:
@@ -132,6 +149,6 @@ def build_conversation_graph(
             "record_assistant_message",
         )
 
-    graph.add_edge("record_assistant_message", END)
+    graph.add_edge("record_asssistant_message", END)
 
     return graph.compile(checkpointer=checkpointer)

@@ -758,6 +758,21 @@ class ConversationNodes:
             "human_review_decision": decision
         }
 
+    async def respond_human_review_rejected(self, state: ConversationState) -> dict[str, object]:
+        decision = state.get("human_review_decision")
+
+        feedback = decision.feedback if decision else None
+
+        message = "Đã dừng tạo Cover Letter theo yêu cầu của bạn."
+
+        if feedback:
+            message = f"{message} Phản hồi của bạn: {feedback}"
+
+        return {
+            "assistant_message": message,
+            "status": ConversationStatus.COMPLETED,
+        }
+
     @staticmethod
     def _build_review_data(state: ConversationState) -> dict[str, object]:
         matches = state.get("workflow_job_matches", [])
