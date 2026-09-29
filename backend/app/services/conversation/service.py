@@ -1,12 +1,13 @@
-from typing import cast, Any
+from typing import Any, cast
 from uuid import UUID
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
-from app.graphs.conversation.state import ConversationState
+from app.core.exceptions import AppException
 from app.graphs.conversation.routing import route_after_intent
+from app.graphs.conversation.state import ConversationState
 from app.schemas.conversation import (
     ConversationHistoryData,
     ConversationMessageData,
@@ -14,13 +15,29 @@ from app.schemas.conversation import (
     ConversationStatus,
 )
 from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
-from app.schemas.human_review import ResumeConversationRequest, HumanReviewRequest
+from app.schemas.human_review import HumanReviewRequest, ResumeConversationRequest
+
 
 class ConversationService:
     def __init__(self, *, graph: CompiledStateGraph) -> None:
         self._graph = graph
 
     async def process(self, request: ConversationRequest) -> ConversationResponseData:
+        pending_review = await self._get_pending_review(request.thread_id)
+
+        if pending_review is not None:
+            raise AppException(
+                status_code=409,
+                code="HUMAN_REVIEW_PENDING",
+                message=(
+                    "Cuộc trò chuyện đang chờ bạn xử lý yêu cầu duyệt "
+                    "trước khi gửi tin nhắn mới."
+                ),
+                details={
+                    "pending_human_review": pending_review.model_dump(mode="json"),
+                },
+            )
+
         state = await self._invoke_graph(request)
 
         interrupts = state.get("__interrupt__", [])
@@ -62,17 +79,7 @@ class ConversationService:
 
         snapshot = await self._graph.aget_state(config)
 
-        pending_review = None
-        for task in snapshot.tasks:
-            if task.name != "human_review":
-                continue
-
-            for graph_interrupt in task.interrupts:
-                pending_review = HumanReviewRequest.model_validate(graph_interrupt.value)
-                break
-
-            if pending_review is not None:
-                break
+        pending_review = self._extract_pending_review(snapshot)
 
         stored_messages = snapshot.values.get("messages", [])
 
@@ -107,7 +114,7 @@ class ConversationService:
             cv_name=snapshot.values.get("cv_name"),
             job_description=snapshot.values.get("job_description"),
             latest_result=self._build_history_result(snapshot.values),
-            pending_human_review=snapshot.values.get("human_review_request"),
+            pending_human_review=pending_review,
         )
 
     async def delete_history(self, thread_id: UUID) -> None:
@@ -118,12 +125,19 @@ class ConversationService:
 
         await checkpointer.adelete_thread(str(thread_id))
     
-    async def analyze_intent(self, request: ConversationRequest) -> IntentAnalysisResult:
+    async def analyze_intent(
+        self,
+        request: ConversationRequest,
+    ) -> IntentAnalysisResult:
         state = await self._invoke_graph(request, stop_after_intent=True)
 
         return state["intent"]
 
-    async def _invoke_graph(self, request: ConversationRequest, stop_after_intent: bool = False) -> ConversationState:
+    async def _invoke_graph(
+        self,
+        request: ConversationRequest,
+        stop_after_intent: bool = False,
+    ) -> ConversationState:
         message_context = {
             key: value
             for key, value in {
@@ -168,7 +182,19 @@ class ConversationService:
 
         return cast(ConversationState, result)
 
-    async def resume(self, request: ResumeConversationRequest) -> ConversationResponseData:
+    async def resume(
+        self,
+        request: ResumeConversationRequest,
+    ) -> ConversationResponseData:
+        pending_review = await self._get_pending_review(request.thread_id)
+
+        if pending_review is None:
+            raise AppException(
+                status_code=409,
+                code="HUMAN_REVIEW_NOT_PENDING",
+                message="Cuộc trò chuyện này không còn yêu cầu nào đang chờ duyệt.",
+            )
+
         config = {
             "configurable": {
                 "thread_id": str(request.thread_id),
@@ -187,6 +213,30 @@ class ConversationService:
             thread_id=request.thread_id,
             state=state,
         )
+
+    async def _get_pending_review(self, thread_id: UUID) -> HumanReviewRequest | None:
+        config: dict[str, Any] = {
+            "configurable": {
+                "thread_id": str(thread_id),
+            }
+        }
+
+        snapshot = await self._graph.aget_state(config)
+
+        return self._extract_pending_review(snapshot)
+
+    @staticmethod
+    def _extract_pending_review(snapshot: Any) -> HumanReviewRequest | None:
+        """Return a review only while the checkpoint is truly interrupted."""
+
+        for task in snapshot.tasks:
+            for task_interrupt in task.interrupts:
+                try:
+                    return HumanReviewRequest.model_validate(task_interrupt.value)
+                except (TypeError, ValueError):
+                    continue
+
+        return None
 
     @staticmethod
     def _get_message_content(content: Any) -> str:
@@ -237,7 +287,12 @@ class ConversationService:
 
         return result
 
-    def _build_response(self, *, thread_id: UUID, state: ConversationState) -> ConversationResponseData:
+    def _build_response(
+        self,
+        *,
+        thread_id: UUID,
+        state: ConversationState,
+    ) -> ConversationResponseData:
         human_review = state.get("human_review_request")
 
         if human_review is not None and state.get("human_review_decision") is None:

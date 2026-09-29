@@ -139,7 +139,7 @@ export async function getConversationHistory(threadId) {
   };
 }
 
-function normalizeHumanReview(review) {
+export function normalizeHumanReview(review) {
   if (!review || typeof review !== "object") {
     return null;
   }

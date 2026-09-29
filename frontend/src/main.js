@@ -137,6 +137,7 @@ const jobsController = createJobsController({
 
 const chatController = createChatController({
   addMessage,
+  cacheConversation: historyController.cacheCurrentConversation,
   clearError,
   clearComposerContextAfterSubmit,
   closeJobDetail,
@@ -830,6 +831,7 @@ function resetConversation() {
   state.currentCvAnalysisResult = null;
   state.currentCareerAdviceResult = null;
   state.currentCoverLetterResult = null;
+  state.pendingHumanReview = null;
   state.selectedCvFile = null;
   state.uploadedCvId = null;
   state.uploadedCvName = null;

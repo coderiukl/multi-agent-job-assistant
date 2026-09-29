@@ -6,8 +6,8 @@ from app.api.dependencies import ConversationServiceDependency
 from app.schemas.conversation import ConversationHistoryData, ConversationResponseData
 from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
 from app.schemas.error import ErrorResponse
-from app.schemas.response import ApiResponse
 from app.schemas.human_review import ResumeConversationRequest
+from app.schemas.response import ApiResponse
 
 router = APIRouter()
 
@@ -55,6 +55,10 @@ async def delete_conversation_history(
         422: {
             "model": ErrorResponse,
             "description": "The request data is invalid.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "The conversation is waiting for human review.",
         },
         502: {
             "model": ErrorResponse,
@@ -105,6 +109,12 @@ async def analyze_conversation_intent(
 @router.post(
     "/resume",
     response_model=ApiResponse[ConversationResponseData],
+    responses={
+        409: {
+            "model": ErrorResponse,
+            "description": "The conversation is not waiting for human review.",
+        },
+    },
 )
 async def resume_conversation(
     request: ResumeConversationRequest, 

@@ -558,7 +558,7 @@ export function createHistoryController({
       cvId: serverHistory.cvId ?? cachedHistory.cvId ?? null,
       cvName: serverHistory.cvName ?? cachedHistory.cvName ?? null,
       jobDescription: serverHistory.jobDescription ?? cachedHistory.jobDescription ?? null,
-      pendingHumanReview: serverHistory.pendingHumanReview ?? cachedHistory.pendingHumanReview ?? null,
+      pendingHumanReview: serverHistory.pendingHumanReview ?? null,
     };
   }
 

@@ -8,10 +8,10 @@ from app.schemas.career_advice import CareerAdviceResult
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cover_letter import CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisResult
+from app.schemas.human_review import HumanReviewRequest
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.job_search import JobSearchResult
 from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
-from app.schemas.human_review import HumanReviewRequest
 
 
 class ConversationRoute(StrEnum):

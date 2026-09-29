@@ -1,10 +1,14 @@
 import { sendConversationMessage } from "../../api.js";
 import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
-import { resumeConversation } from "../../api/conversation-api.js";
+import {
+  normalizeHumanReview,
+  resumeConversation,
+} from "../../api/conversation-api.js";
 
 export function createChatController({
   addMessage,
+  cacheConversation,
   clearError,
   clearComposerContextAfterSubmit,
   closeJobDetail,
@@ -114,7 +118,11 @@ export function createChatController({
     await handlers[conversation.route]?.();
   }
 
-  function handleConversationError(error) {
+  function handleConversationError(error, rejectedMessage = "") {
+    if (restorePendingReviewFromError(error, rejectedMessage)) {
+      return;
+    }
+
     showError(
       error?.message ||
         "Đã xảy ra lỗi khi xử lý yêu cầu.",
@@ -129,6 +137,18 @@ export function createChatController({
   }
 
   function renderHumanReviewActions() {
+    const existingContainer = elements.messageList.querySelector(
+      ".human-review-actions",
+    );
+
+    if (existingContainer) {
+      existingContainer.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+      return;
+    }
+
     const container = document.createElement("div");
 
     container.className = "human-review-actions";
@@ -161,6 +181,69 @@ export function createChatController({
     });
   }
 
+  function restorePendingReviewFromError(error, rejectedMessage = "") {
+    const errorPayload = error?.details?.error;
+
+    if (
+      error?.status !== 409 ||
+      errorPayload?.code !== "HUMAN_REVIEW_PENDING"
+    ) {
+      return false;
+    }
+
+    const review = normalizeHumanReview(
+      errorPayload?.details?.pending_human_review,
+    );
+
+    if (!review) {
+      return false;
+    }
+
+    rollbackRejectedMessage(rejectedMessage);
+
+    state.pendingHumanReview = review;
+
+    const reviewMessageAlreadyExists = state.messages.some(
+      (message) => (
+        message.role === "assistant" &&
+        message.text === review.message
+      ),
+    );
+
+    if (!reviewMessageAlreadyExists) {
+      addMessage({
+        role: "assistant",
+        text: review.message,
+      });
+    } else {
+      cacheConversation();
+    }
+
+    renderHumanReviewActions();
+    showError(errorPayload.message);
+    return true;
+  }
+
+  function rollbackRejectedMessage(rejectedMessage) {
+    const lastMessage = state.messages.at(-1);
+
+    if (
+      lastMessage?.role === "user" &&
+      (!rejectedMessage || lastMessage.text === rejectedMessage)
+    ) {
+      state.messages.pop();
+      const userMessages = elements.messageList.querySelectorAll(
+        ".user-message",
+      );
+      userMessages.item(userMessages.length - 1)?.remove();
+    }
+
+    if (rejectedMessage) {
+      elements.messageInput.value = rejectedMessage;
+      resizeMessageInput();
+    }
+  }
+
   async function handleHumanReviewDecision(action, container) {
     if (!state.pendingHumanReview) {
       return;
@@ -179,8 +262,22 @@ export function createChatController({
       });
 
       state.pendingHumanReview = null;
+      cacheConversation();
 
       container.remove();
+
+      if (
+        result.status === "waiting_for_human" &&
+        result.humanReview
+      ) {
+        state.pendingHumanReview = result.humanReview;
+        addMessage({
+          role: "assistant",
+          text: result.humanReview.message,
+        });
+        renderHumanReviewActions();
+        return;
+      }
 
       addMessage({
         role: "assistant",
@@ -189,6 +286,17 @@ export function createChatController({
 
       await handleConversationResult(result, "");
     } catch (error) {
+      const errorCode = error?.details?.error?.code;
+
+      if (
+        error?.status === 409 &&
+        errorCode === "HUMAN_REVIEW_NOT_PENDING"
+      ) {
+        state.pendingHumanReview = null;
+        container.remove();
+        cacheConversation();
+      }
+
       buttons.forEach((button) => {
         button.disabled = false;
       });
@@ -205,6 +313,14 @@ export function createChatController({
     const input = readComposerInput();
 
     if (!canSubmitComposer(input)) {
+      return;
+    }
+
+    if (state.pendingHumanReview) {
+      showError(
+        "Hãy xử lý yêu cầu duyệt hiện tại trước khi gửi tin nhắn mới.",
+      );
+      renderHumanReviewActions();
       return;
     }
 
@@ -270,6 +386,7 @@ export function createChatController({
         });
 
         renderHumanReviewActions();
+        cacheConversation();
         return;
       }
 
@@ -280,7 +397,7 @@ export function createChatController({
 
       await handleConversationResult(conversation, input.message);
     } catch (error) {
-      handleConversationError(error);
+      handleConversationError(error, input.message);
     } finally {
       removeTypingIndicator();
       state.isSending = false;
@@ -313,6 +430,14 @@ export function createChatController({
     }
 
     if (state.isSending) {
+      return;
+    }
+
+    if (state.pendingHumanReview) {
+      showError(
+        "Hãy xử lý yêu cầu duyệt hiện tại trước khi thực hiện tác vụ mới.",
+      );
+      renderHumanReviewActions();
       return;
     }
 
@@ -369,6 +494,7 @@ export function createChatController({
         });
 
         renderHumanReviewActions();
+        cacheConversation();
         return;
       }
 
@@ -385,6 +511,10 @@ export function createChatController({
         renderResult(result);
       }
     } catch (error) {
+      if (restorePendingReviewFromError(error, message)) {
+        return;
+      }
+
       showError(error?.message || requestErrorMessage);
       addMessage({
         role: "assistant",
