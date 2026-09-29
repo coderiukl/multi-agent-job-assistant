@@ -3,15 +3,18 @@ from uuid import UUID
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 
 from app.graphs.conversation.state import ConversationState
+from app.graphs.conversation.routing import route_after_intent
 from app.schemas.conversation import (
     ConversationHistoryData,
     ConversationMessageData,
     ConversationResponseData,
+    ConversationStatus,
 )
 from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
-
+from app.schemas.human_review import ResumeConversationRequest, HumanReviewRequest
 
 class ConversationService:
     def __init__(self, *, graph: CompiledStateGraph) -> None:
@@ -20,21 +23,34 @@ class ConversationService:
     async def process(self, request: ConversationRequest) -> ConversationResponseData:
         state = await self._invoke_graph(request)
 
-        return ConversationResponseData(
+        interrupts = state.get("__interrupt__", [])
+
+        if interrupts:
+            interrupt_value = interrupts[0].value
+
+            human_review = HumanReviewRequest.model_validate(interrupt_value)
+
+            return ConversationResponseData(
+                thread_id=request.thread_id,
+                assistant_message=human_review.message,
+                status=ConversationStatus.WAITING_FOR_HUMAN,
+                route=state["route"],
+                intent=state["intent"],
+                cv_id=state.get("cv_id"),
+                missing_inputs=state.get('missing_inputs', []),
+                human_review=human_review,
+                workflow=state.get("workflow"),
+                cv_analysis_result=state.get("cv_analysis_result"),
+                career_advice_result=state.get("career_advice_result"),
+                cover_letter_result=state.get("cover_letter_result"),
+                job_search_result=state.get("job_search_result"),
+                job_matching_result=state.get("job_matching_result"),
+                workflow_job_matches=state.get("workflow_job_matches", []),
+            )
+
+        return self._build_response(
             thread_id=request.thread_id,
-            assistant_message=state["assistant_message"],
-            status=state["status"],
-            route=state["route"],
-            intent=state["intent"],
-            cv_id=state.get("cv_id"),
-            missing_inputs=state.get("missing_inputs", []),
-            workflow=state.get("workflow"),
-            cv_analysis_result=state.get("cv_analysis_result"),
-            career_advice_result=state.get("career_advice_result"),
-            cover_letter_result=state.get("cover_letter_result"),
-            job_search_result=state.get("job_search_result"),
-            job_matching_result=state.get("job_matching_result"),
-            workflow_job_matches=state.get("workflow_job_matches", []),
+            state=state,
         )
 
     async def get_history(self, thread_id: UUID) -> ConversationHistoryData:
@@ -115,10 +131,70 @@ class ConversationService:
 
         return cast(ConversationState, result)
 
+    async def resume(self, request: ResumeConversationRequest) -> ConversationResponseData:
+        config = {
+            "configurable": {
+                "thread_id": str(request.thread_id),
+            }
+        }
+
+        result = await self._graph.ainvoke(
+            Command(
+                resume=request.decision.model_dump(mode="json")
+            ),
+            config=config,
+        )
+
+        state = cast(ConversationState, result)
+        return self._build_response(
+            thread_id=request.thread_id,
+            state=state,
+        )
+
     @staticmethod
     def _get_message_content(content: Any) -> str:
         if isinstance(content, str):
             return content.strip()
 
         return str(content).strip()
+
+    def _build_response(self, *, thread_id: UUID, state: ConversationState) -> ConversationResponseData:
+        human_review = state.get("human_review_request")
+
+        if human_review is not None and state.get("human_review_decision") is None:
+            return ConversationResponseData(
+                thread_id=thread_id,
+                assistant_message=human_review.message,
+                status=ConversationStatus.WAITING_FOR_HUMAN,
+                route=state.get("route") or route_after_intent(state),
+                intent=state.get("intent"),
+                cv_id=state.get("cv_id"),
+                missing_inputs=state.get('missing_inputs', []),
+                human_review=human_review,
+                workflow=state.get("workflow"),
+                cv_analysis_result=state.get("cv_analysis_result"),
+                career_advice_result=state.get("career_advice_result"),
+                cover_letter_result=state.get("cover_letter_result"),
+                job_search_result=state.get("job_search_result"),
+                job_matching_result=state.get("job_matching_result"),
+                workflow_job_matches=state.get("workflow_job_matches", []),
+            )
+        
+        return ConversationResponseData(
+            thread_id=thread_id,
+            assistant_message=state['assistant_message'],
+            status=state['status'],
+            route=state['route'],
+            intent=state['intent'],
+            cv_id=state.get("cv_id"),
+            missing_inputs=state.get('missing_inputs', []),
+            human_review=None,
+            workflow=state.get("workflow"),
+            cv_analysis_result=state.get("cv_analysis_result"),
+            career_advice_result=state.get("career_advice_result"),
+            cover_letter_result=state.get("cover_letter_result"),
+            job_search_result=state.get("job_search_result"),
+            job_matching_result=state.get("job_matching_result"),
+            workflow_job_matches=state.get("workflow_job_matches", []),
+        )
 

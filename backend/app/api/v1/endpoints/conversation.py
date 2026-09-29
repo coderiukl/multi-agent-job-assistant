@@ -7,6 +7,7 @@ from app.schemas.conversation import ConversationHistoryData, ConversationRespon
 from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
 from app.schemas.error import ErrorResponse
 from app.schemas.response import ApiResponse
+from app.schemas.human_review import ResumeConversationRequest
 
 router = APIRouter()
 
@@ -100,3 +101,15 @@ async def analyze_conversation_intent(
         message="Conversation intent analyzed successfully.",
         data=result,
     )
+
+@router.post(
+    "/resume",
+    response_model=ApiResponse[ConversationResponseData],
+)
+async def resume_conversation(
+    request: ResumeConversationRequest, 
+    conversation_service: ConversationServiceDependency
+) -> ApiResponse[ConversationResponseData]:
+    result = await conversation_service.resume(request)
+
+    return ApiResponse(data=result)

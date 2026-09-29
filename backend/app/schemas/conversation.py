@@ -11,6 +11,7 @@ from app.schemas.cv_analysis import CVAnalysisResult
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.job_search import JobSearchResult
 from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
+from app.schemas.human_review import HumanReviewRequest
 
 
 class ConversationRoute(StrEnum):
@@ -30,6 +31,7 @@ class ConversationStatus(StrEnum):
     COMPLETED = "completed"
     NEEDS_CLARIFICATION = "needs_clarification"
     ROUTED = "routed"
+    WAITING_FOR_HUMAN = "waiting_for_human"
 
 
 class RequiredInput(StrEnum):
@@ -67,3 +69,5 @@ class ConversationResponseData(BaseModel):
 
     workflow: WorkflowPlan | None = None
     workflow_job_matches: list[WorkflowJobMatch] = Field(default_factory=list)
+
+    human_review: HumanReviewRequest | None = None
