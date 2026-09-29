@@ -1,4 +1,4 @@
-export function appendMessage(messageList, {role, text}) {
+export function appendMessage(messageList, {role, text, context = null}) {
     const article = document.createElement("article");
 
     article.className = `message ${role}-message`;
@@ -21,6 +21,28 @@ export function appendMessage(messageList, {role, text}) {
     paragraph.textContent = text;
 
     bubble.append(paragraph);
+
+    if (context?.cvId || context?.cvName) {
+        const cvAttachment = document.createElement("div");
+
+        cvAttachment.className = "message-attachment";
+        cvAttachment.textContent = `CV: ${context.cvName || "CV đã đính kèm"}`;
+        bubble.append(cvAttachment);
+    }
+
+    if (context?.jobDescription) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        const description = document.createElement("p");
+
+        details.className = "message-job-description";
+        summary.textContent = "JD đã đính kèm";
+        description.textContent = context.jobDescription;
+
+        details.append(summary, description);
+        bubble.append(details);
+    }
+
     article.append(bubble);
     messageList.append(article);
 }

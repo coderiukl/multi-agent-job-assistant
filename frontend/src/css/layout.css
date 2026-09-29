@@ -113,7 +113,7 @@
 .workspace {
   display: grid;
   grid-template-columns:
-    minmax(220px, 260px)
+    minmax(250px, 280px)
     minmax(0, 1fr);
   gap: 18px;
   height: calc(100dvh - var(--header-height));
@@ -149,7 +149,7 @@
 
 .workspace[data-results-open="true"] {
   grid-template-columns:
-    minmax(220px, 260px)
+    minmax(240px, 270px)
     minmax(420px, 0.9fr)
     minmax(520px, 1.2fr);
 }

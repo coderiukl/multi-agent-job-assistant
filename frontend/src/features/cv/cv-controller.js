@@ -14,8 +14,12 @@ export function createCvController({
 
     if (!file) {
       elements.selectedCv.hidden = true;
-      elements.cvStatusBadge.textContent = "Chưa có CV";
-      elements.cvStatusBadge.className = "cv-status-badge";
+      elements.cvStatusBadge.textContent = state.uploadedCvId
+        ? "Đang nhớ CV"
+        : "Chưa có CV";
+      elements.cvStatusBadge.className = state.uploadedCvId
+        ? "cv-status-badge is-ready"
+        : "cv-status-badge";
       updateComposerContext();
       return;
     }
@@ -75,6 +79,7 @@ export function createCvController({
     state.cvUploadRequestId = requestId;
     state.selectedCvFile = file;
     state.uploadedCvId = null;
+    state.uploadedCvName = null;
     state.cvUploadStatus = "uploading";
     renderStatus();
 
@@ -90,6 +95,7 @@ export function createCvController({
       }
 
       state.uploadedCvId = result.fileId;
+      state.uploadedCvName = result.fileName;
       state.cvUploadStatus = "uploaded";
       renderStatus();
 
@@ -105,6 +111,7 @@ export function createCvController({
       }
 
       state.uploadedCvId = null;
+      state.uploadedCvName = null;
       state.cvUploadStatus = "failed";
       renderStatus();
       showError(error?.message || "Không thể tải CV lên backend.");
@@ -115,6 +122,7 @@ export function createCvController({
     state.cvUploadRequestId += 1;
     state.selectedCvFile = null;
     state.uploadedCvId = null;
+    state.uploadedCvName = null;
     state.cvUploadStatus = "idle";
     elements.cvInput.value = "";
 

@@ -11,6 +11,12 @@ export const elements = {
     conversationHistoryEmpty: document.querySelector(
         "#conversation-history-empty"
     ),
+    conversationHistorySearch: document.querySelector(
+        "#conversation-history-search",
+    ),
+    historyEmptyNewChatButton: document.querySelector(
+        "#history-empty-new-chat",
+    ),
 
     newChatButton: document.querySelector(
         "#new-chat-button",
@@ -95,7 +101,13 @@ export const elements = {
     resultsPanel: document.querySelector(
         "#results-panel",
     ),
+    resultHistoryTabs: document.querySelector(
+        "#result-history-tabs",
+    ),
     jobResults: document.querySelector("#job-results"),
+    jobPagination: document.querySelector(
+        "#job-pagination",
+    ),
     resultsSummary: document.querySelector(
         "#results-summary",
     ),

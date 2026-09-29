@@ -7,6 +7,7 @@ export async function sendConversationMessage({
   threadId,
   message,
   cvId = null,
+  cvName = null,
   jobDescription = null,
 }) {
   if (typeof threadId !== "string" || !threadId.trim()) {
@@ -15,6 +16,23 @@ export async function sendConversationMessage({
     );
   } 
 
+  const payload = {
+    thread_id: threadId,
+    message,
+  };
+
+  if (cvId !== null && cvId !== undefined) {
+    payload.cv_id = cvId;
+  }
+
+  if (cvName !== null && cvName !== undefined) {
+    payload.cv_name = cvName;
+  }
+
+  if (jobDescription !== null && jobDescription !== undefined) {
+    payload.job_description = jobDescription;
+  }
+
   const responseBody = await requestJson(
     CONVERSATION_ENDPOINT,
     {
@@ -22,14 +40,33 @@ export async function sendConversationMessage({
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        thread_id: threadId,
-        message,
-        cv_id: cvId,
-        job_description: jobDescription,
-      }),
+      body: JSON.stringify(payload),
     },
     "Không thể kết nối với dịch vụ hội thoại.",
+  );
+
+  return normalizeConversationResponse(responseBody);
+}
+
+export async function resumeConversation({
+  threadId,
+  action,
+  feedback = null,
+}) {
+  const responseBody = await requestJson(
+    "/api/v1/conversation/resume",
+    {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        thread_id: threadId,
+        decision: {
+          action,
+          feedback,
+        },
+      }),
+    },
+    "Không thể tiếp tục quá trình tạo Cover Letter."
   );
 
   return normalizeConversationResponse(responseBody);
@@ -49,11 +86,78 @@ export async function getConversationHistory(threadId) {
   );
 
   const data = responseBody?.data ?? responseBody;
+  const messages = normalizeHistoryMessages(data?.messages);
+  const newestMessages = [...messages].reverse();
+  const fallbackContext = normalizeMessageContext({
+    cv_id: data?.cv_id,
+    cv_name: data?.cv_name,
+    job_description: data?.job_description,
+  });
+  let latestContextMessage = newestMessages
+    .find((message) => message.context);
+
+  if (!latestContextMessage && fallbackContext) {
+    latestContextMessage = newestMessages
+      .find((message) => message.role === "user");
+
+    if (latestContextMessage) {
+      latestContextMessage.context = fallbackContext;
+    }
+  }
+
+  const latestResultMessage = newestMessages
+    .find((message) => message.result);
+  const storedResults = collectStoredResults(messages);
+  const fallbackResult = data?.latest_result
+    ? normalizeConversationResponse({ data: data.latest_result })
+    : null;
+
+  if (!storedResults.length && fallbackResult) {
+    storedResults.push({
+      conversation: fallbackResult,
+      originalMessage:
+        newestMessages.find((message) => message.role === "user")
+          ?.text ?? "",
+    });
+  }
 
   return {
     threadId: data?.thread_id ?? threadId,
-    messages: normalizeHistoryMessages(data?.messages),
+    messages,
+    cvId: data?.cv_id ?? null,
+    cvName: data?.cv_name ?? null,
+    jobDescription: data?.job_description ?? null,
+    latestContext:
+      latestContextMessage?.context ?? fallbackContext,
+    latestResult:
+      latestResultMessage?.result ??
+      fallbackResult,
+    results: storedResults,
+    latestUserText:
+      newestMessages.find((message) => message.role === "user")
+        ?.text ?? "",
   };
+}
+
+function collectStoredResults(messages) {
+  const results = [];
+  let originalMessage = "";
+
+  for (const message of messages) {
+    if (message.role === "user") {
+      originalMessage = message.text;
+      continue;
+    }
+
+    if (message.result) {
+      results.push({
+        conversation: message.result,
+        originalMessage,
+      });
+    }
+  }
+
+  return results;
 }
 
 export async function deleteConversationHistory(threadId) {
@@ -88,6 +192,28 @@ function normalizeHistoryMessages(messages) {
         crypto.randomUUID(),
       role: message.role,
       text: message?.content ?? "",
+      context: normalizeMessageContext(message?.metadata?.context),
+      result: message?.metadata?.result
+        ? normalizeConversationResponse({
+            data: message.metadata.result,
+          })
+        : null,
     }))
     .filter((message) => message.text.trim());
+}
+
+function normalizeMessageContext(context) {
+  if (!context || typeof context !== "object") {
+    return null;
+  }
+
+  const normalized = {
+    cvId: context.cv_id ?? null,
+    cvName: context.cv_name ?? null,
+    jobDescription: context.job_description ?? null,
+  };
+
+  return normalized.cvId || normalized.cvName || normalized.jobDescription
+    ? normalized
+    : null;
 }

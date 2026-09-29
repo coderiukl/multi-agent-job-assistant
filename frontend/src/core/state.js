@@ -7,6 +7,7 @@ export const state = {
 
     selectedCvFile: null,
     uploadedCvId: null,
+    uploadedCvName: null,
     cvUploadStatus: "idle",
     cvUploadRequestId: 0,
 
@@ -20,6 +21,8 @@ export const state = {
 
     currentWorkflow: null,
     workflowJobMatches: [],
+    conversationResults: [],
+    activeConversationResultType: null,
 
     isSending: false,
     isJobSearchLoading: false,
@@ -35,4 +38,6 @@ export const state = {
     resultsOpen: false,
     resultsAvailable: false,
     lastFocusedBeforeDrawer: null,
+
+    pendingHumanReview: null,
 };

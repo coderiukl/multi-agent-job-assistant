@@ -126,11 +126,27 @@
             </div>
           </header>
 
+          <div class="conversation-history-search-wrap">
+            <span aria-hidden="true">⌕</span>
+            <input
+              id="conversation-history-search"
+              class="conversation-history-search"
+              type="search"
+              placeholder="Tìm cuộc trò chuyện..."
+              autocomplete="off"
+              aria-label="Tìm trong lịch sử trò chuyện"
+            />
+          </div>
+
           <div
             id="conversation-history-empty"
             class="conversation-history-empty"
           >
-            Chưa có cuộc trò chuyện nào.
+            <strong>Chưa có cuộc trò chuyện</strong>
+            <span>Bắt đầu một cuộc trò chuyện để lưu lại nội dung và kết quả.</span>
+            <button id="history-empty-new-chat" type="button">
+              Bắt đầu trò chuyện
+            </button>
           </div>
 
           <div
@@ -422,6 +438,13 @@
             </div>
           </header>
 
+          <nav
+            id="result-history-tabs"
+            class="result-history-tabs"
+            aria-label="Các kết quả đã lưu"
+            hidden
+          ></nav>
+
           <section
             id="results-summary"
             class="results-summary"
@@ -452,6 +475,13 @@
               </div>
             </section>
           </div>
+
+          <nav
+            id="job-pagination"
+            class="job-pagination"
+            aria-label="Phân trang kết quả việc làm"
+            hidden
+          ></nav>
         </section>
       </main>
     </div>

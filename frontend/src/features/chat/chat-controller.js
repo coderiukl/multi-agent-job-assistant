@@ -1,13 +1,16 @@
 import { sendConversationMessage } from "../../api.js";
 import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
+import { resumeConversation } from "../../api/conversation-api.js";
 
 export function createChatController({
   addMessage,
   clearError,
+  clearComposerContextAfterSubmit,
   closeJobDetail,
   handleJobSearchConversation,
   rememberConversationThread,
+  rememberConversationResults,
   removeTypingIndicator,
   renderCareerAdviceResult,
   renderCoverLetterResult,
@@ -63,6 +66,7 @@ export function createChatController({
   function clearComposerAfterSubmit() {
     elements.messageInput.value = "";
     elements.suggestionList.hidden = true;
+    clearComposerContextAfterSubmit();
 
     resizeMessageInput();
     updateComposerContext();
@@ -85,6 +89,8 @@ export function createChatController({
   }
 
   async function handleConversationResult(conversation, originalMessage) {
+    rememberConversationResults(conversation, originalMessage);
+
     state.currentWorkflow = conversation.workflow;
     state.workflowJobMatches = conversation.workflowJobMatches;
 
@@ -122,6 +128,77 @@ export function createChatController({
     });
   }
 
+  function renderHumanReviewActions() {
+    const container = document.createElement("div");
+
+    container.className = "human-review-actions";
+
+    const approveButton = document.createElement("button");
+    approveButton.type = "button";
+    approveButton.className = "human-review-approve";
+    approveButton.textContent = "Tạo Cover Letter";
+
+    const rejectButton = document.createElement("button");
+    rejectButton.type = "button";
+    rejectButton.className = "human-review-reject";
+    rejectButton.textContent = "Bỏ qua";
+
+    container.append(approveButton, rejectButton);
+
+    approveButton.addEventListener("click", () => {
+      handleHumanReviewDecision("approve", container);
+    });
+
+    rejectButton.addEventListener("click", () => {
+      handleHumanReviewDecision("reject", container);
+    });
+
+    elements.messageList.append(container);
+
+    container.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+  }
+
+  async function handleHumanReviewDecision(action, container) {
+    if (!state.pendingHumanReview) {
+      return;
+    }
+
+    const buttons = container.querySelectorAll("button");
+
+    buttons.forEach((button) => {
+      button.disabled = true;
+    });
+
+    try {
+      const result = await resumeConversation({
+        threadId: state.threadId,
+        action,
+      });
+
+      state.pendingHumanReview = null;
+
+      container.remove();
+
+      addMessage({
+        role: "assistant",
+        text: result.answer,
+      });
+
+      await handleConversationResult(result, "");
+    } catch (error) {
+      buttons.forEach((button) => {
+        button.disabled = false;
+      });
+
+      showError(
+        error.message || "Không thể tiếp tục xử lý yêu cầu."
+      );
+    }
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -145,10 +222,23 @@ export function createChatController({
     clearError();
     state.isSending = true;
 
-    addMessage({ role: "user", text: input.message });
+    const messageContext = {
+      cvId: state.selectedCvFile ? state.uploadedCvId : null,
+      cvName: state.selectedCvFile
+        ? state.uploadedCvName ?? state.selectedCvFile.name
+        : null,
+      jobDescription: input.jobDescription,
+    };
+
+    addMessage({
+      role: "user",
+      text: input.message,
+      context: messageContext,
+    });
     rememberConversationThread({
       threadId: state.threadId,
       firstMessage: input.message,
+      context: messageContext,
     });
 
     clearComposerAfterSubmit();
@@ -159,12 +249,28 @@ export function createChatController({
       const conversation = await sendConversationMessage({
         threadId: state.threadId,
         message: input.message,
-        cvId: state.uploadedCvId,
+        cvId: messageContext.cvId,
+        cvName: messageContext.cvName,
         jobDescription: input.jobDescription,
       });
 
       if (conversation.threadId) {
         saveThreadId(conversation.threadId);
+      }
+
+      if (
+        conversation.status === "waiting_for_human" &&
+        conversation.humanReview
+      ) {
+        state.pendingHumanReview = conversation.humanReview;
+
+        addMessage({
+          role: "assistant",
+          text: conversation.humanReview.message,
+        });
+
+        renderHumanReviewActions();
+        return;
       }
 
       addMessage({
@@ -214,10 +320,24 @@ export function createChatController({
     closeJobDetail();
     state.isSending = true;
 
-    addMessage({ role: "user", text: message });
+    const messageContext = {
+      cvId: state.uploadedCvId,
+      cvName:
+        state.uploadedCvName ??
+        state.selectedCvFile?.name ??
+        null,
+      jobDescription: description,
+    };
+
+    addMessage({
+      role: "user",
+      text: message,
+      context: messageContext,
+    });
     rememberConversationThread({
       threadId: state.threadId,
       firstMessage: message,
+      context: messageContext,
     });
     elements.suggestionList.hidden = true;
 
@@ -229,12 +349,30 @@ export function createChatController({
         threadId: state.threadId,
         message,
         cvId: state.uploadedCvId,
+        cvName: messageContext.cvName,
         jobDescription: description,
       });
 
       if (conversation.threadId) {
         saveThreadId(conversation.threadId);
       }
+
+      if (
+        conversation.status === "waiting_for_human" &&
+        conversation.humanReview
+      ) {
+        state.pendingHumanReview = conversation.humanReview;
+
+        addMessage({
+          role: "assistant",
+          text: conversation.humanReview.message,
+        });
+
+        renderHumanReviewActions();
+        return;
+      }
+
+      rememberConversationResults(conversation, message);
 
       addMessage({
         role: "assistant",
@@ -262,6 +400,7 @@ export function createChatController({
 
   return {
     handleSubmit,
+    restoreConversationResult: handleConversationResult,
     runJobConversation,
   };
 }

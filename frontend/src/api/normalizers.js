@@ -35,6 +35,11 @@ export function normalizeConversationResponse(responseBody) {
     jobMatchingResult: data?.job_matching_result
       ? normalizeJobMatchingResult(data.job_matching_result)
       : null,
+    humanReview: data?.human_review ? {
+      reviewType: data.human_review.review_type,
+      message: data.human_review.message,
+      data: data.human_review.data ?? {},
+    } : null,
   };
 }
 

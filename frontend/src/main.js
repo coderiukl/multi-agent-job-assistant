@@ -29,6 +29,34 @@ import {
 
 import "./css/index.css";
 
+const RESULT_TYPES = [
+  {
+    type: "job_search",
+    label: "Việc làm",
+    field: "jobSearchResult",
+  },
+  {
+    type: "job_matching",
+    label: "So khớp",
+    field: "jobMatchingResult",
+  },
+  {
+    type: "cv_analysis",
+    label: "Phân tích CV",
+    field: "cvAnalysisResult",
+  },
+  {
+    type: "career_advice",
+    label: "Tư vấn",
+    field: "careerAdviceResult",
+  },
+  {
+    type: "cover_letter",
+    label: "Cover Letter",
+    field: "coverLetterResult",
+  },
+];
+
 const {
   closeJobDetail,
   closeResultsPanel,
@@ -110,9 +138,11 @@ const jobsController = createJobsController({
 const chatController = createChatController({
   addMessage,
   clearError,
+  clearComposerContextAfterSubmit,
   closeJobDetail,
   handleJobSearchConversation: jobsController.handleConversationSearch,
   rememberConversationThread: historyController.rememberConversationThread,
+  rememberConversationResults,
   removeTypingIndicator,
   renderCareerAdviceResult:
     careerAdviceRenderer.renderCareerAdviceResult,
@@ -159,6 +189,170 @@ async function initializeApplication() {
 
   if (!restored) {
     addWelcomeMessage();
+    return;
+  }
+
+  restoreConversationContext(restored);
+
+  await restoreConversationResults(restored.results);
+  await historyController.cacheCurrentConversation();
+}
+
+function rememberConversationResults(
+  conversation,
+  originalMessage = "",
+  { renderTabs = true } = {},
+) {
+  for (const definition of RESULT_TYPES) {
+    if (!conversation?.[definition.field]) {
+      continue;
+    }
+
+    const entry = {
+      type: definition.type,
+      label: definition.label,
+      conversation,
+      originalMessage,
+    };
+
+    state.conversationResults = [
+      ...state.conversationResults.filter(
+        (item) => item.type !== definition.type,
+      ),
+      entry,
+    ];
+  }
+
+  const routeEntry = state.conversationResults.find(
+    (item) => item.type === conversation?.route,
+  );
+
+  if (routeEntry) {
+    state.activeConversationResultType = routeEntry.type;
+  }
+
+  if (renderTabs) {
+    renderResultHistoryTabs();
+  }
+
+  historyController.updateConversationThread(state.threadId, {
+    hasCv: Boolean(state.uploadedCvId),
+    hasJd: Boolean(state.jobDescription),
+    resultTypes: state.conversationResults.map((item) => item.type),
+  });
+  historyController.cacheCurrentConversation();
+}
+
+async function restoreConversationResults(results) {
+  state.conversationResults = [];
+  state.activeConversationResultType = null;
+
+  for (const storedResult of results ?? []) {
+    rememberConversationResults(
+      storedResult.conversation,
+      storedResult.originalMessage,
+      { renderTabs: false },
+    );
+  }
+
+  renderResultHistoryTabs();
+
+  const activeEntry = state.conversationResults.at(-1);
+
+  if (activeEntry) {
+    await showConversationResult(activeEntry.type);
+  }
+}
+
+function renderResultHistoryTabs() {
+  const container = elements.resultHistoryTabs;
+
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = "";
+  container.hidden = state.conversationResults.length === 0;
+
+  for (const entry of state.conversationResults) {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "result-history-tab";
+    button.dataset.resultType = entry.type;
+    button.textContent = entry.label;
+    button.classList.toggle(
+      "is-active",
+      entry.type === state.activeConversationResultType,
+    );
+
+    container.append(button);
+  }
+}
+
+async function showConversationResult(type) {
+  const entry = state.conversationResults.find(
+    (item) => item.type === type,
+  );
+
+  if (!entry) {
+    return;
+  }
+
+  state.activeConversationResultType = entry.type;
+  renderResultHistoryTabs();
+
+  const conversation = entry.conversation;
+
+  if (entry.type === "job_search") {
+    if (conversation.workflowJobMatches.length) {
+      workflowRecommendationsRenderer.renderWorkflowJobRecommendations(
+        conversation.jobSearchResult,
+        conversation.workflowJobMatches,
+        conversation.careerAdviceResult,
+      );
+      return;
+    }
+
+    await jobsController.handleConversationSearch(
+      entry.originalMessage,
+      conversation.jobSearchResult,
+    );
+    return;
+  }
+
+  const renderers = {
+    job_matching: matchingRenderer.renderJobMatchingResult,
+    cv_analysis: cvAnalysisRenderer.renderCvAnalysisResult,
+    career_advice: careerAdviceRenderer.renderCareerAdviceResult,
+    cover_letter: coverLetterRenderer.renderCoverLetterResult,
+  };
+
+  renderers[entry.type]?.(
+    conversation[
+      RESULT_TYPES.find((item) => item.type === entry.type)?.field
+    ],
+  );
+}
+
+function restoreConversationContext(history) {
+  const context = history.latestContext ?? {};
+  const cvId = context.cvId ?? history.cvId ?? null;
+  const cvName = context.cvName ?? history.cvName ?? null;
+  const jobDescription =
+    context.jobDescription ?? history.jobDescription ?? "";
+
+  state.uploadedCvId = cvId;
+  state.uploadedCvName = cvName;
+  state.selectedCvFile = null;
+  state.cvUploadStatus = cvId ? "uploaded" : "idle";
+  cvController.renderStatus();
+
+  state.jobDescription = jobDescription;
+  elements.jobDescriptionInput.value = jobDescription;
+
+  if (jobDescription) {
+    setMatchingMode(true, jobDescription);
   }
 }
 
@@ -168,7 +362,7 @@ function addWelcomeMessage() {
     text:
       "Xin chào! Mình là Job Search AI. Mình có thể giúp bạn " +
       "tìm việc, phân tích CV và tư vấn định hướng nghề nghiệp.",
-  });
+  }, { cache: false });
 }
 
 function bindEvents() {
@@ -213,6 +407,17 @@ function bindEvents() {
     handleMobileTabClick,
   );
 
+  elements.resultHistoryTabs?.addEventListener(
+    "click",
+    (event) => {
+      const button = event.target.closest("[data-result-type]");
+
+      if (button) {
+        showConversationResult(button.dataset.resultType);
+      }
+    },
+  );
+
   elements.clearJdButton.addEventListener(
     "click",
     clearJobDescription,
@@ -255,6 +460,18 @@ function bindEvents() {
     resetConversation,
   );
 
+  elements.historyEmptyNewChatButton?.addEventListener(
+    "click",
+    resetConversation,
+  );
+
+  elements.conversationHistorySearch?.addEventListener(
+    "input",
+    (event) => {
+      historyController.setSearchQuery(event.target.value);
+    },
+  );
+
   elements.toggleHistoryButton?.addEventListener(
     "click",
     toggleConversationHistory,
@@ -263,6 +480,11 @@ function bindEvents() {
   elements.conversationHistoryList?.addEventListener(
     "click",
     historyController.handleHistoryClick,
+  );
+
+  document.addEventListener(
+    "click",
+    historyController.handleDocumentClick,
   );
 
   elements.suggestionList.addEventListener(
@@ -278,6 +500,17 @@ function bindEvents() {
   elements.jobResults.addEventListener(
     "click",
     handleJobResultClick,
+  );
+
+  elements.jobPagination?.addEventListener(
+    "click",
+    (event) => {
+      const button = event.target.closest("[data-job-page]");
+
+      if (button && !button.disabled) {
+        jobsController.handlePageChange(Number(button.dataset.jobPage));
+      }
+    },
   );
 
   elements.jobSort.addEventListener(
@@ -306,6 +539,8 @@ function bindEvents() {
   );
 
   document.addEventListener("keydown", (event) => {
+    historyController.handleDocumentKeydown(event);
+
     if (event.key === "Escape") {
       closeJobDetail();
       return;
@@ -366,6 +601,17 @@ function clearJobDescription() {
   updateJobDescriptionCount();
   updateSendButton();
   elements.jobDescriptionInput.focus();
+}
+
+
+function clearComposerContextAfterSubmit() {
+  state.selectedCvFile = null;
+  elements.cvInput.value = "";
+  cvController.renderStatus();
+
+  state.jobDescription = "";
+  elements.jobDescriptionInput.value = "";
+  setMatchingMode(false);
 }
 
 
@@ -549,10 +795,17 @@ function resetConversation() {
   state.selectedJob = null;
   state.currentWorkflow = null;
   state.workflowJobMatches = [];
+  state.conversationResults = [];
+  state.activeConversationResultType = null;
   state.currentMatchingResult = null;
   state.currentCvAnalysisResult = null;
   state.currentCareerAdviceResult = null;
   state.currentCoverLetterResult = null;
+  state.selectedCvFile = null;
+  state.uploadedCvId = null;
+  state.uploadedCvName = null;
+  state.cvUploadStatus = "idle";
+  state.cvUploadRequestId += 1;
   state.matchingMode = false;
   state.jobDescription = "";
   state.isSending = false;
@@ -561,9 +814,16 @@ function resetConversation() {
   elements.messageList.innerHTML = "";
   elements.suggestionList.hidden = false;
   elements.messageInput.value = "";
+  if (elements.conversationHistorySearch) {
+    elements.conversationHistorySearch.value = "";
+    historyController.setSearchQuery("");
+  }
   resizeMessageInput();
   elements.jobDescriptionInput.value = "";
+  elements.cvInput.value = "";
+  cvController.renderStatus();
   elements.jobSort.value = "relevance";
+  renderResultHistoryTabs();
 
   setMatchingMode(false);
 
@@ -579,20 +839,31 @@ function resetConversation() {
     text:
       "Cuộc trò chuyện mới đã bắt đầu. " +
       "Bạn muốn tìm công việc hay cần hỗ trợ về CV?",
-  });
+  }, { cache: false });
 }
 
 
-function addMessage({ role, text }) {
+function addMessage({
+  role,
+  text,
+  context = null,
+  result = null,
+}, { cache = true } = {}) {
   const message = {
     id: crypto.randomUUID(),
     role,
     text,
+    context,
+    result,
   };
 
   state.messages.push(message);
 
   appendMessage(elements.messageList, message);
+
+  if (cache) {
+    historyController.cacheCurrentConversation();
+  }
 
   scrollMessagesToBottom();
 }

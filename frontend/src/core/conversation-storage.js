@@ -46,7 +46,10 @@ export function loadConversationThreads() {
             return [];
         }
 
-        return parsedValue.filter(isValidStoredThread).slice(0, MAX_SAVED_CONVERSATIONS);
+        return parsedValue
+            .filter(isValidStoredThread)
+            .map(normalizeStoredThread)
+            .slice(0, MAX_SAVED_CONVERSATIONS);
     } catch {
         return [];
     }
@@ -67,4 +70,17 @@ function isValidStoredThread(item) {
         typeof item?.updatedAt === "string" &&
         item?.isDraft != true
     );
+}
+
+function normalizeStoredThread(item) {
+    return {
+        ...item,
+        pinned: Boolean(item.pinned),
+        hasCv: Boolean(item.hasCv),
+        hasJd: Boolean(item.hasJd),
+        resultTypes: Array.isArray(item.resultTypes)
+            ? item.resultTypes.filter((value) => typeof value === "string")
+            : [],
+        preview: typeof item.preview === "string" ? item.preview : "",
+    };
 }
