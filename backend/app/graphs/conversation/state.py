@@ -28,6 +28,7 @@ class ConversationState(TypedDict, total=False):
     conversation_history: str
 
     cv_id: str | None
+    cv_name: str | None
     job_description: str | None
 
     # Context được backend xác thực

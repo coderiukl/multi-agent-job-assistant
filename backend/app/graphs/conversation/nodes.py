@@ -941,9 +941,53 @@ class ConversationNodes:
 
         return {
             "messages": [
-                AIMessage(content=assistant_message),
+                AIMessage(
+                    content=assistant_message,
+                    additional_kwargs={
+                        "result": self._build_message_result(state),
+                    },
+                ),
             ]
         }
+
+    @staticmethod
+    def _build_message_result(state: ConversationState) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "assistant_message": state.get("assistant_message"),
+            "route": (
+                state["route"].value if state.get("route") is not None else None
+            ),
+            "status": (
+                state["status"].value if state.get("status") is not None else None
+            ),
+            "cv_id": state.get("cv_id"),
+            "missing_inputs": [
+                item.value for item in state.get("missing_inputs", [])
+            ],
+        }
+
+        model_fields = (
+            "intent",
+            "workflow",
+            "cv_analysis_result",
+            "career_advice_result",
+            "cover_letter_result",
+            "job_search_result",
+            "job_matching_result",
+        )
+
+        for field_name in model_fields:
+            value = state.get(field_name)
+            result[field_name] = (
+                value.model_dump(mode="json") if value is not None else None
+            )
+
+        result["workflow_job_matches"] = [
+            item.model_dump(mode="json")
+            for item in state.get("workflow_job_matches", [])
+        ]
+
+        return result
 
     @staticmethod
     def _get_contextual_message(state: ConversationState) -> str:

@@ -20,6 +20,7 @@ class ConversationRequest(BaseModel):
     thread_id: UUID = Field(default_factory=uuid4)
     message: str = Field(min_length=1, max_length=2000)
     cv_id: str | None = Field(default=None, max_length=100)
+    cv_name: str | None = Field(default=None, max_length=255)
     job_description: str | None = Field(default=None, max_length=20_000)
 
     @field_validator("message")
@@ -32,7 +33,7 @@ class ConversationRequest(BaseModel):
 
         return normalized
 
-    @field_validator("cv_id", "job_description")
+    @field_validator("cv_id", "cv_name", "job_description")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         if value is None:

@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -43,11 +43,16 @@ class ConversationMessageData(BaseModel):
     message_id: str | None = None
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConversationHistoryData(BaseModel):
     thread_id: UUID
     messages: list[ConversationMessageData] = Field(default_factory=list)
+    cv_id: str | None = None
+    cv_name: str | None = None
+    job_description: str | None = None
+    latest_result: dict[str, Any] | None = None
 
 
 class ConversationResponseData(BaseModel):

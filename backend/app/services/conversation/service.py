@@ -83,12 +83,17 @@ class ConversationService:
                     message_id=(str(message.id) if message.id is not None else None),
                     role=role,
                     content=content,
+                    metadata=dict(message.additional_kwargs),
                 )
             )
 
         return ConversationHistoryData(
             thread_id=thread_id,
             messages=messages,
+            cv_id=snapshot.values.get("cv_id"),
+            cv_name=snapshot.values.get("cv_name"),
+            job_description=snapshot.values.get("job_description"),
+            latest_result=self._build_history_result(snapshot.values),
         )
 
     async def delete_history(self, thread_id: UUID) -> None:
@@ -105,13 +110,31 @@ class ConversationService:
         return state["intent"]
 
     async def _invoke_graph(self, request: ConversationRequest, stop_after_intent: bool = False) -> ConversationState:
+        message_context = {
+            key: value
+            for key, value in {
+                "cv_id": request.cv_id,
+                "cv_name": request.cv_name,
+                "job_description": request.job_description,
+            }.items()
+            if value is not None
+        }
+
         initial_state: ConversationState = {
-            "message": request.message, 
-            "messages": [HumanMessage(content=request.message)], 
+            "message": request.message,
+            "messages": [
+                HumanMessage(
+                    content=request.message,
+                    additional_kwargs={"context": message_context},
+                )
+            ],
         }
 
         if "cv_id" in request.model_fields_set:
             initial_state["cv_id"] = request.cv_id
+
+        if "cv_name" in request.model_fields_set:
+            initial_state["cv_name"] = request.cv_name
 
         if "job_description" in request.model_fields_set:
             initial_state["job_description"] = request.job_description
@@ -157,6 +180,48 @@ class ConversationService:
             return content.strip()
 
         return str(content).strip()
+
+    @staticmethod
+    def _build_history_result(state: dict[str, Any]) -> dict[str, Any] | None:
+        assistant_message = state.get("assistant_message")
+
+        if not assistant_message:
+            return None
+
+        result: dict[str, Any] = {
+            "assistant_message": assistant_message,
+            "route": (
+                state["route"].value if state.get("route") is not None else None
+            ),
+            "status": (
+                state["status"].value if state.get("status") is not None else None
+            ),
+            "cv_id": state.get("cv_id"),
+            "missing_inputs": [
+                item.value for item in state.get("missing_inputs", [])
+            ],
+        }
+
+        for field_name in (
+            "intent",
+            "workflow",
+            "cv_analysis_result",
+            "career_advice_result",
+            "cover_letter_result",
+            "job_search_result",
+            "job_matching_result",
+        ):
+            value = state.get(field_name)
+            result[field_name] = (
+                value.model_dump(mode="json") if value is not None else None
+            )
+
+        result["workflow_job_matches"] = [
+            item.model_dump(mode="json")
+            for item in state.get("workflow_job_matches", [])
+        ]
+
+        return result
 
     def _build_response(self, *, thread_id: UUID, state: ConversationState) -> ConversationResponseData:
         human_review = state.get("human_review_request")
