@@ -25,15 +25,20 @@ export function createJobSearchRenderer({
     const total = Number.isFinite(Number(result?.total))
       ? Number(result.total)
       : items.length;
+    const page = Math.max(1, Number(result?.page) || 1);
+    const pageSize = Math.max(1, Number(result?.pageSize) || items.length || 10);
+    const firstItem = items.length ? (page - 1) * pageSize + 1 : 0;
+    const lastItem = items.length ? firstItem + items.length - 1 : 0;
 
     elements.resultCount.textContent =
-      `Đang hiển thị ${items.length}/${total} công việc được đề xuất`;
+      `Đang hiển thị ${firstItem}–${lastItem}/${total} công việc được đề xuất`;
     elements.searchStrategy.textContent =
       getStrategyLabel(result.strategy);
 
     updateMobileResultsBadge(total);
     openResultsPanel();
     renderMatchedTermChips(items);
+    renderPagination({ page, pageSize, total });
 
     if (!items.length) {
       showNoJobResults();
@@ -58,6 +63,88 @@ export function createJobSearchRenderer({
     renderJobSearchResult,
     showJobSearchResultsFromState,
   };
+}
+
+function renderPagination({ page, pageSize, total }) {
+  const container = elements.jobPagination;
+
+  if (!container) return;
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  container.innerHTML = "";
+  container.hidden = totalPages <= 1;
+
+  if (totalPages <= 1) return;
+
+  container.append(createPageButton("‹", page - 1, {
+    label: "Trang trước",
+    disabled: page <= 1,
+    className: "job-pagination-nav",
+  }));
+
+  const visiblePages = getVisiblePages(page, totalPages);
+
+  for (let index = 0; index < visiblePages.length; index += 1) {
+    const pageNumber = visiblePages[index];
+    const previousPage = visiblePages[index - 1];
+
+    if (previousPage && pageNumber - previousPage > 1) {
+      const ellipsis = document.createElement("span");
+      ellipsis.className = "job-pagination-ellipsis";
+      ellipsis.textContent = "…";
+      container.append(ellipsis);
+    }
+
+    container.append(createPageButton(String(pageNumber), pageNumber, {
+      current: pageNumber === page,
+      label: `Trang ${pageNumber}`,
+    }));
+  }
+
+  container.append(createPageButton("›", page + 1, {
+    label: "Trang sau",
+    disabled: page >= totalPages,
+    className: "job-pagination-nav",
+  }));
+
+  const summary = document.createElement("span");
+  summary.className = "job-pagination-summary";
+  summary.textContent = `Trang ${page}/${totalPages}`;
+  container.append(summary);
+}
+
+function createPageButton(text, page, {
+  current = false,
+  disabled = false,
+  label,
+  className = "",
+} = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.dataset.jobPage = String(page);
+  button.textContent = text;
+  button.disabled = disabled;
+  button.setAttribute("aria-label", label);
+
+  if (current) {
+    button.classList.add("is-active");
+    button.setAttribute("aria-current", "page");
+  }
+
+  return button;
+}
+
+function getVisiblePages(currentPage, totalPages) {
+  return [...new Set([
+    1,
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    totalPages,
+  ])]
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((left, right) => left - right);
 }
 
 function renderMatchedTermChips(items) {

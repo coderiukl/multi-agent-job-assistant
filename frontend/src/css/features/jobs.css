@@ -125,6 +125,71 @@
   background: #fbfcfe;
 }
 
+.job-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 58px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.job-pagination[hidden] {
+  display: none;
+}
+
+.job-pagination button {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.job-pagination button:hover:not(:disabled) {
+  border-color: var(--primary-border);
+  background: var(--primary-light);
+  color: var(--primary-dark);
+}
+
+.job-pagination button.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.job-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.job-pagination-ellipsis {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.job-pagination-summary {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 /* Empty results */
 
 .empty-state {

@@ -1,6 +1,7 @@
 import { elements } from "../../core/elements.js";
 
 export function renderJobLoading() {
+  if (elements.jobPagination) elements.jobPagination.hidden = true;
   elements.resultsSummary.hidden = true;
   elements.jobSort.disabled = true;
   elements.jobResults.innerHTML = `
@@ -18,6 +19,7 @@ export function renderJobLoading() {
 }
 
 export function renderInitialJobState() {
+  if (elements.jobPagination) elements.jobPagination.hidden = true;
   elements.resultsEyebrow.textContent = "JOB DISCOVERY";
   elements.resultsTitle.textContent = "Công việc phù hợp";
   elements.resultsSummary.hidden = true;
@@ -41,6 +43,7 @@ export function renderInitialJobState() {
 }
 
 export function renderNoJobResults() {
+  if (elements.jobPagination) elements.jobPagination.hidden = true;
   elements.jobResults.innerHTML = `
     <section class="empty-state">
       <div class="empty-illustration">0</div>
@@ -54,6 +57,7 @@ export function renderNoJobResults() {
 }
 
 export function renderJobErrorState() {
+  if (elements.jobPagination) elements.jobPagination.hidden = true;
   elements.resultsSummary.hidden = true;
   elements.jobSort.disabled = true;
   elements.jobResults.innerHTML = `

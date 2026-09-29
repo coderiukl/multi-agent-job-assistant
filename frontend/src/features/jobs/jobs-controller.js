@@ -76,8 +76,50 @@ export function createJobsController({
     }
   }
 
+  async function handlePageChange(page) {
+    const currentResult = state.currentSearchResult;
+    const total = Number(currentResult?.total) || 0;
+    const pageSize = Number(currentResult?.pageSize) || 10;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const nextPage = Number(page);
+
+    if (
+      !state.lastSearchQuery ||
+      state.isSending ||
+      state.isJobSearchLoading ||
+      !Number.isInteger(nextPage) ||
+      nextPage < 1 ||
+      nextPage > totalPages ||
+      nextPage === currentResult?.page
+    ) {
+      return;
+    }
+
+    state.isJobSearchLoading = true;
+    clearError();
+    showJobLoading();
+
+    try {
+      const result = await searchJobs({
+        query: state.lastSearchQuery,
+        sort: state.currentSort,
+        page: nextPage,
+        pageSize,
+      });
+
+      renderJobSearchResult(result);
+      elements.jobResults.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      showError(error?.message || "Không thể tải trang kết quả này.");
+      renderJobSearchResult(currentResult);
+    } finally {
+      state.isJobSearchLoading = false;
+    }
+  }
+
   return {
     handleConversationSearch,
+    handlePageChange,
     handleSortChange,
   };
 }
