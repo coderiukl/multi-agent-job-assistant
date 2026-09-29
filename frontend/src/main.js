@@ -195,7 +195,36 @@ async function initializeApplication() {
   restoreConversationContext(restored);
 
   await restoreConversationResults(restored.results);
+
+  restorePendingHumanReview(restored);
+
   await historyController.cacheCurrentConversation();
+}
+
+function restorePendingHumanReview(restored) {
+  const review = restored?.pendingHumanReview;
+
+  if (!review) {
+    return;
+  }
+
+  state.pendingHumanReview = review;
+
+  const reviewMessageAlreadyExists = state.messages.some((message) => {
+    return (
+      message.role === "assistant" &&
+      message.text === review.message
+    );
+  });
+
+  if (!reviewMessageAlreadyExists) {
+    addMessage({
+      role: "assistant",
+      text: review.message,
+    });
+  }
+
+  chatController.renderHumanReviewActions();
 }
 
 function rememberConversationResults(

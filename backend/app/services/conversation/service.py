@@ -61,6 +61,19 @@ class ConversationService:
         }
 
         snapshot = await self._graph.aget_state(config)
+
+        pending_review = None
+        for task in snapshot.tasks:
+            if task.name != "human_review":
+                continue
+
+            for graph_interrupt in task.interrupts:
+                pending_review = HumanReviewRequest.model_validate(graph_interrupt.value)
+                break
+
+            if pending_review is not None:
+                break
+
         stored_messages = snapshot.values.get("messages", [])
 
         messages: list[ConversationMessageData] = []
@@ -94,6 +107,7 @@ class ConversationService:
             cv_name=snapshot.values.get("cv_name"),
             job_description=snapshot.values.get("job_description"),
             latest_result=self._build_history_result(snapshot.values),
+            pending_human_review=snapshot.values.get("human_review_request"),
         )
 
     async def delete_history(self, thread_id: UUID) -> None:

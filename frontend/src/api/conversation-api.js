@@ -127,8 +127,7 @@ export async function getConversationHistory(threadId) {
     cvId: data?.cv_id ?? null,
     cvName: data?.cv_name ?? null,
     jobDescription: data?.job_description ?? null,
-    latestContext:
-      latestContextMessage?.context ?? fallbackContext,
+    latestContext: latestContextMessage?.context ?? fallbackContext,
     latestResult:
       latestResultMessage?.result ??
       fallbackResult,
@@ -136,6 +135,19 @@ export async function getConversationHistory(threadId) {
     latestUserText:
       newestMessages.find((message) => message.role === "user")
         ?.text ?? "",
+    pendingHumanReview: normalizeHumanReview(data?.pending_human_review),
+  };
+}
+
+function normalizeHumanReview(review) {
+  if (!review || typeof review !== "object") {
+    return null;
+  }
+
+  return {
+    reviewType: review.review_type ?? null,
+    message: review.message ?? "",
+    data: review.data ?? {},
   };
 }
 

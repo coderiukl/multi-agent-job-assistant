@@ -53,6 +53,7 @@ class ConversationHistoryData(BaseModel):
     cv_name: str | None = None
     job_description: str | None = None
     latest_result: dict[str, Any] | None = None
+    pending_human_review: HumanReviewRequest | None = None
 
 
 class ConversationResponseData(BaseModel):

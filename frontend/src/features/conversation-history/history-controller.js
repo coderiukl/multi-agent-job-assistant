@@ -130,8 +130,8 @@ export function createHistoryController({
       latestContext,
       cvId: latestContext?.cvId ?? state.uploadedCvId,
       cvName: latestContext?.cvName ?? state.uploadedCvName,
-      jobDescription:
-        latestContext?.jobDescription ?? state.jobDescription ?? null,
+      jobDescription: latestContext?.jobDescription ?? state.jobDescription ?? null,
+      pendingHumanReview: state.pendingHumanReview,
     });
   }
 
@@ -554,12 +554,11 @@ export function createHistoryController({
       results: serverHistory.results?.length
         ? serverHistory.results
         : cachedHistory.results ?? [],
-      latestContext:
-        serverHistory.latestContext ?? cachedHistory.latestContext ?? null,
+      latestContext: serverHistory.latestContext ?? cachedHistory.latestContext ?? null,
       cvId: serverHistory.cvId ?? cachedHistory.cvId ?? null,
       cvName: serverHistory.cvName ?? cachedHistory.cvName ?? null,
-      jobDescription:
-        serverHistory.jobDescription ?? cachedHistory.jobDescription ?? null,
+      jobDescription: serverHistory.jobDescription ?? cachedHistory.jobDescription ?? null,
+      pendingHumanReview: serverHistory.pendingHumanReview ?? cachedHistory.pendingHumanReview ?? null,
     };
   }
 
@@ -572,6 +571,7 @@ export function createHistoryController({
       cvId: cachedHistory.cvId ?? null,
       cvName: cachedHistory.cvName ?? null,
       jobDescription: cachedHistory.jobDescription ?? null,
+      pendingHumanReview: cachedHistory.pendingHumanReview ?? null,
     };
 
     for (const message of history.messages) {

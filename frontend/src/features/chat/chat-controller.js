@@ -400,6 +400,7 @@ export function createChatController({
 
   return {
     handleSubmit,
+    renderHumanReviewActions,
     restoreConversationResult: handleConversationResult,
     runJobConversation,
   };
