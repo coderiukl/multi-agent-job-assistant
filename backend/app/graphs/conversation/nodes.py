@@ -409,7 +409,7 @@ class ConversationNodes:
             },
         )
 
-        return {"workflow": workflow}
+        return {"workflow": workflow, "route": route_after_intent(state)}
 
     async def execute_workflow_job_matching(self, state: ConversationState) -> dict[str, Any]:
         workflow = state.get("workflow")
@@ -747,7 +747,7 @@ class ConversationNodes:
     async def review_before_cover_letter(self, state: ConversationState) -> dict[str, object]:
         review_request = HumanReviewRequest(
             review_type="cover_letter_confirmation",
-            messag="Tôi đã hoàn thành quá trình phân tích công việc. Bạn có muốn tiếp tục tạo Cover Letter không?",
+            message="Tôi đã hoàn thành quá trình phân tích công việc. Bạn có muốn tiếp tục tạo Cover Letter không?",
             data=self._build_review_data(state),
         )
         decision_payload = interrupt(review_request.model_dump(mode="json"))

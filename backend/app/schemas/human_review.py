@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 class HumanReviewAction(StrEnum):
     APPROVE = "approve"
     REJECT = "reject"
-    REVISE = "revise"
 
 class HumanReviewRequest(BaseModel):
     review_type: str = Field(min_length=1)

@@ -149,6 +149,6 @@ def build_conversation_graph(
             "record_assistant_message",
         )
 
-    graph.add_edge("record_asssistant_message", END)
+    graph.add_edge("record_assistant_message", END)
 
     return graph.compile(checkpointer=checkpointer)

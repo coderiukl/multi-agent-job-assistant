@@ -114,7 +114,7 @@ def route_after_human_review(state: ConversationState) -> HumanReviewRoute:
 
     workflow = state.get("workflow")
 
-    if workflow is None:
+    if workflow is None or workflow.workflow_type == WorkflowType.SINGLE_AGENT:
         return HumanReviewRoute.SINGLE_COVER_LETTER
 
     return HumanReviewRoute.WORKFLOW_COVER_LETTER
