@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, ResourceNotFoundException
 from app.graphs.conversation.routing import route_after_intent
 from app.graphs.conversation.state import ConversationState
 from app.schemas.conversation import (
@@ -182,25 +182,30 @@ class ConversationService:
 
         return cast(ConversationState, result)
 
-    async def resume(
-        self,
-        request: ResumeConversationRequest,
-    ) -> ConversationResponseData:
-        pending_review = await self._get_pending_review(request.thread_id)
-
-        if pending_review is None:
-            raise AppException(
-                status_code=409,
-                code="HUMAN_REVIEW_NOT_PENDING",
-                message="Cuộc trò chuyện này không còn yêu cầu nào đang chờ duyệt.",
-            )
-
+    async def resume(self, request: ResumeConversationRequest) -> ConversationResponseData:
         config = {
             "configurable": {
                 "thread_id": str(request.thread_id),
             }
         }
 
+        snapshot = await self._graph.aget_state(config)
+
+        if not snapshot.values:
+            raise ResourceNotFoundException(
+                resource="Conversation",
+                identifier=str(request.thread_id),
+            )
+
+        pending_review = self._extract_pending_review(snapshot)
+
+        if pending_review is None:
+            raise AppException(
+                status_code=409,
+                code="HUMAN_REVIEW_NOT_PENDING",
+                message="Cuộc trò chuyện này không còn yêu cầu nào đang chờ duyệt."
+            )
+        
         result = await self._graph.ainvoke(
             Command(
                 resume=request.decision.model_dump(mode="json")
@@ -230,6 +235,9 @@ class ConversationService:
         """Return a review only while the checkpoint is truly interrupted."""
 
         for task in snapshot.tasks:
+            if task.name != "human_review":
+                continue
+
             for task_interrupt in task.interrupts:
                 try:
                     return HumanReviewRequest.model_validate(task_interrupt.value)

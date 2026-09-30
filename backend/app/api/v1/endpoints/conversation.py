@@ -110,6 +110,10 @@ async def analyze_conversation_intent(
     "/resume",
     response_model=ApiResponse[ConversationResponseData],
     responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The conversation does not exist."
+        },
         409: {
             "model": ErrorResponse,
             "description": "The conversation is not waiting for human review.",
