@@ -16,6 +16,17 @@
   }
 }
 
+@media (max-width: 1120px) {
+  .system-status {
+    display: none;
+  }
+
+  .suggestion-list {
+    padding-right: 36px;
+    padding-left: 64px;
+  }
+}
+
 @media (max-width: 980px) {
   body {
     overflow-y: auto;
@@ -33,6 +44,10 @@
 
   .conversation-sidebar {
     display: none;
+  }
+
+  .mobile-logout-button {
+    display: grid;
   }
 
   .chat-panel,
@@ -182,6 +197,10 @@
     font-size: 20px;
   }
 
+  .panel-header p {
+    display: none;
+  }
+
   .message-list {
     min-height: 80px;
     padding: 16px 13px 10px;
@@ -210,11 +229,16 @@
 
   .suggestion-list {
     grid-template-columns: 1fr;
-    max-height: clamp(150px, 36dvh, 300px);
-    padding: 8px 13px 14px 52px;
+    align-content: start;
+    max-height: clamp(190px, 42dvh, 360px);
+    padding: 10px 13px 16px 52px;
   }
 
-  .suggestion-card:last-child:nth-child(odd) {
+  .suggestion-card:last-child {
+    grid-column: auto;
+  }
+
+  .suggestion-heading {
     grid-column: auto;
   }
 

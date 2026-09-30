@@ -11,7 +11,8 @@ html, body {
 body {
   overflow: hidden;
   background:
-    radial-gradient(circle at 15% 0%, rgb(199 210 254 / 30%), transparent 32%),
+    radial-gradient(circle at 12% 0%, rgb(199 210 254 / 26%), transparent 28%),
+    radial-gradient(circle at 88% 12%, rgb(219 234 254 / 34%), transparent 24%),
     var(--background);
   color: var(--text-primary);
   font-size: 15px;
@@ -31,6 +32,7 @@ button {
 
 button:focus-visible,
 textarea:focus-visible,
+input:focus-visible,
 select:focus-visible,
 a:focus-visible {
   outline: 3px solid rgb(37 99 235 / 22%);

@@ -8,6 +8,7 @@ from app.repositories.ownership import OwnershipRepository
 from app.schemas.conversation import (
     ConversationHistoryData,
     ConversationResponseData,
+    ConversationThreadSummaryData,
 )
 from app.schemas.conversations_intent import (
     ConversationRequest,
@@ -55,6 +56,23 @@ class AuthorizedConversationService:
     ) -> ConversationHistoryData:
         await self._authorize_existing(thread_id)
         return await self._service.get_history(thread_id)
+
+    async def list_threads(self) -> list[ConversationThreadSummaryData]:
+        owned_threads = await self._ownership.list_threads_for_user(
+            self._user_id
+        )
+        summaries: list[ConversationThreadSummaryData] = []
+
+        for thread_id, created_at in owned_threads:
+            summary = await self._service.get_thread_summary(
+                thread_id,
+                created_at=created_at,
+            )
+            if summary is not None:
+                summaries.append(summary)
+
+        summaries.sort(key=lambda item: item.updated_at, reverse=True)
+        return summaries
 
     async def resume(
         self,

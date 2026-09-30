@@ -1,6 +1,7 @@
 import {
     CONVERSATION_THREAD_KEY,
     CONVERSATION_THREADS_KEY,
+    CONVERSATION_OWNER_KEY,
     MAX_SAVED_CONVERSATIONS,
 } from "./constants.js";
 
@@ -61,6 +62,30 @@ export function persistConversationThreads(threads) {
     } catch {
         
     }
+}
+
+export function clearConversationStorage() {
+    try {
+        localStorage.removeItem(CONVERSATION_THREAD_KEY);
+        localStorage.removeItem(CONVERSATION_THREADS_KEY);
+        localStorage.removeItem(CONVERSATION_OWNER_KEY);
+    } catch {}
+}
+
+export function getConversationStorageOwner() {
+    try {
+        return localStorage.getItem(CONVERSATION_OWNER_KEY);
+    } catch {
+        return null;
+    }
+}
+
+export function setConversationStorageOwner(userId) {
+    if (typeof userId !== "string" || !userId.trim()) {
+        throw new TypeError("A valid user ID is required.");
+    }
+
+    localStorage.setItem(CONVERSATION_OWNER_KEY, userId);
 }
 
 function isValidStoredThread(item) {

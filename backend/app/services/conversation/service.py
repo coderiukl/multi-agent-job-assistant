@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
@@ -12,7 +13,9 @@ from app.schemas.conversation import (
     ConversationHistoryData,
     ConversationMessageData,
     ConversationResponseData,
+    ConversationRoute,
     ConversationStatus,
+    ConversationThreadSummaryData,
 )
 from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
 from app.schemas.human_review import HumanReviewRequest, ResumeConversationRequest
@@ -117,6 +120,74 @@ class ConversationService:
             pending_human_review=pending_review,
         )
 
+    async def get_thread_summary(
+        self,
+        thread_id: UUID,
+        *,
+        created_at: datetime,
+    ) -> ConversationThreadSummaryData | None:
+        snapshot = await self._graph.aget_state(
+            {"configurable": {"thread_id": str(thread_id)}}
+        )
+
+        if not snapshot.values:
+            return None
+
+        user_messages: list[str] = []
+        for message in snapshot.values.get("messages", []):
+            if not isinstance(message, HumanMessage):
+                continue
+
+            content = self._get_message_content(message.content)
+            if content:
+                user_messages.append(content)
+
+        first_message = user_messages[0] if user_messages else ""
+        latest_message = user_messages[-1] if user_messages else first_message
+        title = self._truncate_summary(first_message, 80)
+        preview = self._truncate_summary(latest_message, 140)
+        result_fields = {
+            ConversationRoute.JOB_SEARCH: "job_search_result",
+            ConversationRoute.JOB_MATCHING: "job_matching_result",
+            ConversationRoute.CV_ANALYSIS: "cv_analysis_result",
+            ConversationRoute.CAREER_ADVICE: "career_advice_result",
+            ConversationRoute.COVER_LETTER: "cover_letter_result",
+        }
+        result_types = [
+            route
+            for route, field in result_fields.items()
+            if snapshot.values.get(field) is not None
+        ]
+        updated_at = created_at
+        if snapshot.created_at:
+            try:
+                updated_at = datetime.fromisoformat(snapshot.created_at)
+            except ValueError:
+                pass
+
+        return ConversationThreadSummaryData(
+            thread_id=thread_id,
+            title=title or "Cuộc trò chuyện",
+            preview=preview,
+            created_at=created_at,
+            updated_at=updated_at,
+            has_cv=bool(snapshot.values.get("cv_id")),
+            has_job_description=bool(
+                snapshot.values.get("job_description")
+            ),
+            result_types=result_types,
+            has_pending_human_review=(
+                self._extract_pending_review(snapshot) is not None
+            ),
+        )
+
+    @staticmethod
+    def _truncate_summary(value: str, limit: int) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[: limit - 1].rstrip() + "…"
+
     async def delete_history(self, thread_id: UUID) -> None:
         checkpointer = self._graph.checkpointer
 
@@ -182,7 +253,10 @@ class ConversationService:
 
         return cast(ConversationState, result)
 
-    async def resume(self, request: ResumeConversationRequest) -> ConversationResponseData:
+    async def resume(
+        self,
+        request: ResumeConversationRequest,
+    ) -> ConversationResponseData:
         config = {
             "configurable": {
                 "thread_id": str(request.thread_id),

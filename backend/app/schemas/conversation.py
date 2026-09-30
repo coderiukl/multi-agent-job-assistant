@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID
@@ -54,6 +55,18 @@ class ConversationHistoryData(BaseModel):
     job_description: str | None = None
     latest_result: dict[str, Any] | None = None
     pending_human_review: HumanReviewRequest | None = None
+
+
+class ConversationThreadSummaryData(BaseModel):
+    thread_id: UUID
+    title: str = Field(min_length=1)
+    preview: str = ""
+    created_at: datetime
+    updated_at: datetime
+    has_cv: bool = False
+    has_job_description: bool = False
+    result_types: list[ConversationRoute] = Field(default_factory=list)
+    has_pending_human_review: bool = False
 
 
 class ConversationResponseData(BaseModel):

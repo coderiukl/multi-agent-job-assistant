@@ -11,7 +11,7 @@
   --danger: #dc2626;
   --danger-light: #fef2f2;
 
-  --background: #f5f7fb;
+  --background: #f4f7fc;
   --surface: #ffffff;
   --surface-secondary: #f8fafc;
   --surface-hover: #f1f5f9;
@@ -33,7 +33,7 @@
   --shadow-lg:
     0 24px 48px rgb(15 23 42 / 16%);
 
-  --header-height: 68px;
+  --header-height: 72px;
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 20px;

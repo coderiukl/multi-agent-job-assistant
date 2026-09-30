@@ -8,6 +8,7 @@
 @import "./components/composer.css";
 
 @import "./features/jobs.css";
+@import "./features/auth.css";
 @import "./components/drawer.css";
 @import "./features/matching.css";
 @import "./features/cover-letter.css";

@@ -1,4 +1,29 @@
 export const elements = {
+    appLoading: document.querySelector("#app-loading"),
+    authScreen: document.querySelector("#auth-screen"),
+    appShell: document.querySelector("#app-shell"),
+    authTabs: document.querySelector(".auth-tabs"),
+    authLoginTab: document.querySelector("#auth-login-tab"),
+    authRegisterTab: document.querySelector("#auth-register-tab"),
+    authFormTitle: document.querySelector("#auth-form-title"),
+    authFormDescription: document.querySelector(
+        "#auth-form-description",
+    ),
+    authError: document.querySelector("#auth-error"),
+    loginForm: document.querySelector("#login-form"),
+    loginEmail: document.querySelector("#login-email"),
+    loginPassword: document.querySelector("#login-password"),
+    registerForm: document.querySelector("#register-form"),
+    registerEmail: document.querySelector("#register-email"),
+    registerPassword: document.querySelector("#register-password"),
+    registerPasswordConfirmation: document.querySelector(
+        "#register-password-confirmation",
+    ),
+    currentUserEmail: document.querySelector("#current-user-email"),
+    currentUserAvatar: document.querySelector("#current-user-avatar"),
+    logoutButton: document.querySelector("#logout-button"),
+    mobileLogoutButton: document.querySelector("#mobile-logout-button"),
+
     sidebarNewChatButton: document.querySelector(
         "#sidebar-new-chat-button",
     ),

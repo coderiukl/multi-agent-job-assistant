@@ -1,8 +1,15 @@
-import { createThreadId } from "./core/conversation-storage.js";
+import {
+  clearConversationStorage,
+  createThreadId,
+  getConversationStorageOwner,
+  setConversationStorageOwner,
+} from "./core/conversation-storage.js";
+import { clearConversationCache } from "./core/conversation-cache.js";
 
 import { state } from "./core/state.js";
 import { elements } from "./core/elements.js";
 import { createChatController } from "./features/chat/chat-controller.js";
+import { createAuthController } from "./features/auth/auth-controller.js";
 import { createCareerAdviceRenderer } from "./features/career-advice/career-advice-renderer.js";
 import { createCoverLetterRenderer } from "./features/cover-letter/cover-letter-renderer.js";
 import { createHistoryController } from "./features/conversation-history/history-controller.js";
@@ -170,12 +177,64 @@ const cvController = createCvController({
   updateComposerContext,
 });
 
-initializeApplication().catch((error) => {
+const authController = createAuthController({
+  clearPrivateData,
+});
+
+bootstrapApplication().catch((error) => {
   console.error(
     "Application initialization failed:",
     error,
   );
 });
+
+
+async function bootstrapApplication() {
+  authController.bindEvents();
+
+  const user = await authController.restoreSession();
+
+  if (!user) {
+    return;
+  }
+
+  const storageWasReset = await preparePrivateDataForUser(user);
+
+  if (storageWasReset) {
+    window.location.reload();
+    return;
+  }
+
+  authController.showWorkspace(user);
+  await initializeApplication();
+}
+
+
+async function preparePrivateDataForUser(user) {
+  const userId = user?.user_id ?? user?.userId;
+
+  if (!userId) {
+    throw new Error("Authenticated user response is missing user_id.");
+  }
+
+  const normalizedUserId = String(userId);
+  const storedOwner = getConversationStorageOwner();
+
+  if (storedOwner === normalizedUserId) {
+    return false;
+  }
+
+  clearConversationStorage();
+  await clearConversationCache();
+  setConversationStorageOwner(normalizedUserId);
+  return true;
+}
+
+
+async function clearPrivateData() {
+  clearConversationStorage();
+  await clearConversationCache();
+}
 
 
 async function initializeApplication() {
@@ -184,6 +243,7 @@ async function initializeApplication() {
   setActiveWorkspacePanel("chat");
   updateComposerContext();
   showInitialJobState();
+  await historyController.restoreConversationThreads();
   historyController.renderConversationHistory();
 
   const restored = await historyController.restoreConversationHistory();

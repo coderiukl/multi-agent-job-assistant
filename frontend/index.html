@@ -17,7 +17,174 @@
   </head>
 
   <body>
-    <div class="app-shell">
+    <div id="app-loading" class="app-loading" aria-live="polite">
+      <span class="app-loading-mark">Job AI</span>
+      <span>Đang khởi tạo phiên làm việc...</span>
+    </div>
+
+    <main id="auth-screen" class="auth-screen" hidden>
+      <section class="auth-intro" aria-labelledby="auth-intro-title">
+        <a class="auth-brand" href="/" aria-label="Job Search AI">
+          <span class="brand-logo">Job AI</span>
+          <span>
+            <strong>Job Search AI</strong>
+            <small>Multi-Agent Job Assistant</small>
+          </span>
+        </a>
+
+        <div class="auth-intro-content">
+          <span class="auth-kicker">AI CAREER WORKSPACE</span>
+          <h1 id="auth-intro-title">
+            Tìm việc thông minh hơn,<br />
+            chủ động hơn.
+          </h1>
+          <p>
+            Một không gian riêng tư để phân tích CV, so khớp công việc
+            và hoàn thiện hồ sơ ứng tuyển cùng các AI Agent chuyên biệt.
+          </p>
+
+          <ul class="auth-benefits">
+            <li><span>01</span> Lưu và tiếp tục hội thoại trên cùng tài khoản</li>
+            <li><span>02</span> Bảo vệ CV và lịch sử ứng tuyển của riêng bạn</li>
+            <li><span>03</span> Kiểm soát các bước AI cần bạn xác nhận</li>
+          </ul>
+        </div>
+
+        <p class="auth-intro-footnote">
+          CV và dữ liệu nghề nghiệp chỉ được sử dụng để xử lý yêu cầu của bạn.
+        </p>
+      </section>
+
+      <section class="auth-panel" aria-label="Tài khoản Job Search AI">
+        <div class="auth-card">
+          <div class="auth-card-heading">
+            <span class="auth-mobile-logo">Job AI</span>
+            <h2 id="auth-form-title">Chào mừng trở lại</h2>
+            <p id="auth-form-description">
+              Đăng nhập để tiếp tục không gian nghề nghiệp của bạn.
+            </p>
+          </div>
+
+          <div class="auth-tabs" role="tablist" aria-label="Chọn hình thức xác thực">
+            <button
+              id="auth-login-tab"
+              class="auth-tab is-active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="login-form"
+              data-auth-view="login"
+            >
+              Đăng nhập
+            </button>
+            <button
+              id="auth-register-tab"
+              class="auth-tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="register-form"
+              data-auth-view="register"
+            >
+              Tạo tài khoản
+            </button>
+          </div>
+
+          <div id="auth-error" class="auth-error" role="alert" hidden></div>
+
+          <form id="login-form" class="auth-form" novalidate>
+            <label>
+              <span>Email</span>
+              <input
+                id="login-email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="ban@example.com"
+                maxlength="254"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Mật khẩu</span>
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Nhập mật khẩu"
+                maxlength="128"
+                required
+              />
+            </label>
+
+            <button class="auth-submit" type="submit">
+              <span>Đăng nhập</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+
+          <form id="register-form" class="auth-form" novalidate hidden>
+            <label>
+              <span>Email</span>
+              <input
+                id="register-email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="ban@example.com"
+                maxlength="254"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Mật khẩu</span>
+              <input
+                id="register-password"
+                name="password"
+                type="password"
+                autocomplete="new-password"
+                placeholder="Tối thiểu 12 ký tự"
+                minlength="12"
+                maxlength="128"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Xác nhận mật khẩu</span>
+              <input
+                id="register-password-confirmation"
+                name="password_confirmation"
+                type="password"
+                autocomplete="new-password"
+                placeholder="Nhập lại mật khẩu"
+                minlength="12"
+                maxlength="128"
+                required
+              />
+            </label>
+
+            <p class="auth-password-hint">
+              Dùng ít nhất 12 ký tự. Không sử dụng lại mật khẩu quan trọng.
+            </p>
+
+            <button class="auth-submit" type="submit">
+              <span>Tạo tài khoản</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+
+          <p class="auth-terms">
+            Bằng cách tiếp tục, bạn đồng ý sử dụng hệ thống cho mục đích hỗ trợ nghề nghiệp.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <div id="app-shell" class="app-shell" hidden>
       <header class="app-header">
         <a class="brand" href="/" aria-label="Job Search AI">
           <span class="brand-logo">Job AI</span>
@@ -52,6 +219,16 @@
             type="button"
           >
             Cuộc trò chuyện mới
+          </button>
+
+          <button
+            id="mobile-logout-button"
+            class="mobile-logout-button"
+            type="button"
+            aria-label="Đăng xuất"
+            title="Đăng xuất"
+          >
+            ↪
           </button>
         </div>
       </header>
@@ -153,6 +330,22 @@
             id="conversation-history-list"
             class="conversation-history-list"
           ></div>
+
+          <footer class="account-menu sidebar-account-menu">
+            <span id="current-user-avatar" class="current-user-avatar" aria-hidden="true">U</span>
+            <span class="current-user-details">
+              <strong>Tài khoản</strong>
+              <span id="current-user-email" class="current-user-email"></span>
+            </span>
+            <button
+              id="logout-button"
+              class="logout-button"
+              type="button"
+              title="Đăng xuất và xóa dữ liệu phiên trên thiết bị này"
+            >
+              Đăng xuất
+            </button>
+          </footer>
         </aside>
         
         <section id="chat-panel" class="chat-panel" aria-label="Trợ lý hội thoại" role="tabpanel">
@@ -160,6 +353,7 @@
             <div>
               <span class="eyebrow">AI CAREER ASSISTANT</span>
               <h1>Trợ lý nghề nghiệp</h1>
+              <p>Đồng hành cùng bạn từ CV đến công việc phù hợp</p>
             </div>
 
             <span id="cv-status-badge" class="cv-status-badge">
@@ -174,6 +368,14 @@
           ></div>
 
           <div id="suggestion-list" class="suggestion-list">
+            <div class="suggestion-heading">
+              <span class="suggestion-heading-icon" aria-hidden="true">✦</span>
+              <span>
+                <strong>Bạn muốn bắt đầu từ đâu?</strong>
+                <small>Chọn một tác vụ hoặc nhập câu hỏi của riêng bạn</small>
+              </span>
+            </div>
+
             <button
               type="button"
               class="suggestion-card"
@@ -181,10 +383,11 @@
             >
               <span class="suggestion-icon">%</span>
 
-              <span>
+              <span class="suggestion-copy">
                 <strong>So khớp CV với JD</strong>
                 <small>Xem điểm phù hợp và kỹ năng còn thiếu</small>
               </span>
+              <span class="suggestion-arrow" aria-hidden="true">→</span>
             </button>
 
             <button
@@ -194,10 +397,11 @@
             >
               <span class="suggestion-icon">✉</span>
 
-              <span>
+              <span class="suggestion-copy">
                 <strong>Viết thư ứng tuyển</strong>
                 <small>Tạo Cover Letter theo CV và JD</small>
               </span>
+              <span class="suggestion-arrow" aria-hidden="true">→</span>
             </button>
 
             <button
@@ -207,10 +411,11 @@
             >
               <span class="suggestion-icon">⌕</span>
 
-              <span>
+              <span class="suggestion-copy">
                 <strong>Tìm việc AI</strong>
                 <small>Dành cho Fresher tại TP.HCM</small>
               </span>
+              <span class="suggestion-arrow" aria-hidden="true">→</span>
             </button>
 
             <button
@@ -220,10 +425,11 @@
             >
               <span class="suggestion-icon">CV</span>
 
-              <span>
+              <span class="suggestion-copy">
                 <strong>Phân tích CV</strong>
                 <small>Đánh giá nội dung và kỹ năng</small>
               </span>
+              <span class="suggestion-arrow" aria-hidden="true">→</span>
             </button>
 
             <button
@@ -233,10 +439,11 @@
             >
               <span class="suggestion-icon">↗</span>
 
-              <span>
+              <span class="suggestion-copy">
                 <strong>Lộ trình kỹ năng</strong>
                 <small>Nhận đề xuất học tập</small>
               </span>
+              <span class="suggestion-arrow" aria-hidden="true">→</span>
             </button>
           </div>
 

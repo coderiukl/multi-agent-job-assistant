@@ -3,6 +3,31 @@ import { normalizeConversationResponse } from "./normalizers.js";
 
 const CONVERSATION_ENDPOINT = "/api/v1/conversation/messages";
 
+export async function listConversationThreads() {
+  const responseBody = await requestJson(
+    "/api/v1/conversation/threads",
+    { method: "GET" },
+    "Không thể tải danh sách cuộc trò chuyện.",
+  );
+  const data = responseBody?.data ?? responseBody;
+
+  if (!Array.isArray(data)) return [];
+
+  return data.map((thread) => ({
+    threadId: thread.thread_id,
+    title: thread.title || "Cuộc trò chuyện",
+    preview: thread.preview || "",
+    hasCv: Boolean(thread.has_cv),
+    hasJd: Boolean(thread.has_job_description),
+    resultTypes: Array.isArray(thread.result_types)
+      ? thread.result_types
+      : [],
+    hasPendingHumanReview: Boolean(thread.has_pending_human_review),
+    createdAt: thread.created_at,
+    updatedAt: thread.updated_at || thread.created_at,
+  })).filter((thread) => typeof thread.threadId === "string");
+}
+
 export async function sendConversationMessage({
   threadId,
   message,

@@ -1,10 +1,10 @@
 import {
   deleteConversationHistory,
   getConversationHistory,
+  listConversationThreads,
 } from "../../api.js";
 import {
   MAX_CONVERSATION_TITLE_LENGTH,
-  MAX_SAVED_CONVERSATIONS,
 } from "../../core/constants.js";
 import {
   persistConversationThreads,
@@ -94,7 +94,7 @@ export function createHistoryController({
       ...state.conversationThreads.filter(
         (thread) => thread.threadId !== threadId,
       ),
-    ].slice(0, MAX_SAVED_CONVERSATIONS);
+    ];
 
     saveConversationThreads();
     renderConversationHistory();
@@ -245,6 +245,9 @@ export function createHistoryController({
     if (thread.pinned) badges.append(createBadge("Đã ghim", "●"));
     if (thread.hasCv) badges.append(createBadge("Có CV", "CV"));
     if (thread.hasJd) badges.append(createBadge("Có JD", "JD"));
+    if (thread.hasPendingHumanReview) {
+      badges.append(createBadge("Đang chờ duyệt", "Duyệt"));
+    }
 
     const resultType = thread.resultTypes?.at(-1);
     if (resultType) {
@@ -540,6 +543,46 @@ export function createHistoryController({
     }
   }
 
+  async function restoreConversationThreads() {
+    const hadLocalThreads = state.conversationThreads.length > 0;
+
+    try {
+      const serverThreads = await listConversationThreads();
+      const localThreads = new Map(
+        state.conversationThreads.map((thread) => [thread.threadId, thread]),
+      );
+
+      state.conversationThreads = serverThreads.map((thread) => {
+        const localThread = localThreads.get(thread.threadId);
+        return {
+          ...thread,
+          title: localThread?.title ?? thread.title,
+          pinned: Boolean(localThread?.pinned),
+        };
+      });
+
+      saveConversationThreads();
+
+      const currentThreadExists = state.conversationThreads.some(
+        (thread) => thread.threadId === state.threadId,
+      );
+      if (
+        !hadLocalThreads &&
+        !currentThreadExists &&
+        state.conversationThreads.length
+      ) {
+        saveThreadId(state.conversationThreads[0].threadId);
+      }
+
+      renderConversationHistory();
+      return state.conversationThreads;
+    } catch (error) {
+      console.warn("Conversation threads could not be restored:", error);
+      renderConversationHistory();
+      return state.conversationThreads;
+    }
+  }
+
   function mergeConversationHistory(serverHistory, cachedHistory) {
     if (!cachedHistory?.messages?.length) return serverHistory;
 
@@ -591,6 +634,7 @@ export function createHistoryController({
     rememberConversationThread,
     renderConversationHistory,
     restoreConversationHistory,
+    restoreConversationThreads,
     saveThreadId,
     setSearchQuery,
     updateConversationThread,

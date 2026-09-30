@@ -106,3 +106,27 @@ export async function deleteConversationSnapshot(threadId) {
     console.warn("Conversation snapshot could not be deleted:", error);
   }
 }
+
+export async function clearConversationCache() {
+  try {
+    await Promise.allSettled(writeQueues.values());
+    const database = databasePromise
+      ? await databasePromise.catch(() => null)
+      : null;
+
+    database?.close();
+    databasePromise = null;
+    writeQueues.clear();
+
+    if (!globalThis.indexedDB) return;
+
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(DATABASE_NAME);
+      request.addEventListener("success", resolve);
+      request.addEventListener("blocked", resolve);
+      request.addEventListener("error", () => reject(request.error));
+    });
+  } catch (error) {
+    console.warn("Conversation cache could not be cleared:", error);
+  }
+}

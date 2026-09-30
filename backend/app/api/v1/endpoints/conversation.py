@@ -8,6 +8,7 @@ from app.api.resource_dependencies import (
 from app.schemas.conversation import (
     ConversationHistoryData,
     ConversationResponseData,
+    ConversationThreadSummaryData,
 )
 from app.schemas.conversations_intent import (
     ConversationRequest,
@@ -18,6 +19,22 @@ from app.schemas.human_review import ResumeConversationRequest
 from app.schemas.response import ApiResponse
 
 router = APIRouter()
+
+
+@router.get(
+    "/threads",
+    response_model=ApiResponse[list[ConversationThreadSummaryData]],
+    status_code=status.HTTP_200_OK,
+)
+async def list_conversation_threads(
+    conversation_service: AuthorizedConversationServiceDependency,
+) -> ApiResponse[list[ConversationThreadSummaryData]]:
+    result = await conversation_service.list_threads()
+
+    return ApiResponse(
+        message="Conversation threads retrieved successfully.",
+        data=result,
+    )
 
 
 @router.get(

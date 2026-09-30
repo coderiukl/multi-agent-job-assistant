@@ -1,6 +1,7 @@
 export {
   deleteConversationHistory,
   getConversationHistory,
+  listConversationThreads,
   sendConversationMessage,
 } from "./api/conversation-api.js";
 

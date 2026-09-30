@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -69,6 +70,30 @@ class OwnershipRepository:
             raise StorageException(
                 message="Conversation ownership could not be read."
             ) from exc
+
+    async def list_threads_for_user(
+        self,
+        user_id: UUID,
+    ) -> list[tuple[UUID, datetime]]:
+        statement = (
+            select(
+                ConversationOwnershipModel.thread_id,
+                ConversationOwnershipModel.created_at,
+            )
+            .where(ConversationOwnershipModel.user_id == user_id)
+            .order_by(ConversationOwnershipModel.created_at.desc())
+        )
+
+        try:
+            async with self._session_factory() as session:
+                rows = (await session.execute(statement)).all()
+
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message="Conversation ownerships could not be read."
+            ) from exc
+
+        return [(row.thread_id, row.created_at) for row in rows]
 
     async def require_thread(self, *, thread_id: UUID, user_id: UUID) -> None:
         if await self.get_thread_owner(thread_id) != user_id:
