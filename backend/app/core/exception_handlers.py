@@ -18,7 +18,15 @@ def _get_request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "-")
 
 
-def _build_error_response(*, request: Request, status_code: int, code: str, message: str, details: Any | None = None, headers: Mapping[str, str] | None = None) -> JSONResponse:
+def _build_error_response(
+    *,
+    request: Request,
+    status_code: int,
+    code: str,
+    message: str,
+    details: Any | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
     request_id = _get_request_id(request)
 
     response_headers = dict(headers or {})
@@ -40,8 +48,15 @@ def _build_error_response(*, request: Request, status_code: int, code: str, mess
     )
 
 
-async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
-    log_level = logging.ERROR if exc.status_code >= 500 else logging.WARNING
+async def app_exception_handler(
+    request: Request,
+    exc: AppException,
+) -> JSONResponse:
+    log_level = (
+        logging.ERROR
+        if exc.status_code >= 500
+        else logging.WARNING
+    )
 
     logger.log(
         log_level,
@@ -65,7 +80,10 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
     )
 
 
-async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def request_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
     logger.warning(
         "Request validation failed",
         extra={
@@ -83,19 +101,32 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
         code="REQUEST_VALIDATION_ERROR",
         message="The request data is invalid.",
         details={
-            "errors": exc.errors(),
+            "errors": [
+                {
+                    "type": error["type"],
+                    "loc": error["loc"],
+                }
+                for error in exc.errors()
+            ],
         },
     )
 
 
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+async def http_exception_handler(
+    request: Request,
+    exc: HTTPException,
+) -> JSONResponse:
     message = (
         exc.detail
         if isinstance(exc.detail, str)
         else "The request could not be completed."
     )
 
-    details = None if isinstance(exc.detail, str) else exc.detail
+    details = (
+        None
+        if isinstance(exc.detail, str)
+        else exc.detail
+    )
 
     logger.warning(
         "HTTP exception: %s",
@@ -119,7 +150,10 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
-async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def unhandled_exception_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
     logger.exception(
         "Unhandled application exception",
         extra={
