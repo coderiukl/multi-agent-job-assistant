@@ -2,9 +2,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from app.api.dependencies import ConversationServiceDependency
-from app.schemas.conversation import ConversationHistoryData, ConversationResponseData
-from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
+from app.api.resource_dependencies import (
+    AuthorizedConversationServiceDependency,
+)
+from app.schemas.conversation import (
+    ConversationHistoryData,
+    ConversationResponseData,
+)
+from app.schemas.conversations_intent import (
+    ConversationRequest,
+    IntentAnalysisResult,
+)
 from app.schemas.error import ErrorResponse
 from app.schemas.human_review import ResumeConversationRequest
 from app.schemas.response import ApiResponse
@@ -18,7 +26,8 @@ router = APIRouter()
     status_code=status.HTTP_200_OK,
 )
 async def get_conversation_history(
-    thread_id: UUID, conversation_service: ConversationServiceDependency
+    thread_id: UUID,
+    conversation_service: AuthorizedConversationServiceDependency,
 ) -> ApiResponse[ConversationHistoryData]:
     result = await conversation_service.get_history(thread_id)
 
@@ -27,6 +36,7 @@ async def get_conversation_history(
         data=result,
     )
 
+
 @router.delete(
     "/threads/{thread_id}",
     response_model=ApiResponse[dict[str, bool]],
@@ -34,7 +44,7 @@ async def get_conversation_history(
 )
 async def delete_conversation_history(
     thread_id: UUID,
-    conversation_service: ConversationServiceDependency,
+    conversation_service: AuthorizedConversationServiceDependency,
 ) -> ApiResponse[dict[str, bool]]:
     await conversation_service.delete_history(thread_id)
 
@@ -43,6 +53,7 @@ async def delete_conversation_history(
         data={"deleted": True},
     )
 
+
 @router.post(
     "/messages",
     response_model=ApiResponse[ConversationResponseData],
@@ -50,7 +61,9 @@ async def delete_conversation_history(
     responses={
         404: {
             "model": ErrorResponse,
-            "description": "The referenced CV does not exist.",
+            "description": (
+                "The CV or conversation is not available to this user."
+            ),
         },
         422: {
             "model": ErrorResponse,
@@ -58,7 +71,9 @@ async def delete_conversation_history(
         },
         409: {
             "model": ErrorResponse,
-            "description": "The conversation is waiting for human review.",
+            "description": (
+                "The conversation is waiting for human review."
+            ),
         },
         502: {
             "model": ErrorResponse,
@@ -67,9 +82,11 @@ async def delete_conversation_history(
     },
 )
 async def process_conversation(
-    request: ConversationRequest, conversation_service: ConversationServiceDependency
+    request: ConversationRequest,
+    conversation_service: AuthorizedConversationServiceDependency,
 ) -> ApiResponse[ConversationResponseData]:
     result = await conversation_service.process(request)
+
     return ApiResponse(
         message="Conversation processed successfully.",
         data=result,
@@ -83,7 +100,9 @@ async def process_conversation(
     responses={
         404: {
             "model": ErrorResponse,
-            "description": "The referenced CV does not exist.",
+            "description": (
+                "The CV or conversation is not available to this user."
+            ),
         },
         422: {
             "model": ErrorResponse,
@@ -97,7 +116,7 @@ async def process_conversation(
 )
 async def analyze_conversation_intent(
     request: ConversationRequest,
-    conversation_service: ConversationServiceDependency,
+    conversation_service: AuthorizedConversationServiceDependency,
 ) -> ApiResponse[IntentAnalysisResult]:
     result = await conversation_service.analyze_intent(request)
 
@@ -106,23 +125,26 @@ async def analyze_conversation_intent(
         data=result,
     )
 
+
 @router.post(
     "/resume",
     response_model=ApiResponse[ConversationResponseData],
     responses={
         404: {
             "model": ErrorResponse,
-            "description": "The conversation does not exist."
+            "description": "The conversation does not exist.",
         },
         409: {
             "model": ErrorResponse,
-            "description": "The conversation is not waiting for human review.",
+            "description": (
+                "The conversation is not waiting for human review."
+            ),
         },
     },
 )
 async def resume_conversation(
-    request: ResumeConversationRequest, 
-    conversation_service: ConversationServiceDependency
+    request: ResumeConversationRequest,
+    conversation_service: AuthorizedConversationServiceDependency,
 ) -> ApiResponse[ConversationResponseData]:
     result = await conversation_service.resume(request)
 

@@ -2,12 +2,21 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, UploadFile, status
 
-from app.api.dependencies import CVProcessingServiceDependency
-from app.schemas.cv import CVUploadData, PdfInspectionData, PdfMetadataData, NativeTextExtractionData, OcrExtractionData
+from app.api.resource_dependencies import (
+    AuthorizedCVProcessingServiceDependency,
+)
+from app.schemas.cv import (
+    CVUploadData,
+    NativeTextExtractionData,
+    OcrExtractionData,
+    PdfInspectionData,
+    PdfMetadataData,
+)
 from app.schemas.error import ErrorResponse
 from app.schemas.response import ApiResponse
 
 router = APIRouter()
+
 
 @router.post(
     "",
@@ -37,15 +46,13 @@ router = APIRouter()
         },
     },
 )
-
 async def upload_cv(
     file: Annotated[
         UploadFile,
         File(description="PDF CV file."),
     ],
-    processing_service: CVProcessingServiceDependency,
+    processing_service: AuthorizedCVProcessingServiceDependency,
 ) -> ApiResponse[CVUploadData]:
-
     processing_result = await processing_service.process(file)
 
     result = processing_result.ingestion
@@ -75,24 +82,30 @@ async def upload_cv(
                     creator=metadata.creator,
                     producer=metadata.producer,
                     creation_date=metadata.creation_date,
-                    modification_date=metadata.modification_date
+                    modification_date=metadata.modification_date,
                 ),
             ),
             extraction=NativeTextExtractionData(
                 total_character_count=extraction.total_character_count,
                 total_word_count=extraction.total_word_count,
                 native_page_count=extraction.native_page_count,
-                ocr_required_page_numbers=list(extraction.ocr_required_page_numbers),
+                ocr_required_page_numbers=list(
+                    extraction.ocr_required_page_numbers
+                ),
             ),
             ocr=OcrExtractionData(
                 ocr_page_count=ocr_extraction.ocr_page_count,
                 total_character_count=ocr_extraction.total_character_count,
                 total_word_count=ocr_extraction.total_word_count,
-                average_confidence=sum(
-                    page.average_confidence
-                    for page in ocr_extraction.pages
-                ) / len(ocr_extraction.pages)
-                if result.ocr_extraction.pages else 0.0
+                average_confidence=(
+                    sum(
+                        page.average_confidence
+                        for page in ocr_extraction.pages
+                    )
+                    / len(ocr_extraction.pages)
+                    if ocr_extraction.pages
+                    else 0.0
+                ),
             ),
             profile=profile,
         ),
