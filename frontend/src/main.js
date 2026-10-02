@@ -228,7 +228,7 @@ async function preparePrivateDataForUser(user) {
     return;
   }
 
-  state.threadId == getOrCreateThreadId();
+  state.threadId = getOrCreateThreadId();
   state.conversationThreads = loadConversationThreads();
 }
 

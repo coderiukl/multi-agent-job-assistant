@@ -532,11 +532,11 @@ export function createHistoryController({
       const firstUserMessage = history.messages.find((message) => message.role === "user");
       const latestUserMessage = [...history.messages].reverse().find((message) => message.role === "user");
       const resultTypes = [...new Set(
-        (history.results ?? [].flatMap(
+        (history.results ?? []).flatMap(
           ({conversation}) => Object.entries(RESULT_FIELDS).filter(
             ([, field]) => conversation?.[field],
           ).map(([type]) => type)
-        ))
+        )
       )];
 
       if (firstUserMessage) {
@@ -547,7 +547,7 @@ export function createHistoryController({
           touch: false,
         });
 
-        uploadConversationThread(history.threadId, {
+        updateConversationThread(history.threadId, {
           preview: latestUserMessage?.text ?? firstUserMessage.text,
           hasCv: Boolean(history.cvId),
           hasJd: Boolean(history.jobDescription),
@@ -584,7 +584,7 @@ export function createHistoryController({
 
       const canUseCache = error?.status === 0 || error?.status >= 500;
 
-      if (canUseCache && cachedHistory?.message?.length) {
+      if (canUseCache && cachedHistory?.messages?.length) {
         return restoreCachedConversation({
           ...cachedHistory,
           pendingHumanReview: null,
