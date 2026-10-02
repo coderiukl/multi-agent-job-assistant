@@ -1,4 +1,8 @@
 import {
+  getSessionContext,
+  isSessionCurrent,
+} from "../../core/auth-storage.js";
+import {
   deleteConversationHistory,
   getConversationHistory,
   listConversationThreads,
@@ -484,36 +488,56 @@ export function createHistoryController({
   }
 
   async function restoreConversationHistory() {
-    const cachedHistory = await loadConversationSnapshot(state.threadId);
+    const session = getSessionContext();
+
+    if (!session) {
+      return null;
+    }
+
+    const threadId = state.threadId;
+
+    const cachedHistory = await loadConversationSnapshot(threadId);
+
+    if (!isSessionCurrent(session)) {
+      return null;
+    }
 
     try {
-      const serverHistory = await getConversationHistory(state.threadId);
-      const history = mergeConversationHistory(serverHistory, cachedHistory);
-      if (!history.messages.length) return false;
+      const serverHistory = await getConversationHistory(threadId);
 
-      saveThreadId(history.threadId);
-      for (const message of history.messages) {
-        addMessage({
-          role: message.role,
-          text: message.text,
-          context: message.context,
-          result: message.result,
-        }, { cache: false });
+      if (!isSessionCurrent(session)) {
+        return null;
       }
 
-      const firstUserMessage = history.messages.find(
-        (message) => message.role === "user",
-      );
-      const latestUserMessage = [...history.messages]
-        .reverse()
-        .find((message) => message.role === "user");
-      const resultTypes = [
-        ...new Set((history.results ?? []).flatMap(({ conversation }) =>
-          Object.entries(RESULT_FIELDS)
-            .filter(([, field]) => conversation?.[field])
-            .map(([type]) => type),
-        )),
-      ];
+      const history = mergeConversationHistory(serverHistory, cachedHistory);
+
+      if (!history.messages.length) {
+        return false;
+      }
+
+      saveThreadId(history.threadId);
+
+      for (const message of history.messages) {
+        addMessage(
+          {
+            role: message.role,
+            text: message.text,
+            context: message.context,
+            result: message.result,
+          },
+          { cache: false }, 
+        );
+      }
+
+      const firstUserMessage = history.messages.find((message) => message.role === "user");
+      const latestUserMessage = [...history.messages].reverse().find((message) => message.role === "user");
+      const resultTypes = [...new Set(
+        (history.results ?? [].flatMap(
+          ({conversation}) => Object.entries(RESULT_FIELDS).filter(
+            ([, field]) => conversation?.[field],
+          ).map(([type]) => type)
+        ))
+      )];
 
       if (firstUserMessage) {
         rememberConversationThread({
@@ -522,7 +546,8 @@ export function createHistoryController({
           context: history.latestContext,
           touch: false,
         });
-        updateConversationThread(history.threadId, {
+
+        uploadConversationThread(history.threadId, {
           preview: latestUserMessage?.text ?? firstUserMessage.text,
           hasCv: Boolean(history.cvId),
           hasJd: Boolean(history.jobDescription),
@@ -531,12 +556,39 @@ export function createHistoryController({
       }
 
       elements.suggestionList.hidden = true;
+
       return history;
     } catch (error) {
-      console.warn("Conversation history could not be restored:", error);
+      console.warn("Conversation history could not be restored.", error);
 
-      if (cachedHistory?.messages?.length) {
-        return restoreCachedConversation(cachedHistory);
+      if (!isSessionCurrent(session)) {
+        return null;
+      }
+
+      if ([401, 403, 404].includes(error?.status)) {
+        await deleteConversationSnapshot(threadId);
+
+        if (!isSessionCurrent(session)) {
+          return null;
+        }
+
+        state.conversationThreads = state.conversationThreads.filter(
+          (thread) => thread.threadId !== threadId,
+        );
+
+        saveConversationThreads();
+        renderConversationHistory();
+
+        return null;
+      }
+
+      const canUseCache = error?.status === 0 || error?.status >= 500;
+
+      if (canUseCache && cachedHistory?.message?.length) {
+        return restoreCachedConversation({
+          ...cachedHistory,
+          pendingHumanReview: null,
+        });
       }
 
       return null;
@@ -544,10 +596,21 @@ export function createHistoryController({
   }
 
   async function restoreConversationThreads() {
+    const session = getSessionContext()
+
+    if (!session) {
+      return [];
+    }
+
     const hadLocalThreads = state.conversationThreads.length > 0;
 
     try {
       const serverThreads = await listConversationThreads();
+
+      if (!isSessionCurrent(session)) {
+        return [];
+      }
+
       const localThreads = new Map(
         state.conversationThreads.map((thread) => [thread.threadId, thread]),
       );
@@ -578,7 +641,18 @@ export function createHistoryController({
       return state.conversationThreads;
     } catch (error) {
       console.warn("Conversation threads could not be restored:", error);
+      
+      if (!isSessionCurrent(session)) {
+        return [];
+      }
+
+      if ([401, 403, 404].includes(error?.status)) {
+        state.conversationThreads = [];
+        saveConversationThreads();
+      }
+
       renderConversationHistory();
+
       return state.conversationThreads;
     }
   }

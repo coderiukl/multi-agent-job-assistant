@@ -7,11 +7,14 @@ import {
   clearAccessToken,
   getAccessToken,
   saveAccessToken,
+  getStoredUserId,
+  revisionKey,
 } from "../../core/auth-storage.js";
 import { elements } from "../../core/elements.js";
 
 export function createAuthController({ clearPrivateData }) {
   let isSubmitting = false;
+  let isLoggingOut = false;
 
   function bindEvents() {
     elements.authTabs?.addEventListener("click", (event) => {
@@ -23,32 +26,39 @@ export function createAuthController({ clearPrivateData }) {
     elements.registerForm?.addEventListener("submit", handleRegister);
     elements.logoutButton?.addEventListener("click", () => logout());
     elements.mobileLogoutButton?.addEventListener("click", () => logout());
-    window.addEventListener("auth:unauthorized", () => {
-      logout({ expired: true });
+    window.addEventListener("auth:unauthorized", () => {logout({ expired: true })});
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        elements.appShell.hidden = true;
+        window.location.reload();
+        return;
+      }
+
+      if (getStoredUserId() && !getAccessToken()) {
+        logout({ expired: true });
+      }
     });
   }
 
   async function restoreSession() {
     if (!getAccessToken()) {
+      clearAccessToken();
+      await clearPrivateData();
       showAuthScreen();
       return null;
     }
 
     try {
-      const user = await getCurrentUser();
-      return user;
+      return await getCurrentUser();
     } catch (error) {
       if (error?.status === 401) {
-        clearAccessToken();
-        await clearPrivateData();
-        showAuthScreen("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-        return null;
+        await logout({ expired: true});
+        return null
       }
 
       showAuthScreen(
         error?.message || "Không thể kết nối với dịch vụ xác thực.",
       );
-      return null;
     }
   }
 
@@ -100,18 +110,31 @@ export function createAuthController({ clearPrivateData }) {
   }
 
   async function logout({ expired = false } = {}) {
-    if (isSubmitting) return;
+    if (isLoggingOut) return;
+
+    isLoggingOut = true;
     isSubmitting = true;
+
+    const userId = getStoredUserId();
+
     clearAccessToken();
-    await clearPrivateData();
+
+    showAuthScreen(expired ? "Phiên đăng nhập đã hết hạn." : "");
+    
+    try {
+      await clearPrivateData(userId);
+    } catch (error) {
+      console.error("Private cache cleanup failed.", error);
+      showError("Chưa xóa được cache. Hãy tải lại rang trước khi đăng nhập.");
+
+      return;
+    }
 
     if (expired) {
-      try {
-        sessionStorage.setItem(
-          "multi-agent-job-assistant-auth-message",
-          "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
-        );
-      } catch {}
+      sessionStorage.setItem(
+        "multi-agent-job-assistant-auth-message",
+        "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+      );
     }
 
     window.location.reload();

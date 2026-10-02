@@ -1,11 +1,16 @@
 import {
   clearConversationStorage,
   createThreadId,
-  getConversationStorageOwner,
-  setConversationStorageOwner,
+  getOrCreateThreadId,
+  loadConversationThreads,
 } from "./core/conversation-storage.js";
+import {
+  setAuthenticatedUser,
+  getSessionContext,
+  getStoredUserId,
+  forgetAuthenticatedUser,
+} from "./core/auth-storage.js";
 import { clearConversationCache } from "./core/conversation-cache.js";
-
 import { state } from "./core/state.js";
 import { elements } from "./core/elements.js";
 import { createChatController } from "./features/chat/chat-controller.js";
@@ -198,10 +203,9 @@ async function bootstrapApplication() {
     return;
   }
 
-  const storageWasReset = await preparePrivateDataForUser(user);
+  await preparePrivateDataForUser(user);
 
-  if (storageWasReset) {
-    window.location.reload();
+  if (!getSessionContext()) {
     return;
   }
 
@@ -211,29 +215,34 @@ async function bootstrapApplication() {
 
 
 async function preparePrivateDataForUser(user) {
-  const userId = user?.user_id ?? user?.userId;
+  const userId = String(user?.user_id ?? user?.userId ?? "");
 
-  if (!userId) {
-    throw new Error("Authenticated user response is missing user_id.");
+  setAuthenticatedUser(userId);
+
+  const session = getSessionContext();
+
+  clearConversationStorage(null);
+  await clearConversationCache(null);
+
+  if (getSessionContext() != session) {
+    return;
   }
 
-  const normalizedUserId = String(userId);
-  const storedOwner = getConversationStorageOwner();
-
-  if (storedOwner === normalizedUserId) {
-    return false;
-  }
-
-  clearConversationStorage();
-  await clearConversationCache();
-  setConversationStorageOwner(normalizedUserId);
-  return true;
+  state.threadId == getOrCreateThreadId();
+  state.conversationThreads = loadConversationThreads();
 }
 
 
-async function clearPrivateData() {
-  clearConversationStorage();
-  await clearConversationCache();
+async function clearPrivateData(userId = getStoredUserId()) {
+  elements.appShell.hidden = true;
+
+  clearConversationStorage(userId);
+
+  try {
+    await clearConversationCache(userId);
+  } finally {
+    forgetAuthenticatedUser();
+  }
 }
 
 
