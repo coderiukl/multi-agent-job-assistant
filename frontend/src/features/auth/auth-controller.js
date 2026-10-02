@@ -19,14 +19,47 @@ export function createAuthController({ clearPrivateData }) {
   function bindEvents() {
     elements.authTabs?.addEventListener("click", (event) => {
       const button = event.target.closest("[data-auth-view]");
-      if (button) showAuthView(button.dataset.authView);
+
+      if (button) {
+        showAuthView(button.dataset.authView);
+      }
     });
 
     elements.loginForm?.addEventListener("submit", handleLogin);
     elements.registerForm?.addEventListener("submit", handleRegister);
-    elements.logoutButton?.addEventListener("click", () => logout());
-    elements.mobileLogoutButton?.addEventListener("click", () => logout());
-    window.addEventListener("auth:unauthorized", () => {logout({ expired: true })});
+
+    elements.logoutButton?.addEventListener("click", () => {
+      void logout();
+    });
+
+    elements.mobileLogoutButton?.addEventListener("click", () => {
+      void logout();
+    });
+
+    window.addEventListener("auth:unauthorized", () => {
+      void logout({ expired: true });
+    });
+
+    window.addEventListener("storage", (event) => {
+      if (event.storageArea !== localStorage || isLoggingOut) {
+        return;
+      }
+
+      const userId = getStoredUserId();
+
+      if (!userId) {
+        return;
+      }
+
+      const affectsCurrentUser =
+        event.key === null ||
+        event.key === revisionKey(userId);
+
+      if (affectsCurrentUser && !getAccessToken()) {
+        void logout({ expired: true });
+      }
+    });
+
     window.addEventListener("pageshow", (event) => {
       if (event.persisted) {
         elements.appShell.hidden = true;
@@ -35,7 +68,7 @@ export function createAuthController({ clearPrivateData }) {
       }
 
       if (getStoredUserId() && !getAccessToken()) {
-        logout({ expired: true });
+        void logout({ expired: true });
       }
     });
   }
@@ -52,19 +85,24 @@ export function createAuthController({ clearPrivateData }) {
       return await getCurrentUser();
     } catch (error) {
       if (error?.status === 401) {
-        await logout({ expired: true});
-        return null
+        await logout({ expired: true });
+        return null;
       }
 
       showAuthScreen(
         error?.message || "Không thể kết nối với dịch vụ xác thực.",
       );
+
+      return null;
     }
   }
 
   async function handleLogin(event) {
     event.preventDefault();
-    if (isSubmitting || !event.currentTarget.reportValidity()) return;
+
+    if (isSubmitting || !event.currentTarget.reportValidity()) {
+      return;
+    }
 
     const email = elements.loginEmail.value.trim().toLowerCase();
     const password = elements.loginPassword.value;
@@ -77,7 +115,10 @@ export function createAuthController({ clearPrivateData }) {
 
   async function handleRegister(event) {
     event.preventDefault();
-    if (isSubmitting || !event.currentTarget.reportValidity()) return;
+
+    if (isSubmitting || !event.currentTarget.reportValidity()) {
+      return;
+    }
 
     const email = elements.registerEmail.value.trim().toLowerCase();
     const password = elements.registerPassword.value;
@@ -110,7 +151,9 @@ export function createAuthController({ clearPrivateData }) {
   }
 
   async function logout({ expired = false } = {}) {
-    if (isLoggingOut) return;
+    if (isLoggingOut) {
+      return;
+    }
 
     isLoggingOut = true;
     isSubmitting = true;
@@ -118,15 +161,15 @@ export function createAuthController({ clearPrivateData }) {
     const userId = getStoredUserId();
 
     clearAccessToken();
-
     showAuthScreen(expired ? "Phiên đăng nhập đã hết hạn." : "");
-    
+
     try {
       await clearPrivateData(userId);
     } catch (error) {
       console.error("Private cache cleanup failed.", error);
-      showError("Chưa xóa được cache. Hãy tải lại rang trước khi đăng nhập.");
-
+      showError(
+        "Chưa xóa được cache. Hãy tải lại trang trước khi đăng nhập.",
+      );
       return;
     }
 
@@ -142,23 +185,36 @@ export function createAuthController({ clearPrivateData }) {
 
   function showAuthView(view) {
     const isRegister = view === "register";
+
     elements.loginForm.hidden = isRegister;
     elements.registerForm.hidden = !isRegister;
+
     elements.authLoginTab.classList.toggle("is-active", !isRegister);
     elements.authRegisterTab.classList.toggle("is-active", isRegister);
-    elements.authLoginTab.setAttribute("aria-selected", String(!isRegister));
-    elements.authRegisterTab.setAttribute("aria-selected", String(isRegister));
+
+    elements.authLoginTab.setAttribute(
+      "aria-selected",
+      String(!isRegister),
+    );
+    elements.authRegisterTab.setAttribute(
+      "aria-selected",
+      String(isRegister),
+    );
+
     elements.authFormTitle.textContent = isRegister
       ? "Tạo không gian của bạn"
       : "Chào mừng trở lại";
+
     elements.authFormDescription.textContent = isRegister
       ? "Đăng ký để lưu CV, hội thoại và kết quả phân tích."
       : "Đăng nhập để tiếp tục không gian nghề nghiệp của bạn.";
+
     showError("");
 
     const input = isRegister
       ? elements.registerEmail
       : elements.loginEmail;
+
     input?.focus();
   }
 
@@ -168,10 +224,12 @@ export function createAuthController({ clearPrivateData }) {
     elements.authScreen.hidden = false;
 
     let storedMessage = "";
+
     try {
       storedMessage = sessionStorage.getItem(
         "multi-agent-job-assistant-auth-message",
       ) ?? "";
+
       sessionStorage.removeItem(
         "multi-agent-job-assistant-auth-message",
       );
@@ -183,29 +241,38 @@ export function createAuthController({ clearPrivateData }) {
 
   function showWorkspace(user) {
     const email = user?.email ?? "";
+
     elements.appLoading.hidden = true;
     elements.authScreen.hidden = true;
     elements.appShell.hidden = false;
+
     elements.currentUserEmail.textContent = email;
     elements.currentUserEmail.title = email;
+
     if (elements.currentUserAvatar) {
       elements.currentUserAvatar.textContent = getAvatarLabel(email);
     }
   }
 
   function showError(message) {
-    if (!elements.authError) return;
+    if (!elements.authError) {
+      return;
+    }
+
     elements.authError.textContent = message;
     elements.authError.hidden = !message;
   }
 
   function setSubmitting(form, submitting) {
     isSubmitting = submitting;
+
     const button = form.querySelector(".auth-submit");
     const controls = form.querySelectorAll("input, button");
+
     controls.forEach((control) => {
       control.disabled = submitting;
     });
+
     button?.setAttribute("aria-busy", String(submitting));
   }
 
@@ -219,7 +286,12 @@ export function createAuthController({ clearPrivateData }) {
 function getAvatarLabel(email) {
   const name = email.split("@")[0] || "U";
   const parts = name.split(/[._-]+/).filter(Boolean);
-  return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 }
 
 function getFriendlyAuthError(error) {
@@ -237,5 +309,6 @@ function getFriendlyAuthError(error) {
     return "Thông tin chưa hợp lệ. Mật khẩu cần có ít nhất 12 ký tự.";
   }
 
-  return error?.message || "Không thể hoàn tất yêu cầu. Vui lòng thử lại.";
+  return error?.message ||
+    "Không thể hoàn tất yêu cầu. Vui lòng thử lại.";
 }
