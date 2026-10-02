@@ -1,0 +1,27 @@
+name: job-assistant-deployment
+
+services:
+  backend:
+    image: job-assistant-backend:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    env_file:
+      - ./backend/.env.docker
+
+    ports:
+      - "127.0.0.1:8001:8000"
+    
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      - backend_storage:/app/storage
+
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+
+volumes:
+  backend_storage:
