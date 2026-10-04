@@ -47,12 +47,12 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('cv_id', name=op.f('pk_cv_ownerships'))
     )
     op.create_index('ix_cv_ownerships_user_id_created_at', 'cv_ownerships', ['user_id', 'created_at'], unique=False)
-    op.drop_index(op.f('checkpoint_writes_thread_id_idx'), table_name='checkpoint_writes')
+    op.drop_index(op.f('checkpoint_writes_thread_id_idx', if_exists=True), table_name='checkpoint_writes')
     op.drop_table('checkpoint_writes')
-    op.drop_index(op.f('checkpoints_thread_id_idx'), table_name='checkpoints')
+    op.drop_index(op.f('checkpoints_thread_id_idx', if_exists=True), table_name='checkpoints')
     op.drop_table('checkpoints')
     op.drop_table('checkpoint_migrations')
-    op.drop_index(op.f('checkpoint_blobs_thread_id_idx'), table_name='checkpoint_blobs')
+    op.drop_index(op.f('checkpoint_blobs_thread_id_idx', if_exists=True), table_name='checkpoint_blobs')
     op.drop_table('checkpoint_blobs')
     # ### end Alembic commands ###
 
