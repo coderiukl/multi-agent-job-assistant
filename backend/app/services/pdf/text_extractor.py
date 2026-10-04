@@ -108,7 +108,7 @@ class NativePdfTextExtractor:
         blocks: list[PdfTextBlock] = []
 
         for raw_block in raw_blocks:
-            block_type = int(raw_block[0])
+            block_type = int(raw_block[6])
 
             # 0 là text block, 1 là image block
             if block_type != 0:
@@ -161,7 +161,7 @@ class NativePdfTextExtractor:
         cleaned_lines = []
 
         for line in normalized.splitlines():
-            cleaned_line = re.sub("r[ \t]+", " ", line).strip()
+            cleaned_line = re.sub(r"[ \t]+", " ", line).strip()
 
             if cleaned_line:
                 cleaned_lines.append(cleaned_line)

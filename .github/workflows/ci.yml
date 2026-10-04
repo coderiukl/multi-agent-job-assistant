@@ -1,0 +1,113 @@
+name: System CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-ci.txt
+      - run: python -m pip install -r requirements-ci.txt
+      - name: Compile backend and Airflow Python files
+        run: python -m compileall -q app ../airflow/dags
+      - name: Unit, API, graph and local Qdrant tests
+        run: python -m pytest -m "not integration" --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=test-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-reports
+          path: |
+            backend/test-results.xml
+            backend/coverage.xml
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: job_assistant_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d job_assistant_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/job_assistant_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-ci.txt
+      - run: python -m pip install -r requirements-ci.txt
+      - name: Migrations and real PostgreSQL repositories
+        run: python -m pytest -m integration --junitxml=postgres-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-test-reports
+          path: backend/postgres-results.xml
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Session and account isolation tests
+        run: node --test tests/*.test.js
+      - name: Build production frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ""
+      - name: Build and smoke test frontend container
+        run: |
+          docker build -t job-assistant-frontend:ci .
+          docker run -d --name frontend-ci -p 127.0.0.1:8082:80 job-assistant-frontend:ci
+          docker exec frontend-ci nginx -t
+          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://localhost:8082/frontend-health
+          curl --fail http://localhost:8082/ > /dev/null
+      - name: Container logs and cleanup
+        if: always()
+        run: |
+          docker logs frontend-ci 2>/dev/null || true
+          docker rm -f frontend-ci 2>/dev/null || true
