@@ -19,6 +19,18 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+LANGGRAPH_TABLES = {
+    "checkpoint_migrations",
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
+}
+
+
+def include_name(name, type_, parent_names):
+    if type_ == "table" and name in LANGGRAPH_TABLES:
+        return False
+    return True
 
 def get_database_url() -> str:
     settings = get_settings()
@@ -55,6 +67,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=database_url,
         target_metadata=target_metadata,
+        include_name=include_name,
         literal_binds=True,
         dialect_opts={
             "paramstyle": "named",
@@ -73,6 +86,7 @@ def do_run_migrations(
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
+        include_name=include_name,
         compare_type=True,
         compare_server_default=True,
     )
