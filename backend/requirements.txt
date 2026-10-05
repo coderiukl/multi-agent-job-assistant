@@ -3,11 +3,12 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 python-multipart
+python-dotenv
 httpx
 
 langchain
 langgraph
-langsmith
+langsmith>=0.3.13
 langchain-openai
 langgraph-checkpoint-postgres
 psycopg[binary,pool]>=3.2,<4
