@@ -1,9 +1,10 @@
 import re
 import unicodedata
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Iterable
 
 from app.schemas.job import NormalizedJob
+
 
 def normalize_deduplication_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
@@ -16,6 +17,7 @@ def normalize_deduplication_text(value: str) -> str:
     lowercase = without_accents.casefold()
 
     return re.sub(r"[^a-z0-9]+", " ", lowercase).strip()
+
 
 def normalize_job_location(value: str | None = None) -> str:
     if not value:
@@ -51,6 +53,7 @@ def normalize_job_location(value: str | None = None) -> str:
 
     return re.sub(r"\s+", " ", normalized).strip()
 
+
 def build_job_deduplication_key(job: NormalizedJob) -> str:
     normalized_title = normalize_deduplication_text(job.title)
     normalized_company = normalize_deduplication_text(job.company)
@@ -63,6 +66,7 @@ def build_job_deduplication_key(job: NormalizedJob) -> str:
             normalized_location,
         ]
     )
+
 
 def deduplicate_jobs(jobs: Iterable[NormalizedJob]) -> list[NormalizedJob]:
     preferred_jobs: dict[str, NormalizedJob] = {}
@@ -80,10 +84,12 @@ def deduplicate_jobs(jobs: Iterable[NormalizedJob]) -> list[NormalizedJob]:
 
     return list(preferred_jobs.values())
 
+
 def _is_preferred_job(*, candidate: NormalizedJob, current: NormalizedJob) -> bool:
     return _job_quality(candidate) > _job_quality(current)
 
-def _job_quality(job: NormalizedJob) -> tuple[int, int, int, float]:
+
+def _job_quality(job: NormalizedJob) -> tuple[int, int, int, float, str]:
     salary_information = int(job.salary_min is not None or job.salary_max is not None)
 
     timestamp_source = job.posted_at or job.crawled_at
@@ -93,7 +99,9 @@ def _job_quality(job: NormalizedJob) -> tuple[int, int, int, float]:
         len(job.skills),
         salary_information,
         _ensure_utc(timestamp_source).timestamp(),
+        job.job_id,
     )
+
 
 def _ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:

@@ -62,7 +62,10 @@ class QdrantJobVectorIndex:
                 message=("The job vector collection could not be initialized."),
             ) from exc
 
-    async def get_jobs_requiring_index(self, jobs: list[NormalizedJob]) -> list[NormalizedJob]:
+    async def get_jobs_requiring_index(
+        self,
+        jobs: list[NormalizedJob],
+    ) -> list[NormalizedJob]:
         unique_jobs = deduplicate_jobs(jobs)
 
         if not unique_jobs:
@@ -116,7 +119,7 @@ class QdrantJobVectorIndex:
         for job in unique_jobs:
             point_id = self._point_id(job)
 
-            if (existing_hashes_by_point_id.get(point_id) != job.content_hash):
+            if existing_hashes_by_point_id.get(point_id) != job.content_hash:
                 requiring_index.append(job)
 
         LOGGER.info(
@@ -232,7 +235,9 @@ class QdrantJobVectorIndex:
             query_vector = await self._embeddings.aembed_query(normalized_query)
 
             if len(query_vector) != self._dimensions:
-                raise ValueError("Query embedding dimension does not match the Qdrant collection.")
+                raise ValueError(
+                    "Query embedding dimension does not match the Qdrant collection."
+                )
 
             response = (
                 await self._client.query_points(
