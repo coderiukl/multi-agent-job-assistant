@@ -19,6 +19,7 @@ from app.schemas.conversation import (
 )
 from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
 from app.schemas.human_review import HumanReviewRequest, ResumeConversationRequest
+from app.utils.serialization import to_json_compatible
 
 
 class ConversationService:
@@ -57,7 +58,7 @@ class ConversationService:
                 route=state["route"],
                 intent=state["intent"],
                 cv_id=state.get("cv_id"),
-                missing_inputs=state.get('missing_inputs', []),
+                missing_inputs=state.get("missing_inputs", []),
                 human_review=human_review,
                 workflow=state.get("workflow"),
                 cv_analysis_result=state.get("cv_analysis_result"),
@@ -172,9 +173,7 @@ class ConversationService:
             created_at=created_at,
             updated_at=updated_at,
             has_cv=bool(snapshot.values.get("cv_id")),
-            has_job_description=bool(
-                snapshot.values.get("job_description")
-            ),
+            has_job_description=bool(snapshot.values.get("job_description")),
             result_types=result_types,
             has_pending_human_review=(
                 self._extract_pending_review(snapshot) is not None
@@ -195,7 +194,7 @@ class ConversationService:
             return
 
         await checkpointer.adelete_thread(str(thread_id))
-    
+
     async def analyze_intent(
         self,
         request: ConversationRequest,
@@ -277,13 +276,11 @@ class ConversationService:
             raise AppException(
                 status_code=409,
                 code="HUMAN_REVIEW_NOT_PENDING",
-                message="Cuộc trò chuyện này không còn yêu cầu nào đang chờ duyệt."
+                message="Cuộc trò chuyện này không còn yêu cầu nào đang chờ duyệt.",
             )
-        
+
         result = await self._graph.ainvoke(
-            Command(
-                resume=request.decision.model_dump(mode="json")
-            ),
+            Command(resume=request.decision.model_dump(mode="json")),
             config=config,
         )
 
@@ -336,16 +333,10 @@ class ConversationService:
 
         result: dict[str, Any] = {
             "assistant_message": assistant_message,
-            "route": (
-                state["route"].value if state.get("route") is not None else None
-            ),
-            "status": (
-                state["status"].value if state.get("status") is not None else None
-            ),
+            "route": to_json_compatible(state.get("route")),
+            "status": to_json_compatible(state.get("status")),
             "cv_id": state.get("cv_id"),
-            "missing_inputs": [
-                item.value for item in state.get("missing_inputs", [])
-            ],
+            "missing_inputs": to_json_compatible(state.get("missing_inputs", [])),
         }
 
         for field_name in (
@@ -358,14 +349,11 @@ class ConversationService:
             "job_matching_result",
         ):
             value = state.get(field_name)
-            result[field_name] = (
-                value.model_dump(mode="json") if value is not None else None
-            )
+            result[field_name] = to_json_compatible(value)
 
-        result["workflow_job_matches"] = [
-            item.model_dump(mode="json")
-            for item in state.get("workflow_job_matches", [])
-        ]
+        result["workflow_job_matches"] = to_json_compatible(
+            state.get("workflow_job_matches", [])
+        )
 
         return result
 
@@ -385,7 +373,7 @@ class ConversationService:
                 route=state.get("route") or route_after_intent(state),
                 intent=state.get("intent"),
                 cv_id=state.get("cv_id"),
-                missing_inputs=state.get('missing_inputs', []),
+                missing_inputs=state.get("missing_inputs", []),
                 human_review=human_review,
                 workflow=state.get("workflow"),
                 cv_analysis_result=state.get("cv_analysis_result"),
@@ -395,15 +383,15 @@ class ConversationService:
                 job_matching_result=state.get("job_matching_result"),
                 workflow_job_matches=state.get("workflow_job_matches", []),
             )
-        
+
         return ConversationResponseData(
             thread_id=thread_id,
-            assistant_message=state['assistant_message'],
-            status=state['status'],
-            route=state['route'],
-            intent=state['intent'],
+            assistant_message=state["assistant_message"],
+            status=state["status"],
+            route=state["route"],
+            intent=state["intent"],
             cv_id=state.get("cv_id"),
-            missing_inputs=state.get('missing_inputs', []),
+            missing_inputs=state.get("missing_inputs", []),
             human_review=None,
             workflow=state.get("workflow"),
             cv_analysis_result=state.get("cv_analysis_result"),
@@ -413,4 +401,3 @@ class ConversationService:
             job_matching_result=state.get("job_matching_result"),
             workflow_job_matches=state.get("workflow_job_matches", []),
         )
-

@@ -24,6 +24,7 @@ from app.schemas.conversation import (
 from app.schemas.conversations_intent import IntentAnalysisInput
 from app.schemas.cover_letter import CoverLetterInput, CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisInput, CVAnalysisResult, CVQualityLevel
+from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
 from app.schemas.job_matching import (
     JobMatchingInput,
     JobMatchingResult,
@@ -32,8 +33,6 @@ from app.schemas.job_matching import (
 )
 from app.schemas.job_search import JobSearchRequest, JobSearchResult
 from app.schemas.workflow import WorkflowJobMatch, WorkflowStep
-from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
-
 from app.services.career_advice import CareerAdviceService
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.cover_letter import CoverLetterService
@@ -41,6 +40,7 @@ from app.services.cv_analysis import CVAnalysisService
 from app.services.job_matching import JobMatchingService
 from app.services.job_search import HybridJobSearchService
 from app.services.job_search_context import build_job_search_context
+from app.utils.serialization import to_json_compatible
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +377,9 @@ class ConversationNodes:
             ),
         }
 
-    async def respond_general_question(self, state: ConversationState) -> dict[str, Any]:
+    async def respond_general_question(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
         advice_input = CareerAdviceInput(
             user_request=self._get_contextual_message(state),
             cv_profile=state.get("cv_profile"),
@@ -411,7 +413,9 @@ class ConversationNodes:
 
         return {"workflow": workflow, "route": route_after_intent(state)}
 
-    async def execute_workflow_job_matching(self, state: ConversationState) -> dict[str, Any]:
+    async def execute_workflow_job_matching(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
         workflow = state.get("workflow")
         cv_profile = state.get("cv_profile")
         search_result = state.get("job_search_result")
@@ -425,11 +429,13 @@ class ConversationNodes:
 
         if search_result is None:
             if not job_description:
-                raise ValueError("A job search result or job description is required for workflow matching.")
-            
+                raise ValueError(
+                    "A job search result or job description is required "
+                    "for workflow matching."
+                )
+
             matching_input = JobMatchingInput(
-                cv_profile=cv_profile,
-                job=JobMatchTarget(description=job_description)
+                cv_profile=cv_profile, job=JobMatchTarget(description=job_description)
             )
 
             result = await self._job_matching_service.match(matching_input)
@@ -501,7 +507,9 @@ class ConversationNodes:
             "workflow": updated_workflow,
         }
 
-    async def execute_workflow_job_search(self, state: ConversationState) -> dict[str, Any]:
+    async def execute_workflow_job_search(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
         workflow = state.get("workflow")
 
         if workflow is None:
@@ -536,13 +544,17 @@ class ConversationNodes:
             "workflow": updated_workflow,
         }
 
-    async def execute_workflow_career_advice(self, state: ConversationState) -> dict[str, Any]:
+    async def execute_workflow_career_advice(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
         workflow = state.get("workflow")
 
         if workflow is None:
             raise ValueError("Workflow plan is required for workflow career advice.")
 
-        matching_results = [item.match for item in state.get("workflow_job_matches", [])[:3]]
+        matching_results = [
+            item.match for item in state.get("workflow_job_matches", [])[:3]
+        ]
 
         direct_result = state.get("job_matching_result")
 
@@ -576,7 +588,9 @@ class ConversationNodes:
             "workflow": updated_workflow,
         }
 
-    async def execute_workflow_cv_analysis(self, state: ConversationState) -> dict[str, Any]:
+    async def execute_workflow_cv_analysis(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
         workflow = state.get("workflow")
         cv_profile = state.get("cv_profile")
 
@@ -584,9 +598,7 @@ class ConversationNodes:
             raise ValueError("Workflow plan is required for workflow CV analysis")
 
         if cv_profile is None:
-            raise ValueError(
-                "CV profile is required for workflow job matching."
-            )
+            raise ValueError("CV profile is required for workflow job matching.")
 
         analysis_input = CVAnalysisInput(
             cv_profile=cv_profile,
@@ -616,7 +628,9 @@ class ConversationNodes:
             "workflow": updated_workflow,
         }
 
-    async def execute_workflow_cover_letter(self, state: ConversationState) -> dict[str, Any]:
+    async def execute_workflow_cover_letter(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
         workflow = state.get("workflow")
         cv_profile = state.get("cv_profile")
         job_description = state.get("job_description")
@@ -641,9 +655,10 @@ class ConversationNodes:
             )
         else:
             raise ValueError(
-                "A matched job, job search result, or job description is required for workflow cover letter generation."
+                "A matched job, job search result, or job description is "
+                "required for workflow cover letter generation."
             )
-        
+
         letter_input = CoverLetterInput(
             user_request=self._get_contextual_message(state),
             cv_profile=cv_profile,
@@ -683,9 +698,7 @@ class ConversationNodes:
         response_sections: list[str] = []
 
         if cv_analysis is not None:
-            response_sections.append(
-                self._build_cv_analysis_message(cv_analysis)
-            )
+            response_sections.append(self._build_cv_analysis_message(cv_analysis))
 
         if matches:
             match_lines = [
@@ -712,14 +725,10 @@ class ConversationNodes:
             )
 
         if career_advice is not None:
-            response_sections.append(
-                self._build_career_advice_message(career_advice)
-            )
+            response_sections.append(self._build_career_advice_message(career_advice))
 
         if cover_letter is not None:
-            response_sections.append(
-                self._build_cover_letter_message(cover_letter)
-            )
+            response_sections.append(self._build_cover_letter_message(cover_letter))
 
         if response_sections:
             assistant_message = "\n\n".join(response_sections)
@@ -744,10 +753,15 @@ class ConversationNodes:
             "assistant_message": assistant_message,
         }
 
-    async def review_before_cover_letter(self, state: ConversationState) -> dict[str, object]:
+    async def review_before_cover_letter(
+        self, state: ConversationState
+    ) -> dict[str, object]:
         review_request = HumanReviewRequest(
             review_type="cover_letter_confirmation",
-            message="Tôi đã hoàn thành quá trình phân tích công việc. Bạn có muốn tiếp tục tạo Cover Letter không?",
+            message=(
+                "Tôi đã hoàn thành quá trình phân tích công việc. "
+                "Bạn có muốn tiếp tục tạo Cover Letter không?"
+            ),
             data=self._build_review_data(state),
         )
         decision_payload = interrupt(review_request.model_dump(mode="json"))
@@ -755,10 +769,12 @@ class ConversationNodes:
 
         return {
             "human_review_request": review_request,
-            "human_review_decision": decision
+            "human_review_decision": decision,
         }
 
-    async def respond_human_review_rejected(self, state: ConversationState) -> dict[str, object]:
+    async def respond_human_review_rejected(
+        self, state: ConversationState
+    ) -> dict[str, object]:
         decision = state.get("human_review_decision")
 
         feedback = decision.feedback if decision else None
@@ -785,7 +801,7 @@ class ConversationNodes:
         return {
             "job_title": selected_match.job.title,
             "company": selected_match.job.company,
-            "match_score": selected_match.match.overall_score
+            "match_score": selected_match.match.overall_score,
         }
 
     @staticmethod
@@ -954,16 +970,10 @@ class ConversationNodes:
     def _build_message_result(state: ConversationState) -> dict[str, Any]:
         result: dict[str, Any] = {
             "assistant_message": state.get("assistant_message"),
-            "route": (
-                state["route"].value if state.get("route") is not None else None
-            ),
-            "status": (
-                state["status"].value if state.get("status") is not None else None
-            ),
+            "route": to_json_compatible(state.get("route")),
+            "status": to_json_compatible(state.get("status")),
             "cv_id": state.get("cv_id"),
-            "missing_inputs": [
-                item.value for item in state.get("missing_inputs", [])
-            ],
+            "missing_inputs": to_json_compatible(state.get("missing_inputs", [])),
         }
 
         model_fields = (
@@ -978,14 +988,11 @@ class ConversationNodes:
 
         for field_name in model_fields:
             value = state.get(field_name)
-            result[field_name] = (
-                value.model_dump(mode="json") if value is not None else None
-            )
+            result[field_name] = to_json_compatible(value)
 
-        result["workflow_job_matches"] = [
-            item.model_dump(mode="json")
-            for item in state.get("workflow_job_matches", [])
-        ]
+        result["workflow_job_matches"] = to_json_compatible(
+            state.get("workflow_job_matches", [])
+        )
 
         return result
 
