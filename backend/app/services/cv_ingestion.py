@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from fastapi import UploadFile
 
-
 from app.services.pdf import (
     NativePdfTextExtractor,
     NativeTextExtractionResult,
@@ -11,13 +10,13 @@ from app.services.pdf import (
     PdfInspectionResult,
     PdfInspector,
     PdfOcrExtractor,
+    PdfTextMerger,
     PdfTextMergeResult,
-    PdfTextMerger
 )
-
 from app.services.storage import StorageService, StoredFile
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True, slots=True)
 class CVIngestionResult:
@@ -27,6 +26,7 @@ class CVIngestionResult:
     ocr_extraction: OcrTextExtractionResult
     merged_text: PdfTextMergeResult
 
+
 class CVIngestionService:
     def __init__(
         self,
@@ -35,7 +35,7 @@ class CVIngestionService:
         pdf_inspector: PdfInspector,
         text_extractor: NativePdfTextExtractor,
         ocr_extractor: PdfOcrExtractor,
-        text_merger: PdfTextMerger
+        text_merger: PdfTextMerger,
     ) -> None:
         self._storage = storage
         self._pdf_inspector = pdf_inspector
@@ -47,13 +47,7 @@ class CVIngestionService:
         stored_file = await self._storage.save(upload_file)
 
         try:
-            inspection = await self._pdf_inspector.inspect(stored_file.path)
-            extraction = await self._text_extractor.extract(stored_file.path)
-            ocr_extraction = await self._ocr_extractor.extract(file_path=stored_file.path, page_numbers=extraction.ocr_required_page_numbers)
-            merged_text = self._text_merger.merge(
-                native_result=extraction,
-                ocr_result=ocr_extraction,
-            )
+            return await self.ingest_stored(stored_file)
         except Exception:
             try:
                 await self._storage.delete(stored_file)
@@ -67,6 +61,17 @@ class CVIngestionService:
 
             raise
 
+    async def ingest_stored(self, stored_file: StoredFile) -> CVIngestionResult:
+        inspection = await self._pdf_inspector.inspect(stored_file.path)
+        extraction = await self._text_extractor.extract(stored_file.path)
+        ocr_extraction = await self._ocr_extractor.extract(
+            file_path=stored_file.path,
+            page_numbers=extraction.ocr_required_page_numbers,
+        )
+        merged_text = self._text_merger.merge(
+            native_result=extraction,
+            ocr_result=ocr_extraction,
+        )
         return CVIngestionResult(
             stored_file=stored_file,
             inspection=inspection,

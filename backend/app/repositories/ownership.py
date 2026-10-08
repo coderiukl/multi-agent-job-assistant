@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -32,9 +32,7 @@ class OwnershipRepository:
                     )
 
         except SQLAlchemyError as exc:
-            raise StorageException(
-                message="CV ownership could not be stored."
-            ) from exc
+            raise StorageException(message="CV ownership could not be stored.") from exc
 
     async def require_cv(self, *, cv_id: str, user_id: UUID) -> None:
         statement = select(CVOwnershipModel.cv_id).where(
@@ -47,15 +45,28 @@ class OwnershipRepository:
                 owned_cv = await session.scalar(statement)
 
         except SQLAlchemyError as exc:
-            raise StorageException(
-                message="CV ownership could not be read."
-            ) from exc
+            raise StorageException(message="CV ownership could not be read.") from exc
 
         if owned_cv is None:
             raise ResourceNotFoundException(
                 resource="CV",
                 identifier=cv_id,
             )
+
+    async def delete_cv(self, *, cv_id: str, user_id: UUID) -> None:
+        statement = delete(CVOwnershipModel).where(
+            CVOwnershipModel.cv_id == cv_id,
+            CVOwnershipModel.user_id == user_id,
+        )
+
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    await session.execute(statement)
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message="CV ownership could not be deleted."
+            ) from exc
 
     async def get_thread_owner(self, thread_id: UUID) -> UUID | None:
         statement = select(ConversationOwnershipModel.user_id).where(
@@ -110,9 +121,7 @@ class OwnershipRepository:
                 user_id=user_id,
             )
             .on_conflict_do_nothing(
-                index_elements=[
-                    ConversationOwnershipModel.thread_id
-                ]
+                index_elements=[ConversationOwnershipModel.thread_id]
             )
         )
 
@@ -122,9 +131,7 @@ class OwnershipRepository:
                     await session.execute(statement)
 
                     owner = await session.scalar(
-                        select(
-                            ConversationOwnershipModel.user_id
-                        ).where(
+                        select(ConversationOwnershipModel.user_id).where(
                             ConversationOwnershipModel.thread_id == thread_id
                         )
                     )

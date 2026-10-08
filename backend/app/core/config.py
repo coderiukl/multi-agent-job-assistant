@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     ocr_dpi: int = Field(default=250, ge=150, le=400)
     ocr_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
+    # Durable CV processing worker
+    cv_worker_poll_seconds: float = Field(default=1.0, gt=0.0, le=60.0)
+    cv_task_lease_seconds: int = Field(default=900, ge=60, le=7200)
+    cv_task_max_attempts: int = Field(default=3, ge=1, le=10)
+
     # Pydantic settings
     model_config = SettingsConfigDict(
         env_file=".env",

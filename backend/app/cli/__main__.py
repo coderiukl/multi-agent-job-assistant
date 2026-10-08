@@ -10,27 +10,22 @@ from app.crawlers.registry import DEFAULT_JOB_SOURCE_REGISTRY
 
 SUPPORTED_SOURCES = frozenset(DEFAULT_JOB_SOURCE_REGISTRY.names)
 
+
 def iso_date(value: str) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError(
-            "date must use YYYY-MM-DD format"
-        ) from error
+        raise argparse.ArgumentTypeError("date must use YYYY-MM-DD format") from error
 
 
 def positive_int(value: str) -> int:
     try:
         limit = int(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError(
-            "limit must be an integer"
-        ) from error
+        raise argparse.ArgumentTypeError("limit must be an integer") from error
 
     if limit < 1:
-        raise argparse.ArgumentTypeError(
-            "limit must be greater than zero"
-        )
+        raise argparse.ArgumentTypeError("limit must be greater than zero")
 
     return limit
 
@@ -39,14 +34,10 @@ def positive_float(value: str) -> float:
     try:
         number = float(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError(
-            "value must be a number"
-        ) from error
+        raise argparse.ArgumentTypeError("value must be a number") from error
 
     if number <= 0:
-        raise argparse.ArgumentTypeError(
-            "value must be greater than zero"
-        )
+        raise argparse.ArgumentTypeError("value must be greater than zero")
 
     return number
 
@@ -77,10 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=positive_int,
         default=20,
-        help=(
-            "Number of jobs to fetch. "
-            "Each source may define a lower maximum."
-        ),
+        help=("Number of jobs to fetch. Each source may define a lower maximum."),
     )
     crawl_parser.add_argument(
         "--cursor",
@@ -102,10 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     import_parser = subparsers.add_parser(
         "import-jsonl-jobs",
-        help=(
-            "Import normalized JSONL jobs "
-            "into PostgreSQL"
-        ),
+        help=("Import normalized JSONL jobs into PostgreSQL"),
     )
 
     import_parser.add_argument(
@@ -134,18 +119,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     index_parser = subparsers.add_parser(
-        "index-jobs",
-        help="Synchronize PostgreSQL jobs to Qdrant."
+        "index-jobs", help="Synchronize PostgreSQL jobs to Qdrant."
     )
 
     index_parser.add_argument(
         "--batch-size",
         type=positive_int,
         default=100,
-        help=(
-            "Number of PostgreSQL jobs scanned "
-            "per batch."
-        ),
+        help=("Number of PostgreSQL jobs scanned per batch."),
     )
     index_parser.add_argument(
         "--source",
@@ -153,13 +134,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Only index jobs from one source.",
     )
+
+    worker_parser = subparsers.add_parser(
+        "cv-worker",
+        help="Process durable CV tasks from PostgreSQL.",
+    )
+    worker_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Claim at most one task and exit.",
+    )
     return parser
 
 
 async def execute(args: argparse.Namespace) -> int:
     if args.command == "crawl-jobs":
         from app.cli.crawl_jobs import crawl_jobs, print_result
-        
 
         result = await crawl_jobs(
             source_name=args.source,
@@ -198,9 +188,13 @@ async def execute(args: argparse.Namespace) -> int:
         print_result(result)
         return 0
 
-    raise ValueError(
-        f"Unsupported command: {args.command}"
-    )
+    if args.command == "cv-worker":
+        from app.cli.cv_worker import run_cv_worker
+
+        await run_cv_worker(once=args.once)
+        return 0
+
+    raise ValueError(f"Unsupported command: {args.command}")
 
 
 def print_error(error: Exception) -> None:

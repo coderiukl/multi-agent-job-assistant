@@ -14,12 +14,7 @@ import pymupdf
 
 from app.core.config import Settings
 from app.core.exceptions import FileValidationException, OcrProcessingException
-
-from app.services.pdf.models import (
-    OcrPageText,
-    OcrTextExtractionResult,
-    OcrTextLine
-)
+from app.services.pdf.models import OcrPageText, OcrTextExtractionResult, OcrTextLine
 
 logger = logging.getLogger(__name__)
 
@@ -37,17 +32,17 @@ class PdfOcrExtractor:
         self._engine: PaddleOCR | None = None
         self._engine_lock = Lock()
 
-    async def extract(self, file_path: Path, page_numbers: tuple[int, ...]) -> OcrTextExtractionResult:
+    async def extract(
+        self, file_path: Path, page_numbers: tuple[int, ...]
+    ) -> OcrTextExtractionResult:
         if not page_numbers:
             return self._empty_result()
 
-        return await asyncio.to_thread(
-            self._extract_sync,
-            file_path,
-            page_numbers
-        )
+        return await asyncio.to_thread(self._extract_sync, file_path, page_numbers)
 
-    def _extract_sync(self, file_path: Path, page_numbers: tuple[int, ...]) -> OcrTextExtractionResult:
+    def _extract_sync(
+        self, file_path: Path, page_numbers: tuple[int, ...]
+    ) -> OcrTextExtractionResult:
         if not file_path.is_file():
             raise FileValidationException(
                 message="PDF file does not exist.",
@@ -74,7 +69,13 @@ class PdfOcrExtractor:
         except OcrProcessingException:
             raise
 
-        except (pymupdf.EmptyFileError, pymupdf.FileDataError, OSError, RuntimeError, ValueError) as exc:
+        except (
+            pymupdf.EmptyFileError,
+            pymupdf.FileDataError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as exc:
             logger.exception(
                 "PDF OCR extraction failed",
                 extra={
@@ -89,17 +90,11 @@ class PdfOcrExtractor:
                 },
             ) from exc
 
-        full_text = "\n\n".join(
-            page.text for page in pages if page.text
-        )
+        full_text = "\n\n".join(page.text for page in pages if page.text)
 
-        total_character_count = sum(
-            page.character_count for page in pages
-        )
+        total_character_count = sum(page.character_count for page in pages)
 
-        total_word_count = sum(
-            page.word_count for page in pages
-        )
+        total_word_count = sum(page.word_count for page in pages)
 
         result = OcrTextExtractionResult(
             pages=pages,
@@ -128,7 +123,9 @@ class PdfOcrExtractor:
             alpha=False,
         )
 
-        image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(pixmap.height, pixmap.width, 3)
+        image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(
+            pixmap.height, pixmap.width, 3
+        )
 
         prediction_results = self._predict(image)
 
@@ -164,25 +161,16 @@ class PdfOcrExtractor:
                     )
                 )
 
-        lines.sort(
-            key=lambda line: (line.bbox[1], line.bbox[0])
-        )
+        lines = self._order_lines(lines, page_width=float(page.rect.width))
 
         page_text = "\n".join(line.text for line in lines)
 
-        character_count = sum(
-            1
-            for character in page_text
-            if not character.isspace()
-        )
+        character_count = sum(1 for character in page_text if not character.isspace())
 
         word_count = len(page_text.split())
 
         average_confidence = (
-            sum(line.confidence for line in lines)
-            / len(lines)
-            if lines
-            else 0.0
+            sum(line.confidence for line in lines) / len(lines) if lines else 0.0
         )
 
         return OcrPageText(
@@ -192,6 +180,39 @@ class PdfOcrExtractor:
             character_count=character_count,
             word_count=word_count,
             average_confidence=average_confidence,
+        )
+
+    @staticmethod
+    def _order_lines(
+        lines: list[OcrTextLine],
+        *,
+        page_width: float,
+    ) -> list[OcrTextLine]:
+        def by_position(line: OcrTextLine) -> tuple[float, float]:
+            return line.bbox[1], line.bbox[0]
+
+        if len(lines) < 6 or page_width <= 0:
+            return sorted(lines, key=by_position)
+
+        left = [
+            line
+            for line in lines
+            if ((line.bbox[0] + line.bbox[2]) / 2) < page_width * 0.45
+        ]
+        right = [
+            line
+            for line in lines
+            if ((line.bbox[0] + line.bbox[2]) / 2) > page_width * 0.55
+        ]
+        middle = [line for line in lines if line not in left and line not in right]
+
+        if len(left) < 3 or len(right) < 3:
+            return sorted(lines, key=by_position)
+
+        return (
+            sorted(left, key=by_position)
+            + sorted(right, key=by_position)
+            + sorted(middle, key=by_position)
         )
 
     def _predict(self, image: np.ndarray[Any, Any]) -> list[Any]:
@@ -209,9 +230,7 @@ class PdfOcrExtractor:
                 return list(
                     self._engine.predict(
                         input=image,
-                        text_rec_score_thresh=(
-                            self._min_confidence
-                        ),
+                        text_rec_score_thresh=(self._min_confidence),
                     )
                 )
 
@@ -246,7 +265,9 @@ class PdfOcrExtractor:
         )
 
     @staticmethod
-    def _validate_page_numbers(*, page_numbers: tuple[int, ...], page_count: int) -> None:
+    def _validate_page_numbers(
+        *, page_numbers: tuple[int, ...], page_count: int
+    ) -> None:
         invalid_page_numbers = [
             page_number
             for page_number in page_numbers
@@ -257,9 +278,7 @@ class PdfOcrExtractor:
             raise FileValidationException(
                 message="Invalid OCR page numbers.",
                 details={
-                    "invalid_page_numbers": (
-                        invalid_page_numbers
-                    ),
+                    "invalid_page_numbers": (invalid_page_numbers),
                 },
             )
 

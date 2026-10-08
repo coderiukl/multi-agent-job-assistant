@@ -16,15 +16,14 @@ logger = logging.getLogger(__name__)
 
 CV_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
+
 class CVRepository(Protocol):
-    async def save(self, cv_id: str, profile: CVProfile) -> None:
-        ...
+    async def save(self, cv_id: str, profile: CVProfile) -> None: ...
 
-    async def get(self, cv_id: str) -> CVProfile | None:
-        ...
+    async def get(self, cv_id: str) -> CVProfile | None: ...
 
-    async def delete(self, cv_id: str) -> None:
-        ...
+    async def delete(self, cv_id: str) -> None: ...
+
 
 class LocalJsonCVRepository:
     def __init__(self, settings: Settings) -> None:
@@ -36,7 +35,7 @@ class LocalJsonCVRepository:
             raise StorageException(
                 message="The CV identifier is invalid.",
             )
-        
+
         profile_path = self._build_profile_path(cv_id)
         temporary_path = profile_path.with_suffix(".json.part")
 
@@ -44,9 +43,7 @@ class LocalJsonCVRepository:
             payload = profile.model_dump_json(indent=2)
 
             async with aiofiles.open(
-                temporary_path,
-                mode='w',
-                encoding='utf-8'
+                temporary_path, mode="w", encoding="utf-8"
             ) as output:
                 await output.write(payload)
 
@@ -89,7 +86,6 @@ class LocalJsonCVRepository:
         try:
             async with aiofiles.open(
                 profile_path,
-                mode="r",
                 encoding="utf-8",
             ) as input_file:
                 payload = await input_file.read()
@@ -141,7 +137,4 @@ class LocalJsonCVRepository:
 
     @staticmethod
     def _is_valid_cv_id(cv_id: str) -> bool:
-        if not cv_id:
-            return False
-
-        return "/" not in cv_id and "\\" not in cv_id
+        return bool(CV_ID_PATTERN.fullmatch(cv_id))

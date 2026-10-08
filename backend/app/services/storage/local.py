@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 PDF_SIGNATURE = b"%PDF-"
 PDF_SUFFIX = ".pdf"
+CV_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+
 
 class LocalStorageService:
     def __init__(self, settings: Settings) -> None:
@@ -25,8 +28,7 @@ class LocalStorageService:
         self._max_size_bytes = settings.max_upload_size_bytes
         self._chunk_size = settings.upload_chunk_size_bytes
         self._allowed_content_types = {
-            content_type.lower()
-            for content_type in settings.allowed_cv_content_types
+            content_type.lower() for content_type in settings.allowed_cv_content_types
         }
 
         self._upload_dir.mkdir(parents=True, exist_ok=True)
@@ -54,10 +56,7 @@ class LocalStorageService:
                 while chunk := await file.read(self._chunk_size):
                     if is_first_chunk and not chunk.startswith(PDF_SIGNATURE):
                         raise FileValidationException(
-                            message=(
-                                "The uploaded file is not a valid "
-                                "PDF document."
-                            ),
+                            message=("The uploaded file is not a valid PDF document."),
                             code="INVALID_PDF_SIGNATURE",
                         )
 
@@ -67,15 +66,12 @@ class LocalStorageService:
                     if size_bytes > self._max_size_bytes:
                         raise FileValidationException(
                             message=(
-                                "The uploaded file exceeds the "
-                                "maximum allowed size."
+                                "The uploaded file exceeds the maximum allowed size."
                             ),
                             status_code=413,
                             code="FILE_TOO_LARGE",
                             details={
-                                "max_size_bytes": (
-                                    self._max_size_bytes
-                                ),
+                                "max_size_bytes": (self._max_size_bytes),
                             },
                         )
 
@@ -93,10 +89,7 @@ class LocalStorageService:
             raise
 
         except OSError as exc:
-            logger.exception(
-                "Failed to store uploaded CV",
-                extra={"file_id": file_id}
-            )
+            logger.exception("Failed to store uploaded CV", extra={"file_id": file_id})
 
             raise StorageException() from exc
 
@@ -140,6 +133,25 @@ class LocalStorageService:
             raise StorageException(
                 message="The stored file could not be deleted.",
             ) from exc
+
+    async def delete_by_id(self, file_id: str) -> None:
+        if not CV_ID_PATTERN.fullmatch(file_id):
+            return
+
+        try:
+            await asyncio.to_thread(
+                (self._upload_dir / f"{file_id}{PDF_SUFFIX}").unlink,
+                missing_ok=True,
+            )
+        except OSError as exc:
+            logger.exception(
+                "Failed to delete stored file",
+                extra={"file_id": file_id},
+            )
+            raise StorageException(
+                message="The stored file could not be deleted.",
+            ) from exc
+
     def _validate_metadata(self, *, filename: str, content_type: str) -> None:
         if content_type not in self._allowed_content_types:
             raise FileValidationException(

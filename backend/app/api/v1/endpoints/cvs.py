@@ -1,28 +1,77 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, File, UploadFile, status
 
 from app.api.resource_dependencies import (
     AuthorizedCVProcessingServiceDependency,
+    AuthorizedCVTaskServiceDependency,
 )
-from app.schemas.cv import (
-    CVUploadData,
-    NativeTextExtractionData,
-    OcrExtractionData,
-    PdfInspectionData,
-    PdfMetadataData,
-)
+from app.schemas.cv_profile import CVProfile
+from app.schemas.cv_task import CVTaskAcceptedData, CVTaskStatusData
 from app.schemas.error import ErrorResponse
 from app.schemas.response import ApiResponse
 
 router = APIRouter()
 
 
+@router.get(
+    "/{cv_id}",
+    response_model=ApiResponse[CVProfile],
+    summary="Get an owned parsed CV profile",
+)
+async def get_cv(
+    cv_id: str,
+    processing_service: AuthorizedCVProcessingServiceDependency,
+) -> ApiResponse[CVProfile]:
+    profile = await processing_service.get_profile(cv_id)
+    return ApiResponse(
+        message="CV profile retrieved successfully.",
+        data=profile,
+    )
+
+
+@router.patch(
+    "/{cv_id}",
+    response_model=ApiResponse[CVProfile],
+    summary="Replace an owned parsed CV profile after user review",
+)
+async def update_cv(
+    cv_id: str,
+    profile: CVProfile,
+    processing_service: AuthorizedCVProcessingServiceDependency,
+) -> ApiResponse[CVProfile]:
+    updated_profile = await processing_service.update_profile(
+        cv_id=cv_id,
+        profile=profile,
+    )
+    return ApiResponse(
+        message="CV profile updated successfully.",
+        data=updated_profile,
+    )
+
+
+@router.delete(
+    "/{cv_id}",
+    response_model=ApiResponse[dict[str, bool]],
+    summary="Delete an owned CV and its parsed profile",
+)
+async def delete_cv(
+    cv_id: str,
+    processing_service: AuthorizedCVProcessingServiceDependency,
+) -> ApiResponse[dict[str, bool]]:
+    await processing_service.delete(cv_id)
+    return ApiResponse(
+        message="CV deleted successfully.",
+        data={"deleted": True},
+    )
+
+
 @router.post(
     "",
-    response_model=ApiResponse[CVUploadData],
-    status_code=status.HTTP_201_CREATED,
-    summary="Upload a CV",
+    response_model=ApiResponse[CVTaskAcceptedData],
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Upload a CV and enqueue durable processing",
     responses={
         413: {
             "model": ErrorResponse,
@@ -51,62 +100,33 @@ async def upload_cv(
         UploadFile,
         File(description="PDF CV file."),
     ],
-    processing_service: AuthorizedCVProcessingServiceDependency,
-) -> ApiResponse[CVUploadData]:
-    processing_result = await processing_service.process(file)
-
-    result = processing_result.ingestion
-    profile = processing_result.profile
-
-    stored_file = result.stored_file
-    inspection = result.inspection
-    metadata = inspection.metadata
-    extraction = result.extraction
-    ocr_extraction = result.ocr_extraction
-
+    task_service: AuthorizedCVTaskServiceDependency,
+) -> ApiResponse[CVTaskAcceptedData]:
+    task = await task_service.enqueue(file)
     return ApiResponse(
-        message="CV uploaded and parsed successfully.",
-        data=CVUploadData(
-            file_id=stored_file.file_id,
-            file_name=stored_file.original_filename,
-            file_size=stored_file.size_bytes,
-            content_type=stored_file.content_type,
-            inspection=PdfInspectionData(
-                page_count=inspection.page_count,
-                is_repaired=inspection.is_repaired,
-                metadata=PdfMetadataData(
-                    title=metadata.title,
-                    author=metadata.author,
-                    subject=metadata.subject,
-                    keywords=metadata.keywords,
-                    creator=metadata.creator,
-                    producer=metadata.producer,
-                    creation_date=metadata.creation_date,
-                    modification_date=metadata.modification_date,
-                ),
-            ),
-            extraction=NativeTextExtractionData(
-                total_character_count=extraction.total_character_count,
-                total_word_count=extraction.total_word_count,
-                native_page_count=extraction.native_page_count,
-                ocr_required_page_numbers=list(
-                    extraction.ocr_required_page_numbers
-                ),
-            ),
-            ocr=OcrExtractionData(
-                ocr_page_count=ocr_extraction.ocr_page_count,
-                total_character_count=ocr_extraction.total_character_count,
-                total_word_count=ocr_extraction.total_word_count,
-                average_confidence=(
-                    sum(
-                        page.average_confidence
-                        for page in ocr_extraction.pages
-                    )
-                    / len(ocr_extraction.pages)
-                    if ocr_extraction.pages
-                    else 0.0
-                ),
-            ),
-            profile=profile,
+        message="CV uploaded and queued for processing.",
+        data=CVTaskAcceptedData(
+            task_id=task.task_id,
+            cv_id=task.cv_id,
+            file_name=task.original_filename,
+            file_size=task.size_bytes,
+            content_type=task.content_type,
+            status=task.status,
         ),
+    )
+
+
+@router.get(
+    "/processing-tasks/{task_id}",
+    response_model=ApiResponse[CVTaskStatusData],
+    summary="Get an owned CV processing task",
+)
+async def get_cv_processing_task(
+    task_id: UUID,
+    task_service: AuthorizedCVTaskServiceDependency,
+) -> ApiResponse[CVTaskStatusData]:
+    task = await task_service.get(task_id)
+    return ApiResponse(
+        message="CV processing task retrieved successfully.",
+        data=task,
     )

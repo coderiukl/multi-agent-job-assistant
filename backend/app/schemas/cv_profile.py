@@ -1,7 +1,11 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
 
 class CVSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
 
 class PersonalInformation(CVSchema):
     full_name: str | None = Field(description="Candidate's full name.")
@@ -11,6 +15,7 @@ class PersonalInformation(CVSchema):
     linkedin_url: str | None = Field(description="LinkedIn profile URL.")
     github_url: str | None = Field(description="GitHub profile URL.")
     portfolio_url: str | None = Field(description="Portfolio or personal website URL.")
+
 
 class WorkExperience(CVSchema):
     job_title: str | None
@@ -22,6 +27,7 @@ class WorkExperience(CVSchema):
     responsibilities: list[str]
     achievements: list[str]
 
+
 class Education(CVSchema):
     institution: str | None
     degree: str | None
@@ -30,11 +36,13 @@ class Education(CVSchema):
     end_date: str | None
     description: str | None
 
+
 class Project(CVSchema):
     name: str | None
     description: str | None
     technologies: list[str]
     url: str | None
+
 
 class Certification(CVSchema):
     name: str | None
@@ -42,9 +50,30 @@ class Certification(CVSchema):
     issue_date: str | None
     credential_url: str | None
 
+
 class Language(CVSchema):
     name: str
     proficiency: str | None
+
+
+class CVFieldProvenance(CVSchema):
+    """Trace one important parsed value back to the uploaded document."""
+
+    field_path: str = Field(
+        pattern=r"^(skills|work_experiences|educations)\[\d+\](?:\.[a-z_]+)?$",
+        description=(
+            "JSON-style path to a skill, work experience, or education value."
+        ),
+    )
+    page_number: int = Field(ge=1)
+    source_text: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Short verbatim excerpt supporting the parsed value.",
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+    extraction_method: Literal["native", "ocr"] | None = None
+
 
 class CVProfile(CVSchema):
     personal_information: PersonalInformation
@@ -55,3 +84,10 @@ class CVProfile(CVSchema):
     projects: list[Project]
     certifications: list[Certification]
     languages: list[Language]
+    provenance: list[CVFieldProvenance] = Field(default_factory=list)
+    needs_review: bool = Field(
+        default=False,
+        description=(
+            "True when important fields have weak or incomplete source evidence."
+        ),
+    )
