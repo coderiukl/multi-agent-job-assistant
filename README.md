@@ -485,9 +485,34 @@ alembic upgrade head
 
 Chạy backend:
 
-```powershell
+~~~powershell
 uvicorn app.main:app --reload
-```
+~~~
+
+Chạy CV worker ở terminal riêng:
+
+~~~powershell
+python -m app.cli cv-worker
+~~~
+
+Upload CV trả về HTTP 202 cùng task_id. Frontend kiểm tra
+GET /api/v1/cvs/processing-tasks/{task_id} với exponential backoff cho đến
+khi task chuyển sang completed hoặc failed. Task, retry count và processing
+lease được lưu trong PostgreSQL nên có thể tiếp tục sau khi API hoặc worker
+khởi động lại.
+
+Có thể xử lý tối đa một task rồi thoát để kiểm tra vận hành:
+
+~~~powershell
+python -m app.cli cv-worker --once
+~~~
+
+Khi dùng Docker Compose, service backend và cv-worker dùng chung
+backend_storage volume:
+
+~~~powershell
+docker compose -f compose.backend.yaml up --build
+~~~
 
 Backend mặc định:
 

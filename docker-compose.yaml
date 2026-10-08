@@ -1,0 +1,115 @@
+name: job-assistant-development
+
+x-backend-common: &backend-common
+  image: job-assistant-backend:dev
+
+  env_file:
+    - ./backend/.env.docker
+
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+  volumes:
+    - ./backend:/app
+    - backend_storage:/app/storage
+
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 30s
+
+services:
+  migrate:
+    <<: *backend-common
+
+    command:
+      - python
+      - -m
+      - alembic
+      - upgrade
+      - head
+
+    restart: "no"
+
+    volumes:
+      - ./backend:/app
+    
+  backend:
+    <<: *backend-common
+
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/app
+
+    ports:
+      - "127.0.0.1:8001:8000"
+
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  cv-worker:
+    <<: *backend-common
+
+    healthcheck:
+      disable: true
+
+    command:
+      - python
+      - -m
+      - app.cli
+      - cv-worker
+
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    
+  frontend:
+    image: job-assistant-frontend:dev
+
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: build
+
+    command:
+      - npx
+      - vite
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "5173"
+
+    environment:
+      VITE_API_BASE_URL: http://127.0.0.1:8001
+
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    
+    ports:
+      - "127.0.0.1:5173:5173"
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+volumes:
+  backend_storage:
+  frontend_node_modules:
