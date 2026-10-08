@@ -7,7 +7,12 @@ export {
 
 export { searchJobs } from "./api/jobs-api.js";
 
-export { uploadCv } from "./api/cv-api.js";
+export {
+  deleteCv,
+  getCvProcessingTask,
+  updateCvProfile,
+  uploadCv,
+} from "./api/cv-api.js";
 
 export {
   ApiError,
