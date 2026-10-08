@@ -118,7 +118,7 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = Field(default=None, repr=False)
     qdrant_collection_name: str = "jobs_bge_m3_v2"
-    qdrant_timeout_seconds: float = Field(default=30.0, gt=0)
+    qdrant_timeout_seconds: int = Field(default=30, gt=0)
 
     # Conversation Memory
     conversation_memory_backend: Literal[

@@ -314,10 +314,12 @@ flowchart TD
 flowchart TD
     QUERY["Job Search Request"] --> AGENT["Job Search Agent"]
     AGENT --> PLAN["JobSearchPlan"]
+    AGENT -- "LLM lỗi" --> DIRECT["Direct Search Plan"]
+    DIRECT --> PLAN
 
     PLAN --> PARALLEL{"Tìm kiếm song song"}
     PARALLEL --> SQL["PostgreSQL Search"]
-    PARALLEL --> VECTOR["Qdrant Semantic Search"]
+    PARALLEL --> VECTOR["Qdrant Metadata Filter + Semantic Search"]
 
     VECTOR --> AVAILABLE{"Qdrant thành công?"}
     AVAILABLE -- "Không" --> FALLBACK["PostgreSQL Fallback"]
@@ -331,8 +333,19 @@ flowchart TD
     SCORE --> DEDUP["Deduplicate"]
     DEDUP --> SORT["Sort"]
     SORT --> PAGE["Pagination"]
-    PAGE --> RESULT["JobSearchResult"]
+    PAGE --> RESULT["JobSearchResult<br/>retrieved_count, has_more"]
 ```
+
+Qdrant áp dụng metadata filter trước semantic top-K. PostgreSQL xác nhận lại
+filter khi tải source record. Hai tầng dùng cùng quy tắc salary currency và
+salary period; không có quy đổi ngầm giữa tháng và năm. Location trên Qdrant
+dùng `location_keys` đã chuẩn hóa, còn PostgreSQL mở rộng các alias phổ biến
+trước khi tạo điều kiện `ILIKE`.
+
+`total` chỉ là số job deduplicate trong cửa sổ ứng viên đã truy xuất.
+`retrieved_count` là số source record sau khi hợp nhất và `has_more` thể hiện
+khả năng còn trang tiếp theo; API không mô tả `total` như tổng chính xác của
+toàn bộ database.
 
 Công thức:
 
@@ -400,9 +413,9 @@ flowchart TD
     QUALITY -- "Có" --> COMMIT["Lưu cursor mới"]
 
     COMMIT --> RECORD["Lưu Metrics JSON"]
-    RECORD --> READ["Đọc Job từ PostgreSQL"]
-    READ --> DEDUP["Deduplicate"]
-    DEDUP --> HASH["Kiểm tra content_hash"]
+    RECORD --> READ["Đọc Job theo từng batch từ PostgreSQL"]
+    READ --> ID["Tạo point ID ổn định từ job_id"]
+    ID --> HASH["Kiểm tra content_hash và embedding versions"]
 
     HASH --> REQUIRED{"Cần index?"}
     REQUIRED -- "Không" --> SKIP["Bỏ qua"]
@@ -413,6 +426,19 @@ flowchart TD
     QDRANT --> SUMMARY
     SUMMARY --> END["Hoàn thành DAG"]
 ```
+
+Qdrant lưu riêng từng source record bằng point ID được dẫn xuất ổn định từ
+`job_id`. Chữ ký quyết định reindex gồm `content_hash`,
+`embedding_model_version` và `embedding_text_version`. Deduplicate liên nguồn
+được thực hiện trên kết quả tìm kiếm, không thực hiện bằng cách cho các nguồn
+dùng chung một Qdrant point.
+
+Khi chuyển từ collection `jobs_bge_m3_v1` sang `jobs_bge_m3_v2`, chạy full
+sync bằng `python -m app.cli index-jobs --batch-size 100`. Các DAG sau đó tiếp
+tục index tăng dần theo `job_ids` của từng batch crawl.
+
+Khi `index_payload_version` thay đổi, cũng cần chạy full sync để các point cũ
+có đủ metadata filter và payload index tương ứng.
 
 ## 8. Thành phần chưa được triển khai
 

@@ -117,10 +117,12 @@ flowchart TD
     CONTEXT --> JSA["Job Search Agent"]
 
     JSA --> PLAN["Tạo JobSearchPlan<br/>keywords, filters, semantic query"]
+    JSA -- "Analyzer lỗi" --> DIRECT["Tạo direct search plan"]
+    DIRECT --> PLAN
     PLAN --> PAR{"Tìm kiếm song song"}
 
     PAR --> PG["Lọc ứng viên trong PostgreSQL"]
-    PAR --> QD["Tìm kiếm semantic trong Qdrant"]
+    PAR --> QD["Lọc metadata rồi semantic top-K trong Qdrant"]
     
     QD --> QOK{"Qdrant hoạt động?"}
     QOK -- "Không" --> FALLBACK["Fallback về kết quả PostgreSQL"]
@@ -134,13 +136,28 @@ flowchart TD
     SCORE --> DEDUP["Loại bỏ công việc trùng lặp"]
     DEDUP --> SORT["Sắp xếp theo yêu cầu"]
     SORT --> PAGE["Phân trang kết quả"]
-    PAGE --> RESULT["Trả danh sách việc làm"]
+    PAGE --> RESULT["Trả items, retrieved_count và has_more"]
 ```
+
+Các filter location, employment type, work mode, seniority, skills, khoảng
+lương, currency, salary period, ngày đăng và trạng thái hết hạn được đẩy vào
+Qdrant trước khi chọn semantic top-K. PostgreSQL vẫn áp dụng lại cùng bộ lọc
+khi tải chi tiết job. Location được so khớp qua khóa không dấu và các alias
+phổ biến như `HCMC`, `TP.HCM`, `Sài Gòn`, `Hanoi` và `Đà Nẵng`.
+
+Filter lương chỉ hợp lệ khi có cả `salary_currency` và `salary_period`; hệ
+thống không tự quy đổi giữa lương tháng và lương năm. `total` là số kết quả đã
+deduplicate trong cửa sổ ứng viên đã truy xuất, không phải phép đếm toàn bộ cơ
+sở dữ liệu. `retrieved_count` cho biết số source record được hợp nhất và
+`has_more` cho biết có thể tiếp tục phân trang.
 
 Điểm tìm kiếm được tính từ ba thành phần:
 ```text
 Final Score = 0.60 x Semantic Score + 0.30 x Keyword Score + 0.10 x Freshness Score
 ```
+
+Các trọng số trên là baseline. Việc thay đổi cần được đánh giá bằng tập truy
+vấn gán nhãn với Recall@K, nDCG@K và tỷ lệ vi phạm filter.
 
 Trong đó:
 
@@ -315,11 +332,11 @@ flowchart TD
     V -- "Đạt" --> Y["Lưu cursor mới"]
     Y --> Z["Lưu file crawl metrics"]
 
-    Z --> AA["Đọc các Job cần index"]
-    AA --> AB["Deduplicate trước khi embedding"]
-    AB --> AC["Kiểm tra content hash trên Qdrant"]
+    Z --> AA["Đọc Job theo từng batch"]
+    AA --> AB["Tạo point ID ổn định từ job_id"]
+    AB --> AC["Kiểm tra content hash và embedding versions"]
 
-    AC --> AD{"Job cần cập nhạta vector?"}
+    AC --> AD{"Job cần cập nhật vector?"}
 
     AD -- "Không" --> AE["Bỏ qua Job đã index"]
     AD -- "Có" --> AF["Tạo embedding bằng BAAI/bge-m3"]
@@ -327,6 +344,19 @@ flowchart TD
     AF --> AG["Upsert vector và metadata vào Qdrant"]
     AE --> AH["Tổng hợp indexing metrics"]
     AG --> AH
+```
+
+Mỗi bản ghi nguồn có một vector riêng trong collection
+`jobs_bge_m3_v2`. Kết quả từ nhiều nguồn chỉ được loại trùng sau khi
+PostgreSQL và Qdrant đã hợp nhất, tránh để các DAG nguồn ghi đè vector của
+nhau. Cần tăng `EMBEDDING_MODEL_VERSION` khi thay đổi model/checkpoint và tăng
+`JOB_EMBEDDING_TEXT_VERSION` khi thay đổi cấu trúc văn bản đầu vào embedding.
+
+Sau khi triển khai phiên bản này, cần chạy một lần lệnh sau trong backend để
+nạp toàn bộ job hiện có vào collection `v2` và bổ sung metadata phục vụ filter:
+
+```bash
+python -m app.cli index-jobs --batch-size 100
 ```
 
 ### Luồng tổng hợp metrics hàng ngày

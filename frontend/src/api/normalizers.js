@@ -264,6 +264,8 @@ export function normalizeJobSearchResult(data) {
       query: "",
       strategy: "postgres",
       total: 0,
+      retrievedCount: 0,
+      hasMore: false,
       page: 1,
       pageSize: 10,
       items: [],
@@ -279,6 +281,11 @@ export function normalizeJobSearchResult(data) {
     strategy: data.strategy ?? "postgres",
     total:
       typeof data.total === "number" ? data.total : items.length,
+    retrievedCount:
+      typeof data.retrieved_count === "number"
+        ? data.retrieved_count
+        : items.length,
+    hasMore: data.has_more === true,
     page: typeof data.page === "number" ? data.page : 1,
     pageSize:
       typeof data.page_size === "number" ? data.page_size : 10,

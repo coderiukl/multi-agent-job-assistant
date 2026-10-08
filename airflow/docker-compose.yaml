@@ -62,14 +62,16 @@ x-airflow-common:
     JOB_DATABASE_MAX_OVERFLOW: 10
     JOB_DATABASE_ECHO: "false"
     EMBEDDING_MODEL: "BAAI/bge-m3"
+    EMBEDDING_MODEL_VERSION: "bge-m3-v1"
     EMBEDDING_DIMENSIONS: "1024"
     EMBEDDING_DEVICE: "cpu"
     EMBEDDING_BATCH_SIZE: "4"
     EMBEDDING_MAX_LENGTH: "2048"
     EMBEDDING_CACHE_DIR: "/home/airflow/.cache/job-models"
     JOB_EMBEDDING_MAX_CHARS: "12000"
+    JOB_EMBEDDING_TEXT_VERSION: "v1"
     QDRANT_URL: "http://qdrant:6333"
-    QDRANT_COLLECTION_NAME: "jobs_bge_m3_v1"
+    QDRANT_COLLECTION_NAME: "jobs_bge_m3_v2"
     QDRANT_TIMEOUT_SECONDS: "30"
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager

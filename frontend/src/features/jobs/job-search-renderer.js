@@ -38,7 +38,12 @@ export function createJobSearchRenderer({
     updateMobileResultsBadge(total);
     openResultsPanel();
     renderMatchedTermChips(items);
-    renderPagination({ page, pageSize, total });
+    renderPagination({
+      page,
+      pageSize,
+      total,
+      hasMore: result?.hasMore === true,
+    });
 
     if (!items.length) {
       showNoJobResults();
@@ -65,12 +70,16 @@ export function createJobSearchRenderer({
   };
 }
 
-function renderPagination({ page, pageSize, total }) {
+function renderPagination({ page, pageSize, total, hasMore }) {
   const container = elements.jobPagination;
 
   if (!container) return;
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(total / pageSize),
+    hasMore ? page + 1 : page,
+  );
   container.innerHTML = "";
   container.hidden = totalPages <= 1;
 

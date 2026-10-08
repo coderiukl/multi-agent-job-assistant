@@ -5,13 +5,37 @@ from datetime import UTC, datetime
 
 from app.schemas.job import NormalizedJob
 
+LOCATION_ALIASES: dict[str, tuple[str, ...]] = {
+    "ho chi minh": (
+        "Ho Chi Minh",
+        "Hồ Chí Minh",
+        "HCM",
+        "HCMC",
+        "TP HCM",
+        "TP.HCM",
+        "TPHCM",
+        "Sai Gon",
+        "Sài Gòn",
+    ),
+    "ha noi": (
+        "Ha Noi",
+        "Hà Nội",
+        "Hanoi",
+        "HN",
+    ),
+    "da nang": (
+        "Da Nang",
+        "Đà Nẵng",
+        "Danang",
+    ),
+}
+
 
 def normalize_deduplication_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
 
     without_accents = "".join(
-        character for character in normalized
-        if not unicodedata.combining(character)
+        character for character in normalized if not unicodedata.combining(character)
     )
 
     lowercase = without_accents.casefold()
@@ -35,12 +59,16 @@ def normalize_job_location(value: str | None = None) -> str:
             "ho chi minh",
         ),
         (
-            r"\btp hcm\b|\btphcm\b|\bhcm\b|\bsai gon\b",
+            r"\btp hcm\b|\btphcm\b|\bhcmc\b|\bhcm\b|\bsai gon\b",
             "ho chi minh",
         ),
         (
             r"\bha noi city\b|\bthanh pho ha noi\b|\bhn\b",
             "ha noi",
+        ),
+        (
+            r"\bda nang city\b|\bthanh pho da nang\b|\bdanang\b",
+            "da nang",
         ),
         (
             r"\bviet nam\b|\bvietnam\b",
@@ -52,6 +80,32 @@ def normalize_job_location(value: str | None = None) -> str:
         normalized = re.sub(pattern, replacement, normalized)
 
     return re.sub(r"\s+", " ", normalized).strip()
+
+
+def build_job_location_keys(value: str | None) -> list[str]:
+    normalized = normalize_job_location(value)
+
+    if not normalized:
+        return []
+
+    keys = [normalized]
+
+    for canonical_key in LOCATION_ALIASES:
+        if canonical_key in normalized and canonical_key not in keys:
+            keys.append(canonical_key)
+
+    return keys
+
+
+def build_job_location_search_terms(value: str) -> list[str]:
+    normalized = normalize_job_location(value)
+    terms = [value]
+
+    for canonical_key, aliases in LOCATION_ALIASES.items():
+        if canonical_key in normalized:
+            terms.extend(aliases)
+
+    return list(dict.fromkeys(terms))
 
 
 def build_job_deduplication_key(job: NormalizedJob) -> str:
@@ -108,4 +162,3 @@ def _ensure_utc(value: datetime) -> datetime:
         return value.replace(tzinfo=UTC)
 
     return value.astimezone(UTC)
-

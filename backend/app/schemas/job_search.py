@@ -8,6 +8,7 @@ from app.schemas.job import (
     EmploymentType,
     JobSchema,
     NormalizedJob,
+    SalaryPeriod,
     SeniorityLevel,
     WorkMode,
     normalize_single_line,
@@ -34,6 +35,7 @@ class JobSearchFilters(JobSchema):
     salary_min: float | None = Field(default=None, ge=0)
     salary_max: float | None = Field(default=None, ge=0)
     salary_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    salary_period: SalaryPeriod | None = None
     posted_after: datetime | None = None
     include_expired: bool = False
 
@@ -73,22 +75,22 @@ class JobSearchFilters(JobSchema):
     @classmethod
     def require_timezone(cls, value: datetime | None) -> datetime | None:
         if value is not None and value.utcoffset() is None:
-            raise ValueError(
-                "posted_after must include timezone information."
-            )
+            raise ValueError("posted_after must include timezone information.")
 
         return value
 
     @model_validator(mode="after")
     def validate_salary_filter(self) -> Self:
-        has_salary_filter = (
-            self.salary_min is not None
-            or self.salary_max is not None
-        )
+        has_salary_filter = self.salary_min is not None or self.salary_max is not None
 
         if has_salary_filter and self.salary_currency is None:
             raise ValueError(
                 "salary_currency is required when salary filters are provided."
+            )
+
+        if has_salary_filter and self.salary_period is None:
+            raise ValueError(
+                "salary_period is required when salary filters are provided."
             )
 
         if (
@@ -189,9 +191,11 @@ class JobSearchHit(JobSchema):
 
         return normalized_values
 
+
 class JobVectorSearchHit(JobSchema):
     job_id: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     score: float = Field(ge=-1.0, le=1.0)
+
 
 class JobSearchResult(JobSchema):
     query: str = Field(min_length=1, max_length=2_000)
@@ -199,7 +203,10 @@ class JobSearchResult(JobSchema):
     total: int = Field(ge=0)
     page: int = Field(ge=1)
     page_size: int = Field(ge=1, le=50)
+    retrieved_count: int = Field(ge=0)
+    has_more: bool = False
     items: list[JobSearchHit] = Field(default_factory=list)
+
 
 class JobSearchPage(JobSchema):
     total: int = Field(ge=0)

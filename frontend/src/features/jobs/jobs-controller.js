@@ -80,7 +80,12 @@ export function createJobsController({
     const currentResult = state.currentSearchResult;
     const total = Number(currentResult?.total) || 0;
     const pageSize = Number(currentResult?.pageSize) || 10;
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const currentPage = Number(currentResult?.page) || 1;
+    const totalPages = Math.max(
+      1,
+      Math.ceil(total / pageSize),
+      currentResult?.hasMore ? currentPage + 1 : currentPage,
+    );
     const nextPage = Number(page);
 
     if (
@@ -90,7 +95,7 @@ export function createJobsController({
       !Number.isInteger(nextPage) ||
       nextPage < 1 ||
       nextPage > totalPages ||
-      nextPage === currentResult?.page
+      nextPage === currentPage
     ) {
       return;
     }
