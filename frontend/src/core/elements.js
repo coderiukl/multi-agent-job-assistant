@@ -110,6 +110,18 @@ export const elements = {
     removeCvButton: document.querySelector(
         "#remove-cv-button",
     ),
+    reviewCvButton: document.querySelector(
+        "#review-cv-button",
+    ),
+    cvProfileDialog: document.querySelector(
+        "#cv-profile-dialog",
+    ),
+    cvProfileEditor: document.querySelector(
+        "#cv-profile-editor",
+    ),
+    saveCvProfileButton: document.querySelector(
+        "#save-cv-profile-button",
+    ),
     selectedCv: document.querySelector("#selected-cv"),
     selectedCvName: document.querySelector(
         "#selected-cv-name",

@@ -60,6 +60,10 @@ export function createChatController({
       return "CV đang được tải lên và xử lý. Vui lòng chờ hoàn tất.";
     }
 
+    if (state.cvUploadStatus === "failed") {
+      return "CV xử lý thất bại. Hãy xóa CV lỗi và tải lại.";
+    }
+
     return null;
   }
 

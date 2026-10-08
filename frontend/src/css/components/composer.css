@@ -210,6 +210,46 @@
   color: var(--primary-dark);
 }
 
+.cv-profile-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  border: 0;
+  border-radius: 16px;
+  padding: 0;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 30%);
+}
+
+.cv-profile-dialog::backdrop {
+  background: rgb(15 23 42 / 55%);
+}
+
+.cv-profile-dialog-content {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+.cv-profile-dialog-content h2,
+.cv-profile-dialog-content p {
+  margin: 0;
+}
+
+.cv-profile-dialog-content textarea {
+  width: 100%;
+  min-height: 360px;
+  resize: vertical;
+  border: 1px solid var(--border-color, #d7dce3);
+  border-radius: 10px;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.cv-profile-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* Typing */
 
 .typing-indicator {

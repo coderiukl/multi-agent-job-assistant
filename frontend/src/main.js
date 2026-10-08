@@ -335,7 +335,10 @@ function rememberConversationResults(
   }
 
   historyController.updateConversationThread(state.threadId, {
-    hasCv: Boolean(state.uploadedCvId),
+    hasCv: (
+      Boolean(state.uploadedCvId) &&
+      state.cvUploadStatus === "uploaded"
+    ),
     hasJd: Boolean(state.jobDescription),
     resultTypes: state.conversationResults.map((item) => item.type),
   });
@@ -542,6 +545,16 @@ function bindEvents() {
   elements.removeCvButton.addEventListener(
     "click",
     cvController.remove,
+  );
+
+  elements.reviewCvButton?.addEventListener(
+    "click",
+    cvController.openProfileReview,
+  );
+
+  elements.saveCvProfileButton?.addEventListener(
+    "click",
+    cvController.saveProfileReview,
   );
 
   elements.newChatButton.addEventListener(
@@ -904,6 +917,8 @@ function resetConversation() {
   state.selectedCvFile = null;
   state.uploadedCvId = null;
   state.uploadedCvName = null;
+  state.uploadedCvProfile = null;
+  state.uploadedCvTaskId = null;
   state.cvUploadStatus = "idle";
   state.cvUploadRequestId += 1;
   state.matchingMode = false;
