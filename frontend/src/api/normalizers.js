@@ -4,6 +4,7 @@ export function normalizeConversationResponse(responseBody) {
 
   return {
     threadId: data?.thread_id ?? null,
+    turnId: data?.turn_id ?? null,
     answer:
       data?.assistant_message ??
       "Hệ thống đã tiếp nhận yêu cầu của bạn.",
@@ -40,6 +41,20 @@ export function normalizeConversationResponse(responseBody) {
       message: data.human_review.message,
       data: data.human_review.data ?? {},
     } : null,
+    searchContext: normalizeSearchContext(data?.search_context),
+  };
+}
+
+function normalizeSearchContext(data) {
+  if (!data || typeof data !== "object") {
+    return {};
+  }
+
+  return {
+    role: data.role ?? null,
+    location: data.location ?? null,
+    seniority: data.seniority ?? null,
+    workMode: data.work_mode ?? null,
   };
 }
 

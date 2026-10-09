@@ -30,6 +30,7 @@ export async function listConversationThreads() {
 
 export async function sendConversationMessage({
   threadId,
+  turnId = crypto.randomUUID(),
   message,
   cvId = null,
   cvName = null,
@@ -43,6 +44,7 @@ export async function sendConversationMessage({
 
   const payload = {
     thread_id: threadId,
+    turn_id: turnId,
     message,
   };
 
@@ -75,6 +77,7 @@ export async function sendConversationMessage({
 
 export async function resumeConversation({
   threadId,
+  turnId = crypto.randomUUID(),
   action,
   feedback = null,
 }) {
@@ -85,6 +88,7 @@ export async function resumeConversation({
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         thread_id: threadId,
+        turn_id: turnId,
         decision: {
           action,
           feedback,
