@@ -39,7 +39,14 @@ from app.schemas.job_matching import (
     MatchRecommendation,
 )
 from app.schemas.job_search import JobSearchFilters, JobSearchRequest, JobSearchResult
-from app.schemas.workflow import WorkflowJobMatch, WorkflowStep
+from app.schemas.workflow import (
+    MatchingExecutionSummary,
+    WorkflowExecutionStatus,
+    WorkflowJobMatch,
+    WorkflowJobMatchOutcome,
+    WorkflowJobMatchStatus,
+    WorkflowStep,
+)
 from app.services.career_advice import CareerAdviceService
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
 from app.services.cover_letter import CoverLetterService
@@ -80,6 +87,7 @@ class ConversationNodes:
         cover_letter_service: CoverLetterService,
         job_search_service: HybridJobSearchService,
         job_matching_service: JobMatchingService,
+        workflow_matching_timeout_seconds: float = 180.0,
     ) -> None:
         self._analyzer = analyzer
         self._cv_repository = cv_repository
@@ -88,6 +96,7 @@ class ConversationNodes:
         self._cover_letter_service = cover_letter_service
         self._job_search_service = job_search_service
         self._job_matching_service = job_matching_service
+        self._workflow_matching_timeout_seconds = workflow_matching_timeout_seconds
 
     async def resolve_context(self, state: ConversationState) -> dict[str, Any]:
         cv_id = state.get("cv_id")
@@ -483,31 +492,87 @@ class ConversationNodes:
             return {
                 "workflow": updated_workflow,
                 "workflow_job_matches": [],
+                "workflow_job_match_outcomes": [],
+                "matching_execution": MatchingExecutionSummary(
+                    status=WorkflowExecutionStatus.FAILED,
+                    total=0,
+                    succeeded=0,
+                    failed=0,
+                    skipped=0,
+                ),
             }
 
-        tasks = [
-            self._match_workflow_job(cv_profile=cv_profile, job=hit.job)
+        tasks = {
+            asyncio.create_task(
+                self._match_workflow_job(cv_profile=cv_profile, job=hit.job)
+            ): hit.job
             for hit in candidates
-        ]
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
+        }
+        done, pending = await asyncio.wait(
+            tasks,
+            timeout=self._workflow_matching_timeout_seconds,
+        )
         matches: list[WorkflowJobMatch] = []
+        outcomes: list[WorkflowJobMatchOutcome] = []
 
-        for result in results:
-            if isinstance(result, WorkflowJobMatch):
+        for task in done:
+            job = tasks[task]
+            try:
+                result = task.result()
                 matches.append(result)
-                continue
+                outcomes.append(
+                    WorkflowJobMatchOutcome(
+                        job=job,
+                        status=WorkflowJobMatchStatus.SUCCESS,
+                        match=result.match,
+                    )
+                )
+            except Exception as exc:
+                outcomes.append(
+                    WorkflowJobMatchOutcome(
+                        job=job,
+                        status=WorkflowJobMatchStatus.FAILED,
+                        error_code=getattr(exc, "code", type(exc).__name__)[:100],
+                    )
+                )
+                logger.warning(
+                    "A workflow job could not be matched",
+                    extra={"error_type": type(exc).__name__},
+                )
 
-            logger.info(
-                "A workflow job could not be matched",
-                extra={
-                    "error_type": type(result).__name__,
-                },
+        for task in pending:
+            task.cancel()
+            outcomes.append(
+                WorkflowJobMatchOutcome(
+                    job=tasks[task],
+                    status=WorkflowJobMatchStatus.SKIPPED,
+                    error_code="WORKFLOW_MATCHING_TIMEOUT",
+                )
             )
+
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
         ranked_matches = sorted(
             matches, key=lambda item: item.match.overall_score, reverse=True
+        )
+        succeeded = len(ranked_matches)
+        failed = sum(item.status == WorkflowJobMatchStatus.FAILED for item in outcomes)
+        skipped = sum(
+            item.status == WorkflowJobMatchStatus.SKIPPED for item in outcomes
+        )
+        if succeeded == len(candidates):
+            execution_status = WorkflowExecutionStatus.SUCCESS
+        elif succeeded:
+            execution_status = WorkflowExecutionStatus.PARTIAL_SUCCESS
+        else:
+            execution_status = WorkflowExecutionStatus.FAILED
+        matching_execution = MatchingExecutionSummary(
+            status=execution_status,
+            total=len(candidates),
+            succeeded=succeeded,
+            failed=failed,
+            skipped=skipped,
         )
 
         updated_workflow = advance_workflow(
@@ -520,6 +585,8 @@ class ConversationNodes:
             extra={
                 "candidate_count": len(candidates),
                 "matched_count": len(ranked_matches),
+                "failed_count": failed,
+                "skipped_count": skipped,
                 "best_score": (
                     ranked_matches[0].match.overall_score if ranked_matches else None
                 ),
@@ -529,6 +596,8 @@ class ConversationNodes:
 
         return {
             "workflow_job_matches": ranked_matches,
+            "workflow_job_match_outcomes": outcomes,
+            "matching_execution": matching_execution,
             "workflow": updated_workflow,
         }
 
@@ -586,6 +655,7 @@ class ConversationNodes:
             user_request=self._get_contextual_message(state),
             cv_profile=state.get("cv_profile"),
             matching_results=matching_results,
+            matching_execution=state.get("matching_execution"),
         )
 
         result = await self._career_advice_service.advise(advice_input)
@@ -713,6 +783,12 @@ class ConversationNodes:
         cv_analysis = state.get("cv_analysis_result")
         search_result = state.get("job_search_result")
         matches = state.get("workflow_job_matches", [])
+        matching_execution_value = state.get("matching_execution")
+        matching_execution = (
+            MatchingExecutionSummary.model_validate(matching_execution_value)
+            if matching_execution_value is not None
+            else None
+        )
         career_advice = state.get("career_advice_result")
         cover_letter = state.get("cover_letter_result")
 
@@ -767,9 +843,16 @@ class ConversationNodes:
             },
         )
 
+        response_status = ConversationStatus.COMPLETED
+        if matching_execution is not None:
+            if matching_execution.status == WorkflowExecutionStatus.PARTIAL_SUCCESS:
+                response_status = ConversationStatus.PARTIAL_SUCCESS
+            elif matching_execution.status == WorkflowExecutionStatus.FAILED:
+                response_status = ConversationStatus.FAILED
+
         return {
             "route": route_after_intent(state),
-            "status": ConversationStatus.COMPLETED,
+            "status": response_status,
             "missing_inputs": [],
             "assistant_message": assistant_message,
         }
@@ -966,6 +1049,8 @@ class ConversationNodes:
             "job_search_result": None,
             "job_matching_result": None,
             "workflow_job_matches": [],
+            "workflow_job_match_outcomes": [],
+            "matching_execution": None,
         }
 
     async def record_assistant_message(
@@ -1016,6 +1101,12 @@ class ConversationNodes:
         result["workflow_job_matches"] = to_json_compatible(
             state.get("workflow_job_matches", [])
         )
+        result["workflow_job_match_outcomes"] = to_json_compatible(
+            state.get("workflow_job_match_outcomes", [])
+        )
+        result["matching_execution"] = to_json_compatible(
+            state.get("matching_execution")
+        )
 
         return result
 
@@ -1024,9 +1115,7 @@ class ConversationNodes:
         return state.get("contextual_message") or state["message"]
 
     @classmethod
-    def _build_job_search_request(
-        cls, state: ConversationState
-    ) -> JobSearchRequest:
+    def _build_job_search_request(cls, state: ConversationState) -> JobSearchRequest:
         context = ConversationSearchContext.model_validate(
             state.get("search_context") or {}
         )

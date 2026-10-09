@@ -43,12 +43,18 @@ class CareerAdviceAgent:
             ],
             ensure_ascii=False,
         )
+        matching_execution = (
+            advice_input.matching_execution.model_dump_json()
+            if advice_input.matching_execution is not None
+            else "null"
+        )
 
         prompt_value = CAREER_ADVICE_AGENT_PROMPT.invoke(
             {
                 "user_request": advice_input.user_request,
                 "cv_profile": cv_profile,
                 "matching_results": matching_results,
+                "matching_execution": matching_execution,
             }
         )
 

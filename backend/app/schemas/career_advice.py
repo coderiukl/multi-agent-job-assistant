@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.schemas.cv_profile import CVProfile
 from app.schemas.job import normalize_multiline
 from app.schemas.job_matching import JobMatchingResult
+from app.schemas.workflow import MatchingExecutionSummary
+
 
 class CareerAdviceSchema(BaseModel):
     model_config = ConfigDict(
@@ -29,7 +31,10 @@ class CareerReadinessLevel(StrEnum):
 class CareerAdviceInput(CareerAdviceSchema):
     user_request: str = Field(min_length=1, max_length=2000)
     cv_profile: CVProfile | None = None
-    matching_results: list[JobMatchingResult] = Field(default_factory=list, max_length=3)
+    matching_results: list[JobMatchingResult] = Field(
+        default_factory=list, max_length=3
+    )
+    matching_execution: MatchingExecutionSummary | None = None
 
     @field_validator("user_request")
     @classmethod
@@ -84,10 +89,14 @@ class CareerNextAction(CareerAdviceSchema):
 
 class CareerAdviceAssessment(CareerAdviceSchema):
     career_goal: str = Field(min_length=1, max_length=1000)
-    recommended_roles: list[CareerRoleRecommendation] = Field(default_factory=list, max_length=5)
+    recommended_roles: list[CareerRoleRecommendation] = Field(
+        default_factory=list, max_length=5
+    )
     skill_gaps: list[CareerSkillGap] = Field(default_factory=list, max_length=15)
     roadmap: list[CareerRoadmapStep] = Field(default_factory=list, max_length=10)
-    portfolio_projects: list[PortfolioProjectSuggestion] = Field(default_factory=list, max_length=5)
+    portfolio_projects: list[PortfolioProjectSuggestion] = Field(
+        default_factory=list, max_length=5
+    )
     next_actions: list[CareerNextAction] = Field(default_factory=list, max_length=10)
     summary: str = Field(min_length=1, max_length=3000)
     confidence: float = Field(ge=0.0, le=1.0)
@@ -96,3 +105,6 @@ class CareerAdviceAssessment(CareerAdviceSchema):
 class CareerAdviceResult(CareerAdviceAssessment):
     is_personalized: bool
     top_priority_skills: list[str] = Field(default_factory=list, max_length=5)
+    model_confidence: float = Field(ge=0.0, le=1.0)
+    matching_reliability: float | None = Field(default=None, ge=0.0, le=1.0)
+    data_quality_warnings: list[str] = Field(default_factory=list, max_length=10)

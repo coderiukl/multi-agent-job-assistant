@@ -17,7 +17,12 @@ from app.schemas.cv_profile import CVProfile
 from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.job_search import JobSearchResult
-from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
+from app.schemas.workflow import (
+    MatchingExecutionSummary,
+    WorkflowJobMatch,
+    WorkflowJobMatchOutcome,
+    WorkflowPlan,
+)
 
 
 class ConversationState(TypedDict, total=False):
@@ -56,6 +61,8 @@ class ConversationState(TypedDict, total=False):
     job_search_result: JobSearchResult | None
     job_matching_result: JobMatchingResult | None
     workflow_job_matches: list[WorkflowJobMatch]
+    workflow_job_match_outcomes: list[WorkflowJobMatchOutcome]
+    matching_execution: MatchingExecutionSummary | None
     cover_letter_result: CoverLetterResult | None
 
     # Nội dung trả về người dùng

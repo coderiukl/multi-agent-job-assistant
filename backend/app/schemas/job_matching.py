@@ -1,7 +1,7 @@
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.cv_profile import CVProfile
 from app.schemas.job import (
@@ -12,11 +12,10 @@ from app.schemas.job import (
     normalize_single_line,
 )
 
+
 class JobMatchingSchema(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        str_strip_whitespace=True
-    )
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
 
 class MatchDimension(StrEnum):
     TECHNICAL_SKILLS = "technical_skills"
@@ -25,11 +24,13 @@ class MatchDimension(StrEnum):
     PROJECTS = "projects"
     LANGUAGES_AND_CERTIFICATIONS = "language_and_certifications"
 
+
 class MatchStatus(StrEnum):
     MATCHED = "matched"
     PARTIAL = "partial"
     MISSING = "missing"
     NOT_APPLICABLE = "not_applicable"
+
 
 class MatchRecommendation(StrEnum):
     STRONG_MATCH = "strong_match"
@@ -37,8 +38,24 @@ class MatchRecommendation(StrEnum):
     PARTIAL_MATCH = "partial_match"
     LOW_MATCH = "low_match"
 
+
+class JobRequirement(JobMatchingSchema):
+    requirement_id: str = Field(pattern=r"^req_[0-9a-f]{16}$")
+    dimension: MatchDimension
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class CVEvidenceItem(JobMatchingSchema):
+    cv_evidence_id: str = Field(pattern=r"^cv_[0-9a-f]{16}$")
+    dimension: MatchDimension
+    field_path: str = Field(min_length=1, max_length=500)
+    text: str = Field(min_length=1, max_length=1000)
+
+
 class JobMatchTarget(JobMatchingSchema):
-    job_id: str | None = Field(default=None, min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    job_id: str | None = Field(
+        default=None, min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$"
+    )
     title: str | None = Field(default=None, max_length=500)
     company: str | None = Field(default=None, max_length=500)
     description: str = Field(min_length=1)
@@ -56,7 +73,7 @@ class JobMatchTarget(JobMatchingSchema):
         normalized = normalize_single_line(value)
         return normalized or None
 
-    @field_validator("description") 
+    @field_validator("description")
     @classmethod
     def normalize_description(cls, value: str) -> str:
         normalized = normalize_multiline(value)
@@ -97,9 +114,15 @@ class JobMatchTarget(JobMatchingSchema):
             work_mode=job.work_mode,
         )
 
+
 class JobMatchingInput(JobMatchingSchema):
     cv_profile: CVProfile
     job: JobMatchTarget
+    requirements: list[JobRequirement] = Field(default_factory=list, max_length=100)
+    cv_evidence_catalog: list[CVEvidenceItem] = Field(
+        default_factory=list, max_length=500
+    )
+
 
 class JobMatchingBreakDown(JobMatchingSchema):
     technical_skills: float = Field(ge=0.0, le=100.0)
@@ -108,9 +131,12 @@ class JobMatchingBreakDown(JobMatchingSchema):
     projects: float = Field(ge=0.0, le=100.0)
     language_and_certifications: float = Field(ge=0.0, le=100.0)
 
+
 class MatchEvidence(JobMatchingSchema):
     dimension: MatchDimension
+    requirement_id: str | None = Field(default=None, pattern=r"^req_[0-9a-f]{16}$")
     requirement: str = Field(min_length=1, max_length=1000)
+    cv_evidence_ids: list[str] = Field(default_factory=list, max_length=10)
     cv_evidence: list[str] = Field(default_factory=list, max_length=10)
     status: MatchStatus
     explanation: str = Field(min_length=1, max_length=2000)
@@ -142,6 +168,37 @@ class MatchEvidence(JobMatchingSchema):
             normalized_values.append(normalized)
 
         return normalized_values
+
+    @field_validator("cv_evidence_ids")
+    @classmethod
+    def normalize_evidence_ids(cls, values: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(values))
+        if any(not value.startswith("cv_") for value in normalized):
+            raise ValueError("cv_evidence_ids must contain CV evidence IDs.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_status_evidence_consistency(self) -> "MatchEvidence":
+        if self.status == MatchStatus.NOT_APPLICABLE:
+            if self.requirement_id is not None or self.cv_evidence_ids:
+                raise ValueError(
+                    "not_applicable evidence cannot reference a requirement or CV."
+                )
+            return self
+
+        if self.requirement_id is None:
+            raise ValueError("Applicable evidence requires requirement_id.")
+
+        if self.status in {MatchStatus.MATCHED, MatchStatus.PARTIAL}:
+            if not self.cv_evidence_ids:
+                raise ValueError(
+                    "matched and partial evidence require cv_evidence_ids."
+                )
+        elif self.cv_evidence_ids:
+            raise ValueError("missing evidence cannot reference CV evidence.")
+
+        return self
+
 
 class JobMatchingAssessment(JobMatchingSchema):
     breakdown: JobMatchingBreakDown
@@ -179,8 +236,45 @@ class JobMatchingAssessment(JobMatchingSchema):
 
         return normalized
 
+    @model_validator(mode="after")
+    def validate_scores_have_support(self) -> "JobMatchingAssessment":
+        score_by_dimension = {
+            MatchDimension.TECHNICAL_SKILLS: self.breakdown.technical_skills,
+            MatchDimension.EXPERIENCE: self.breakdown.experience,
+            MatchDimension.EDUCATION: self.breakdown.education,
+            MatchDimension.PROJECTS: self.breakdown.projects,
+            MatchDimension.LANGUAGES_AND_CERTIFICATIONS: (
+                self.breakdown.language_and_certifications
+            ),
+        }
+
+        for dimension, score in score_by_dimension.items():
+            dimension_evidence = [
+                item
+                for item in self.evidence
+                if item.dimension == dimension
+                and item.status != MatchStatus.NOT_APPLICABLE
+            ]
+            has_positive_support = any(
+                item.status in {MatchStatus.MATCHED, MatchStatus.PARTIAL}
+                for item in dimension_evidence
+            )
+            if score > 0 and not has_positive_support:
+                raise ValueError(
+                    f"{dimension.value} score requires matched or partial evidence."
+                )
+
+        return self
+
+
 class JobMatchingResult(JobMatchingAssessment):
-    job_id: str | None = Field(default=None, min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    job_id: str | None = Field(
+        default=None, min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$"
+    )
     overall_score: float = Field(ge=0.0, le=100.0)
     recommendation: MatchRecommendation
-    
+    model_confidence: float = Field(ge=0.0, le=1.0)
+    cache_hit: bool = False
+    score_interpretation: Literal["rubric_fit_not_hiring_probability"] = (
+        "rubric_fit_not_hiring_probability"
+    )

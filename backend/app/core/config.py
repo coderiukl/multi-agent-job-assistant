@@ -53,6 +53,10 @@ class Settings(BaseSettings):
         "json_schema",
         "function_calling",
     ] = "function_calling"
+    job_matching_max_concurrency: int = Field(default=4, ge=1, le=32)
+    job_matching_request_timeout_seconds: float = Field(default=75.0, gt=0, le=600)
+    job_matching_workflow_timeout_seconds: float = Field(default=180.0, gt=0, le=900)
+    job_matching_cache_size: int = Field(default=256, ge=0, le=10_000)
 
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_base_url: str | None = Field(default=None, repr=False)

@@ -22,6 +22,8 @@ General rules:
    - Every MATCHED or PARTIAL assessment must contain supporting cv_evidence.
    - If the CV does not contain supporting evidence, use MISSING.
    - Preserve technical terms, job titles, company names, and organization names.
+   - Reference only requirement_id and cv_evidence_id values supplied in the
+     normalized catalogs. Never create an ID.
 
 2. Requirement interpretation:
    - Evaluate requirements explicitly stated in the job description.
@@ -66,6 +68,8 @@ General rules:
    - Use 0 when a dimension is completely missing.
    - If a dimension has no applicable job requirement, use 0 and mark its evidence as not_applicable.
    - The application will exclude non-applicable dimensions when calculating the overall score.
+   - Every normalized requirement must have exactly one evidence entry.
+   - Use the canonical requirement text supplied for its requirement_id.
 
 10. Strengths:
     - Include only important matched or strongly supported partial requirements.
@@ -122,6 +126,18 @@ Structured job information:
 <JOB_CONTEXT>
 {job_context}
 </JOB_CONTEXT>
+
+Normalized job requirements:
+
+<JOB_REQUIREMENTS>
+{requirements}
+</JOB_REQUIREMENTS>
+
+Normalized CV evidence catalog:
+
+<CV_EVIDENCE_CATALOG>
+{cv_evidence_catalog}
+</CV_EVIDENCE_CATALOG>
 
 Return a structured JobMatchingAssessment based only on the supplied
 candidate CV and job information.

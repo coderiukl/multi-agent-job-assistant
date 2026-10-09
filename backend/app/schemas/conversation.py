@@ -13,7 +13,12 @@ from app.schemas.cv_analysis import CVAnalysisResult
 from app.schemas.human_review import HumanReviewRequest
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.job_search import JobSearchResult
-from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
+from app.schemas.workflow import (
+    MatchingExecutionSummary,
+    WorkflowJobMatch,
+    WorkflowJobMatchOutcome,
+    WorkflowPlan,
+)
 
 
 class ConversationRoute(StrEnum):
@@ -34,6 +39,8 @@ class ConversationStatus(StrEnum):
     NEEDS_CLARIFICATION = "needs_clarification"
     ROUTED = "routed"
     WAITING_FOR_HUMAN = "waiting_for_human"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
 
 
 class RequiredInput(StrEnum):
@@ -93,6 +100,10 @@ class ConversationResponseData(BaseModel):
 
     workflow: WorkflowPlan | None = None
     workflow_job_matches: list[WorkflowJobMatch] = Field(default_factory=list)
+    workflow_job_match_outcomes: list[WorkflowJobMatchOutcome] = Field(
+        default_factory=list
+    )
+    matching_execution: MatchingExecutionSummary | None = None
 
     human_review: HumanReviewRequest | None = None
     search_context: ConversationSearchContext = Field(

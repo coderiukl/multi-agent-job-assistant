@@ -69,9 +69,11 @@ class ConversationService:
                 job_search_result=state.get("job_search_result"),
                 job_matching_result=state.get("job_matching_result"),
                 workflow_job_matches=state.get("workflow_job_matches", []),
-                search_context=state.get(
-                    "search_context", ConversationSearchContext()
+                workflow_job_match_outcomes=state.get(
+                    "workflow_job_match_outcomes", []
                 ),
+                matching_execution=state.get("matching_execution"),
+                search_context=state.get("search_context", ConversationSearchContext()),
             )
 
         return self._build_response(
@@ -368,6 +370,12 @@ class ConversationService:
         result["workflow_job_matches"] = to_json_compatible(
             state.get("workflow_job_matches", [])
         )
+        result["workflow_job_match_outcomes"] = to_json_compatible(
+            state.get("workflow_job_match_outcomes", [])
+        )
+        result["matching_execution"] = to_json_compatible(
+            state.get("matching_execution")
+        )
 
         return result
 
@@ -397,6 +405,10 @@ class ConversationService:
                 job_search_result=state.get("job_search_result"),
                 job_matching_result=state.get("job_matching_result"),
                 workflow_job_matches=state.get("workflow_job_matches", []),
+                workflow_job_match_outcomes=state.get(
+                    "workflow_job_match_outcomes", []
+                ),
+                matching_execution=state.get("matching_execution"),
                 search_context=state.get("search_context", ConversationSearchContext()),
             )
 
@@ -417,6 +429,8 @@ class ConversationService:
             job_search_result=state.get("job_search_result"),
             job_matching_result=state.get("job_matching_result"),
             workflow_job_matches=state.get("workflow_job_matches", []),
+            workflow_job_match_outcomes=state.get("workflow_job_match_outcomes", []),
+            matching_execution=state.get("matching_execution"),
             search_context=state.get("search_context", ConversationSearchContext()),
         )
 

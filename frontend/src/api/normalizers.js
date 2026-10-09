@@ -21,6 +21,12 @@ export function normalizeConversationResponse(responseBody) {
     workflowJobMatches: Array.isArray(data?.workflow_job_matches)
       ? data.workflow_job_matches.map(normalizeWorkflowJobMatch)
       : [],
+    workflowJobMatchOutcomes: Array.isArray(
+      data?.workflow_job_match_outcomes,
+    )
+      ? data.workflow_job_match_outcomes.map(normalizeWorkflowJobMatchOutcome)
+      : [],
+    matchingExecution: normalizeMatchingExecution(data?.matching_execution),
     cvAnalysisResult: data?.cv_analysis_result
       ? normalizeCvAnalysisResult(data.cv_analysis_result)
       : null,
@@ -80,6 +86,27 @@ function normalizeWorkflowJobMatch(data) {
   };
 }
 
+function normalizeWorkflowJobMatchOutcome(data) {
+  return {
+    job: data?.job ?? {},
+    status: data?.status ?? "failed",
+    match: data?.match ? normalizeJobMatchingResult(data.match) : null,
+    errorCode: data?.error_code ?? null,
+  };
+}
+
+function normalizeMatchingExecution(data) {
+  if (!data || typeof data !== "object") return null;
+
+  return {
+    status: data.status ?? "failed",
+    total: toNumber(data.total),
+    succeeded: toNumber(data.succeeded),
+    failed: toNumber(data.failed),
+    skipped: toNumber(data.skipped),
+  };
+}
+
 function normalizeCoverLetterResult(data) {
   return {
     language: data?.language ?? "vi",
@@ -124,6 +151,9 @@ function normalizeCareerAdviceResult(data) {
       : [],
     summary: data?.summary ?? "",
     confidence: toNullableNumber(data?.confidence),
+    modelConfidence: toNullableNumber(data?.model_confidence),
+    matchingReliability: toNullableNumber(data?.matching_reliability),
+    dataQualityWarnings: normalizeStringList(data?.data_quality_warnings),
   };
 }
 
@@ -252,6 +282,10 @@ function normalizeJobMatchingResult(data) {
       : [],
     summary: data?.summary ?? "",
     confidence: toNullableNumber(data?.confidence),
+    modelConfidence: toNullableNumber(data?.model_confidence),
+    cacheHit: Boolean(data?.cache_hit),
+    scoreInterpretation:
+      data?.score_interpretation ?? "rubric_fit_not_hiring_probability",
   };
 }
 
@@ -259,6 +293,8 @@ function normalizeMatchEvidence(evidence) {
   return {
     dimension: evidence?.dimension ?? "technical_skills",
     requirement: evidence?.requirement ?? "",
+    requirementId: evidence?.requirement_id ?? null,
+    cvEvidenceIds: normalizeStringList(evidence?.cv_evidence_ids),
     cvEvidence: normalizeStringList(evidence?.cv_evidence),
     status: evidence?.status ?? "missing",
     explanation: evidence?.explanation ?? "",
