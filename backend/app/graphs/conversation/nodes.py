@@ -1,11 +1,13 @@
 import asyncio
+import hashlib
+import json
 import logging
 from typing import Any
 
 from langchain_core.messages import AIMessage
 from langgraph.types import interrupt
 
-from app.core.exceptions import ResourceNotFoundException
+from app.core.exceptions import AppException, ResourceNotFoundException
 from app.graphs.conversation.planning import (
     collect_missing_initial_inputs,
     plan_workflow,
@@ -31,7 +33,11 @@ from app.schemas.conversation_search_context import (
 from app.schemas.conversations_intent import IntentAnalysisInput
 from app.schemas.cover_letter import CoverLetterInput, CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisInput, CVAnalysisResult, CVQualityLevel
-from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
+from app.schemas.human_review import (
+    HumanReviewAction,
+    HumanReviewDecision,
+    HumanReviewRequest,
+)
 from app.schemas.job_matching import (
     JobMatchingInput,
     JobMatchingResult,
@@ -276,10 +282,16 @@ class ConversationNodes:
                 ),
             }
 
+        selected_job = state.get("cover_letter_job")
+        job = (
+            JobMatchTarget.model_validate(selected_job)
+            if selected_job is not None
+            else JobMatchTarget(description=job_description)
+        )
         letter_input = CoverLetterInput(
-            user_request=self._get_contextual_message(state),
+            user_request=self._cover_letter_request(state),
             cv_profile=cv_profile,
-            job=JobMatchTarget(description=job_description),
+            job=job,
         )
 
         result = await self._cover_letter_service.generate(letter_input)
@@ -734,7 +746,10 @@ class ConversationNodes:
         if cv_profile is None:
             raise ValueError("CV profile is required for workflow cover letter.")
 
-        if workflow_matches:
+        selected_job = state.get("cover_letter_job")
+        if selected_job is not None:
+            job = JobMatchTarget.model_validate(selected_job)
+        elif workflow_matches:
             job = JobMatchTarget.from_normalized_job(workflow_matches[0].job)
 
         elif search_result is not None and search_result.items:
@@ -751,7 +766,7 @@ class ConversationNodes:
             )
 
         letter_input = CoverLetterInput(
-            user_request=self._get_contextual_message(state),
+            user_request=self._cover_letter_request(state),
             cv_profile=cv_profile,
             job=job,
         )
@@ -860,26 +875,131 @@ class ConversationNodes:
     async def review_before_cover_letter(
         self, state: ConversationState
     ) -> dict[str, object]:
+        candidates = self._cover_letter_candidates(state)
+        if not candidates:
+            raise ValueError("A cover-letter target is required for review.")
+        review_id = self._review_id("cover_letter_input", state, candidates)
+        cv_profile = state.get("cv_profile")
+        cv_version = self._content_version(
+            cv_profile.model_dump(mode="json") if cv_profile is not None else None
+        )
         review_request = HumanReviewRequest(
+            review_id=review_id,
             review_type="cover_letter_confirmation",
             message=(
-                "Tôi đã hoàn thành quá trình phân tích công việc. "
-                "Bạn có muốn tiếp tục tạo Cover Letter không?"
+                "Hãy xác nhận CV, chọn công việc mục tiêu và chỉnh thông tin "
+                "nếu cần trước khi tôi tạo bản nháp Cover Letter."
             ),
-            data=self._build_review_data(state),
+            data={
+                "cv_id": state.get("cv_id"),
+                "cv_name": state.get("cv_name"),
+                "cv_version": cv_version,
+                "jobs": candidates,
+                "selected_job_id": candidates[0]["job_id"],
+                "input_message": self._get_contextual_message(state),
+            },
         )
         decision_payload = interrupt(review_request.model_dump(mode="json"))
         decision = HumanReviewDecision.model_validate(decision_payload)
 
+        self._require_review_id(review_id, decision.review_id)
+        if decision.action == HumanReviewAction.REJECT:
+            return {
+                "human_review_request": review_request,
+                "human_review_decision": decision,
+            }
+
+        selected_id = decision.selected_job_id or candidates[0]["job_id"]
+        candidate = next(
+            (item for item in candidates if item["job_id"] == selected_id),
+            None,
+        )
+        if candidate is None:
+            raise AppException(
+                status_code=409,
+                code="INVALID_REVIEW_SELECTION",
+                message="The selected job is not part of this review.",
+            )
+        overrides = decision.input_overrides
+        selected_job = JobMatchTarget(
+            job_id=(selected_id if len(selected_id) == 64 else None),
+            title=overrides.get("job_title") or candidate.get("title"),
+            company=overrides.get("company") or candidate.get("company"),
+            description=(
+                overrides.get("job_description") or candidate["description"]
+            ),
+            skills=candidate.get("skills", []),
+        )
+
         return {
             "human_review_request": review_request,
             "human_review_decision": decision,
+            "cover_letter_job": selected_job,
+            "cover_letter_instructions": overrides.get("instructions"),
+        }
+
+    async def review_cover_letter_draft(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
+        raw_result = state.get("cover_letter_result")
+        if raw_result is None:
+            raise ValueError("Cover letter draft is required for review.")
+        result = CoverLetterResult.model_validate(raw_result)
+        review_id = self._review_id(
+            "cover_letter_draft",
+            state,
+            result.model_dump(mode="json"),
+        )
+        review_request = HumanReviewRequest(
+            review_id=review_id,
+            review_type="cover_letter_draft",
+            message="Vui lòng xem lại bản nháp Cover Letter trước khi xác nhận.",
+            data={
+                "draft": result.full_text,
+                "word_count": result.word_count,
+                "job": state.get("cover_letter_job"),
+                "cv_id": state.get("cv_id"),
+            },
+        )
+        payload = interrupt(review_request.model_dump(mode="json"))
+        decision = HumanReviewDecision.model_validate(payload)
+        self._require_review_id(review_id, decision.review_id)
+
+        if decision.action == HumanReviewAction.APPROVE and decision.edited_draft:
+            edited = decision.edited_draft.strip()
+            result = result.model_copy(
+                update={
+                    "full_text": edited,
+                    "word_count": len(edited.split()),
+                }
+            )
+
+        return {
+            "cover_letter_result": result,
+            "cover_letter_draft_review": review_request,
+            "cover_letter_draft_decision": decision,
+        }
+
+    async def respond_cover_letter_approved(
+        self, state: ConversationState
+    ) -> dict[str, Any]:
+        raw_result = state.get("cover_letter_result")
+        if raw_result is None:
+            raise ValueError("Approved cover letter is required.")
+        result = CoverLetterResult.model_validate(raw_result)
+        return {
+            "route": ConversationRoute.COVER_LETTER,
+            "status": ConversationStatus.COMPLETED,
+            "assistant_message": self._build_cover_letter_message(result),
         }
 
     async def respond_human_review_rejected(
         self, state: ConversationState
     ) -> dict[str, object]:
-        decision = state.get("human_review_decision")
+        decision = (
+            state.get("cover_letter_draft_decision")
+            or state.get("human_review_decision")
+        )
 
         feedback = decision.feedback if decision else None
 
@@ -894,19 +1014,79 @@ class ConversationNodes:
         }
 
     @staticmethod
-    def _build_review_data(state: ConversationState) -> dict[str, object]:
+    def _require_review_id(expected: str, received: str) -> None:
+        if expected != received:
+            raise AppException(
+                status_code=409,
+                code="STALE_HUMAN_REVIEW",
+                message="This review is no longer current.",
+            )
+
+    def _cover_letter_candidates(
+        self, state: ConversationState
+    ) -> list[dict[str, Any]]:
         matches = state.get("workflow_job_matches", [])
+        if matches:
+            return [
+                {
+                    **item.job.model_dump(mode="json"),
+                    "match_score": item.match.overall_score,
+                    "jd_version": self._content_version(
+                        item.job.model_dump(mode="json")
+                    ),
+                }
+                for item in matches[:5]
+            ]
+        search_result = state.get("job_search_result")
+        if search_result is not None and search_result.items:
+            return [
+                {
+                    **hit.job.model_dump(mode="json"),
+                    "match_score": None,
+                    "jd_version": self._content_version(
+                        hit.job.model_dump(mode="json")
+                    ),
+                }
+                for hit in search_result.items[:5]
+            ]
+        description = state.get("job_description")
+        if description:
+            return [
+                {
+                    "job_id": "direct_jd",
+                    "title": None,
+                    "company": None,
+                    "description": description,
+                    "skills": [],
+                    "match_score": None,
+                    "jd_version": self._content_version(description),
+                }
+            ]
+        return []
 
-        if not matches:
-            return {}
+    @staticmethod
+    def _content_version(value: Any) -> str:
+        encoded = json.dumps(
+            value, ensure_ascii=False, sort_keys=True, default=str
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()[:16]
 
-        selected_match = matches[0]
+    def _review_id(self, stage: str, state: ConversationState, value: Any) -> str:
+        digest = self._content_version(
+            {
+                "stage": stage,
+                "cv_id": state.get("cv_id"),
+                "value": value,
+            }
+        )
+        return f"review_{digest}"
 
-        return {
-            "job_title": selected_match.job.title,
-            "company": selected_match.job.company,
-            "match_score": selected_match.match.overall_score,
-        }
+    def _cover_letter_request(self, state: ConversationState) -> str:
+        request = self._get_contextual_message(state)
+        instructions = state.get("cover_letter_instructions")
+        if instructions:
+            return f"{request}\n\nUser-approved instructions: {instructions}"
+        return request
 
     @staticmethod
     def _build_clarification_message(
@@ -1043,6 +1223,10 @@ class ConversationNodes:
             "has_jd": False,
             "human_review_request": None,
             "human_review_decision": None,
+            "cover_letter_job": None,
+            "cover_letter_instructions": None,
+            "cover_letter_draft_review": None,
+            "cover_letter_draft_decision": None,
             "cv_analysis_result": None,
             "career_advice_result": None,
             "cover_letter_result": None,

@@ -1,6 +1,9 @@
 from app.schemas.workflow import WorkflowPlan, WorkflowStep
 
-def advance_workflow(workflow: WorkflowPlan, completed_step: WorkflowStep) -> WorkflowPlan:
+
+def advance_workflow(
+    workflow: WorkflowPlan, completed_step: WorkflowStep
+) -> WorkflowPlan:
     completed_steps = list(workflow.completed_steps)
 
     if completed_step not in completed_steps:
@@ -18,7 +21,7 @@ def advance_workflow(workflow: WorkflowPlan, completed_step: WorkflowStep) -> Wo
     next_index = current_index + 1
 
     if next_index >= len(workflow.steps):
-        next_step =  WorkflowStep.COMPLETED
+        next_step = WorkflowStep.COMPLETED
     else:
         next_step = workflow.steps[next_index]
 
@@ -28,4 +31,3 @@ def advance_workflow(workflow: WorkflowPlan, completed_step: WorkflowStep) -> Wo
             "completed_steps": completed_steps,
         }
     )
-    

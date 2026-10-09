@@ -43,6 +43,7 @@ export function normalizeConversationResponse(responseBody) {
       ? normalizeJobMatchingResult(data.job_matching_result)
       : null,
     humanReview: data?.human_review ? {
+      reviewId: data.human_review.review_id ?? null,
       reviewType: data.human_review.review_type,
       message: data.human_review.message,
       data: data.human_review.data ?? {},

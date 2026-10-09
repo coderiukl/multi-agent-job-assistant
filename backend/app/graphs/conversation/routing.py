@@ -35,6 +35,12 @@ class HumanReviewRoute(StrEnum):
     SINGLE_COVER_LETTER = "single_cover_letter"
     REJECTED = "rejected"
 
+
+class DraftReviewRoute(StrEnum):
+    WORKFLOW_APPROVED = "workflow_approved"
+    SINGLE_APPROVED = "single_approved"
+    REJECTED = "rejected"
+
 def route_after_analysis(state: ConversationState) -> IntentGateRoute:
     intent = state["intent"]
 
@@ -108,3 +114,14 @@ def route_after_human_review(state: ConversationState) -> HumanReviewRoute:
         return HumanReviewRoute.SINGLE_COVER_LETTER
 
     return HumanReviewRoute.WORKFLOW_COVER_LETTER
+
+
+def route_after_draft_review(state: ConversationState) -> DraftReviewRoute:
+    decision = state.get("cover_letter_draft_decision")
+    if decision is None or decision.action != HumanReviewAction.APPROVE:
+        return DraftReviewRoute.REJECTED
+
+    workflow = state.get("workflow")
+    if workflow is None or workflow.workflow_type == WorkflowType.SINGLE_AGENT:
+        return DraftReviewRoute.SINGLE_APPROVED
+    return DraftReviewRoute.WORKFLOW_APPROVED

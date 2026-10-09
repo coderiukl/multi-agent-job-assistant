@@ -256,8 +256,50 @@
 
 .human-review-actions {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.human-review-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.human-review-meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.human-review-field input,
+.human-review-field select,
+.human-review-field textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}
+
+.human-review-field textarea {
+  resize: vertical;
+}
+
+.human-review-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .human-review-actions button {

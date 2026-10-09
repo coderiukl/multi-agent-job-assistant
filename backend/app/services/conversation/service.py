@@ -320,7 +320,7 @@ class ConversationService:
         """Return a review only while the checkpoint is truly interrupted."""
 
         for task in snapshot.tasks:
-            if task.name != "human_review":
+            if task.name not in {"human_review", "cover_letter_draft_review"}:
                 continue
 
             for task_interrupt in task.interrupts:
@@ -385,9 +385,17 @@ class ConversationService:
         thread_id: UUID,
         state: ConversationState,
     ) -> ConversationResponseData:
-        human_review = state.get("human_review_request")
+        interrupts = state.get("__interrupt__", [])
+        human_review = None
+        if interrupts:
+            human_review = HumanReviewRequest.model_validate(interrupts[0].value)
+        elif (
+            state.get("human_review_request") is not None
+            and state.get("human_review_decision") is None
+        ):
+            human_review = state.get("human_review_request")
 
-        if human_review is not None and state.get("human_review_decision") is None:
+        if human_review is not None:
             return ConversationResponseData(
                 thread_id=thread_id,
                 turn_id=self._state_turn_id(state),
