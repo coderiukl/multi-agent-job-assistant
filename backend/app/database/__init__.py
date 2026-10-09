@@ -1,5 +1,6 @@
 from app.database.auth_models import (
     ConversationOwnershipModel,
+    ConversationTurnModel,
     CVOwnershipModel,
     CVProcessingTaskModel,
     UserModel,
@@ -19,6 +20,7 @@ __all__ = [
     "CVOwnershipModel",
     "CVProcessingTaskModel",
     "ConversationOwnershipModel",
+    "ConversationTurnModel",
     "JobSessionFactory",
     "create_job_database_engine",
     "create_job_session_factory",

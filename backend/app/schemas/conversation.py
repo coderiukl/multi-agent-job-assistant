@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schemas.career_advice import CareerAdviceResult
+from app.schemas.conversation_search_context import ConversationSearchContext
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cover_letter import CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisResult
@@ -55,6 +56,9 @@ class ConversationHistoryData(BaseModel):
     job_description: str | None = None
     latest_result: dict[str, Any] | None = None
     pending_human_review: HumanReviewRequest | None = None
+    search_context: ConversationSearchContext = Field(
+        default_factory=ConversationSearchContext
+    )
 
 
 class ConversationThreadSummaryData(BaseModel):
@@ -71,6 +75,7 @@ class ConversationThreadSummaryData(BaseModel):
 
 class ConversationResponseData(BaseModel):
     thread_id: UUID
+    turn_id: UUID | None = None
     assistant_message: str = Field(min_length=1)
     status: ConversationStatus
     route: ConversationRoute
@@ -90,3 +95,6 @@ class ConversationResponseData(BaseModel):
     workflow_job_matches: list[WorkflowJobMatch] = Field(default_factory=list)
 
     human_review: HumanReviewRequest | None = None
+    search_context: ConversationSearchContext = Field(
+        default_factory=ConversationSearchContext
+    )

@@ -17,6 +17,7 @@ from app.schemas.conversation import (
     ConversationStatus,
     ConversationThreadSummaryData,
 )
+from app.schemas.conversation_search_context import ConversationSearchContext
 from app.schemas.conversations_intent import ConversationRequest, IntentAnalysisResult
 from app.schemas.human_review import HumanReviewRequest, ResumeConversationRequest
 from app.utils.serialization import to_json_compatible
@@ -53,6 +54,7 @@ class ConversationService:
 
             return ConversationResponseData(
                 thread_id=request.thread_id,
+                turn_id=request.turn_id,
                 assistant_message=human_review.message,
                 status=ConversationStatus.WAITING_FOR_HUMAN,
                 route=state["route"],
@@ -67,6 +69,9 @@ class ConversationService:
                 job_search_result=state.get("job_search_result"),
                 job_matching_result=state.get("job_matching_result"),
                 workflow_job_matches=state.get("workflow_job_matches", []),
+                search_context=state.get(
+                    "search_context", ConversationSearchContext()
+                ),
             )
 
         return self._build_response(
@@ -119,6 +124,9 @@ class ConversationService:
             job_description=snapshot.values.get("job_description"),
             latest_result=self._build_history_result(snapshot.values),
             pending_human_review=pending_review,
+            search_context=ConversationSearchContext.model_validate(
+                snapshot.values.get("search_context") or {}
+            ),
         )
 
     async def get_thread_summary(
@@ -220,6 +228,7 @@ class ConversationService:
 
         initial_state: ConversationState = {
             "message": request.message,
+            "turn_id": str(request.turn_id),
             "messages": [
                 HumanMessage(
                     content=request.message,
@@ -280,7 +289,10 @@ class ConversationService:
             )
 
         result = await self._graph.ainvoke(
-            Command(resume=request.decision.model_dump(mode="json")),
+            Command(
+                resume=request.decision.model_dump(mode="json"),
+                update={"turn_id": str(request.turn_id)},
+            ),
             config=config,
         )
 
@@ -333,10 +345,12 @@ class ConversationService:
 
         result: dict[str, Any] = {
             "assistant_message": assistant_message,
+            "turn_id": state.get("turn_id"),
             "route": to_json_compatible(state.get("route")),
             "status": to_json_compatible(state.get("status")),
             "cv_id": state.get("cv_id"),
             "missing_inputs": to_json_compatible(state.get("missing_inputs", [])),
+            "search_context": to_json_compatible(state.get("search_context", {})),
         }
 
         for field_name in (
@@ -368,6 +382,7 @@ class ConversationService:
         if human_review is not None and state.get("human_review_decision") is None:
             return ConversationResponseData(
                 thread_id=thread_id,
+                turn_id=self._state_turn_id(state),
                 assistant_message=human_review.message,
                 status=ConversationStatus.WAITING_FOR_HUMAN,
                 route=state.get("route") or route_after_intent(state),
@@ -382,10 +397,12 @@ class ConversationService:
                 job_search_result=state.get("job_search_result"),
                 job_matching_result=state.get("job_matching_result"),
                 workflow_job_matches=state.get("workflow_job_matches", []),
+                search_context=state.get("search_context", ConversationSearchContext()),
             )
 
         return ConversationResponseData(
             thread_id=thread_id,
+            turn_id=self._state_turn_id(state),
             assistant_message=state["assistant_message"],
             status=state["status"],
             route=state["route"],
@@ -400,4 +417,10 @@ class ConversationService:
             job_search_result=state.get("job_search_result"),
             job_matching_result=state.get("job_matching_result"),
             workflow_job_matches=state.get("workflow_job_matches", []),
+            search_context=state.get("search_context", ConversationSearchContext()),
         )
+
+    @staticmethod
+    def _state_turn_id(state: ConversationState) -> UUID | None:
+        value = state.get("turn_id")
+        return UUID(value) if value else None

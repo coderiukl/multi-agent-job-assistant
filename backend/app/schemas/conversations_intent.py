@@ -3,6 +3,11 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.conversation_search_context import (
+    ConversationSearchContext,
+    SearchContextPatch,
+)
+
 
 class ConversationIntent(StrEnum):
     CV_ANALYSIS = "cv_analysis"
@@ -18,6 +23,7 @@ class ConversationIntent(StrEnum):
 
 class ConversationRequest(BaseModel):
     thread_id: UUID = Field(default_factory=uuid4)
+    turn_id: UUID = Field(default_factory=uuid4)
     message: str = Field(min_length=1, max_length=2000)
     cv_id: str | None = Field(default=None, max_length=100)
     cv_name: str | None = Field(default=None, max_length=255)
@@ -56,6 +62,9 @@ class IntentAnalysisInput(BaseModel):
     has_jd: bool = Field(
         default=False, description="Whether the request contains a job description."
     )
+    search_context: ConversationSearchContext = Field(
+        default_factory=ConversationSearchContext
+    )
 
 
 class IntentAnalysisResult(BaseModel):
@@ -64,6 +73,9 @@ class IntentAnalysisResult(BaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     requires_cv: bool = False
     requires_jd: bool = False
+    search_context_patch: SearchContextPatch = Field(
+        default_factory=SearchContextPatch
+    )
 
     needs_clarification: bool = False
     clarification_question: str | None = None

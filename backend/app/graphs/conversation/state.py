@@ -9,14 +9,15 @@ from app.schemas.conversation import (
     ConversationStatus,
     RequiredInput,
 )
+from app.schemas.conversation_search_context import ConversationSearchContext
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cover_letter import CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisResult
 from app.schemas.cv_profile import CVProfile
+from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.job_search import JobSearchResult
 from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
-from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
 
 
 class ConversationState(TypedDict, total=False):
@@ -24,6 +25,7 @@ class ConversationState(TypedDict, total=False):
 
     # Dữ liệu từ request
     message: str
+    turn_id: str
     contextual_message: str
     conversation_history: str
 
@@ -35,6 +37,7 @@ class ConversationState(TypedDict, total=False):
     cv_profile: CVProfile | None
     has_cv: bool
     has_jd: bool
+    search_context: ConversationSearchContext
 
     # Kết quả Intent Analysis
     intent: IntentAnalysisResult

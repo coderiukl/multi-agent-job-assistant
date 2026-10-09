@@ -89,7 +89,8 @@ async def delete_conversation_history(
         409: {
             "model": ErrorResponse,
             "description": (
-                "The conversation is waiting for human review."
+                "The conversation is busy, waiting for human review, or the "
+                "turn_id conflicts with an earlier request."
             ),
         },
         502: {
@@ -154,7 +155,8 @@ async def analyze_conversation_intent(
         409: {
             "model": ErrorResponse,
             "description": (
-                "The conversation is not waiting for human review."
+                "The conversation is busy, not waiting for human review, or "
+                "the turn_id conflicts with an earlier request."
             ),
         },
     },

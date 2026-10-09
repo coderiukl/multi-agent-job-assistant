@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.api.auth_dependencies import CurrentUserDependency
+from app.repositories.conversation_turn import ConversationTurnRepository
 from app.repositories.ownership import OwnershipRepository
 from app.services.authorized_conversation import (
     AuthorizedConversationService,
@@ -29,6 +30,7 @@ def get_authorized_conversation_service(
         service=ConversationService(graph=graph),
         graph=graph,
         ownership=OwnershipRepository(get_job_session_factory()),
+        turns=ConversationTurnRepository(get_job_session_factory()),
     )
 
 

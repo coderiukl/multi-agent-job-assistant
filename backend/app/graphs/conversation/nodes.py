@@ -6,8 +6,11 @@ from langchain_core.messages import AIMessage
 from langgraph.types import interrupt
 
 from app.core.exceptions import ResourceNotFoundException
-from app.graphs.conversation.planning import plan_workflow
-from app.graphs.conversation.routing import collect_missing_inputs, route_after_intent
+from app.graphs.conversation.planning import (
+    collect_missing_initial_inputs,
+    plan_workflow,
+)
+from app.graphs.conversation.routing import route_after_intent
 from app.graphs.conversation.state import ConversationState
 from app.graphs.conversation.workflow import advance_workflow
 from app.memory.history import (
@@ -21,6 +24,10 @@ from app.schemas.conversation import (
     ConversationStatus,
     RequiredInput,
 )
+from app.schemas.conversation_search_context import (
+    ConversationSearchContext,
+    apply_search_context_patch,
+)
 from app.schemas.conversations_intent import IntentAnalysisInput
 from app.schemas.cover_letter import CoverLetterInput, CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisInput, CVAnalysisResult, CVQualityLevel
@@ -31,7 +38,7 @@ from app.schemas.job_matching import (
     JobMatchTarget,
     MatchRecommendation,
 )
-from app.schemas.job_search import JobSearchRequest, JobSearchResult
+from app.schemas.job_search import JobSearchFilters, JobSearchRequest, JobSearchResult
 from app.schemas.workflow import WorkflowJobMatch, WorkflowStep
 from app.services.career_advice import CareerAdviceService
 from app.services.conversation.intent_analyzer import ConversationIntentAnalyzer
@@ -123,6 +130,7 @@ class ConversationNodes:
             ),
             has_cv=state.get("has_cv", False),
             has_jd=state.get("has_jd", False),
+            search_context=state.get("search_context", ConversationSearchContext()),
         )
 
         intent = await self._analyzer.analyze(analyzer_input)
@@ -208,9 +216,7 @@ class ConversationNodes:
         }
 
     async def execute_job_search(self, state: ConversationState) -> dict[str, Any]:
-        request = JobSearchRequest(
-            query=self._get_contextual_message(state), page=1, page_size=10
-        )
+        request = self._build_job_search_request(state)
         search_context = build_job_search_context(state.get("cv_profile"))
 
         result = await self._job_search_service.search(request, context=search_context)
@@ -336,7 +342,7 @@ class ConversationNodes:
 
     async def respond_clarification(self, state: ConversationState) -> dict[str, Any]:
         intent = state["intent"]
-        missing_inputs = collect_missing_inputs(state)
+        missing_inputs = state.get("missing_inputs", [])
 
         assistant_message = self._build_clarification_message(
             missing_inputs=missing_inputs,
@@ -399,6 +405,19 @@ class ConversationNodes:
 
     async def create_workflow(self, state: ConversationState) -> dict[str, Any]:
         workflow = plan_workflow(state)
+        search_context = apply_search_context_patch(
+            state.get("search_context"),
+            state["intent"].search_context_patch,
+        )
+        missing_inputs = collect_missing_initial_inputs(
+            workflow,
+            has_cv=state.get("has_cv", False),
+            has_jd=state.get("has_jd", False),
+        )
+        contextual_message = build_contextual_user_message(
+            current_message=state["message"],
+            search_context=search_context,
+        )
 
         logger.info(
             "Conversation workflow planned",
@@ -411,7 +430,13 @@ class ConversationNodes:
             },
         )
 
-        return {"workflow": workflow, "route": route_after_intent(state)}
+        return {
+            "workflow": workflow,
+            "route": route_after_intent(state),
+            "missing_inputs": missing_inputs,
+            "search_context": search_context,
+            "contextual_message": contextual_message,
+        }
 
     async def execute_workflow_job_matching(
         self, state: ConversationState
@@ -515,11 +540,7 @@ class ConversationNodes:
         if workflow is None:
             raise ValueError("Workflow plan is required for workflow job search.")
 
-        request = JobSearchRequest(
-            query=self._get_contextual_message(state),
-            page=1,
-            page_size=10,
-        )
+        request = self._build_job_search_request(state)
 
         search_context = build_job_search_context(state.get("cv_profile"))
 
@@ -915,8 +936,8 @@ class ConversationNodes:
         )
 
         contextual_message = build_contextual_user_message(
-            messages,
             current_message=message,
+            search_context=state.get("search_context"),
         )
 
         logger.info(
@@ -970,10 +991,12 @@ class ConversationNodes:
     def _build_message_result(state: ConversationState) -> dict[str, Any]:
         result: dict[str, Any] = {
             "assistant_message": state.get("assistant_message"),
+            "turn_id": state.get("turn_id"),
             "route": to_json_compatible(state.get("route")),
             "status": to_json_compatible(state.get("status")),
             "cv_id": state.get("cv_id"),
             "missing_inputs": to_json_compatible(state.get("missing_inputs", [])),
+            "search_context": to_json_compatible(state.get("search_context", {})),
         }
 
         model_fields = (
@@ -999,3 +1022,23 @@ class ConversationNodes:
     @staticmethod
     def _get_contextual_message(state: ConversationState) -> str:
         return state.get("contextual_message") or state["message"]
+
+    @classmethod
+    def _build_job_search_request(
+        cls, state: ConversationState
+    ) -> JobSearchRequest:
+        context = ConversationSearchContext.model_validate(
+            state.get("search_context") or {}
+        )
+        filters = JobSearchFilters(
+            locations=[context.location] if context.location else [],
+            seniority_levels=[context.seniority] if context.seniority else [],
+            work_modes=[context.work_mode] if context.work_mode else [],
+        )
+
+        return JobSearchRequest(
+            query=cls._get_contextual_message(state),
+            filters=filters,
+            page=1,
+            page_size=10,
+        )

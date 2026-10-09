@@ -1,6 +1,7 @@
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.prompts.intent_analysis import INTENT_ANALYSIS_PROMPT
+from app.schemas.conversation_search_context import format_search_context
 from app.schemas.conversations_intent import IntentAnalysisInput, IntentAnalysisResult
 
 
@@ -16,6 +17,9 @@ class ConversationIntentAnalyzer:
                 "conversation_history": input_data.conversation_history,
                 "has_cv": input_data.has_cv,
                 "has_jd": input_data.has_jd,
+                "search_context": format_search_context(
+                    input_data.search_context
+                ),
             }
         )
 

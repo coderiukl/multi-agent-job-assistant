@@ -1,8 +1,9 @@
 from enum import StrEnum
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
 
 class HumanReviewAction(StrEnum):
     APPROVE = "approve"
@@ -19,4 +20,5 @@ class HumanReviewDecision(BaseModel):
 
 class ResumeConversationRequest(BaseModel):
     thread_id: UUID
+    turn_id: UUID = Field(default_factory=uuid4)
     decision: HumanReviewDecision
