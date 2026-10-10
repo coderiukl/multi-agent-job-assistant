@@ -147,6 +147,12 @@ Job matching results:
 {matching_results}
 </MATCHING_RESULTS>
 
+Job matching execution quality:
+
+<MATCHING_EXECUTION>
+{matching_execution}
+</MATCHING_EXECUTION>
+
 When CANDIDATE_CV is null, provide general advice without claiming
 knowledge of the candidate's current qualifications.
 
@@ -155,6 +161,10 @@ user's explicit goal and available CV evidence.
 
 When MATCHING_RESULTS is not empty, synthesize its gaps and evidence
 into actionable advice without repeating the complete matching output.
+
+When MATCHING_EXECUTION reports failed or skipped jobs, explicitly treat the
+available matches as incomplete. Do not generalize their conclusions to all
+jobs and reduce confidence in role-readiness claims.
 
 Return a structured CareerAdviceAssessment.
 """.strip(),

@@ -8,6 +8,8 @@ export const state = {
     selectedCvFile: null,
     uploadedCvId: null,
     uploadedCvName: null,
+    uploadedCvProfile: null,
+    uploadedCvTaskId: null,
     cvUploadStatus: "idle",
     cvUploadRequestId: 0,
 

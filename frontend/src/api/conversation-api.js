@@ -30,6 +30,7 @@ export async function listConversationThreads() {
 
 export async function sendConversationMessage({
   threadId,
+  turnId = crypto.randomUUID(),
   message,
   cvId = null,
   cvName = null,
@@ -43,6 +44,7 @@ export async function sendConversationMessage({
 
   const payload = {
     thread_id: threadId,
+    turn_id: turnId,
     message,
   };
 
@@ -75,8 +77,13 @@ export async function sendConversationMessage({
 
 export async function resumeConversation({
   threadId,
+  turnId = crypto.randomUUID(),
+  reviewId,
   action,
   feedback = null,
+  selectedJobId = null,
+  inputOverrides = {},
+  editedDraft = null,
 }) {
   const responseBody = await requestJson(
     "/api/v1/conversation/resume",
@@ -85,9 +92,14 @@ export async function resumeConversation({
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         thread_id: threadId,
+        turn_id: turnId,
         decision: {
+          review_id: reviewId,
           action,
           feedback,
+          selected_job_id: selectedJobId,
+          input_overrides: inputOverrides,
+          edited_draft: editedDraft,
         },
       }),
     },
@@ -170,6 +182,7 @@ export function normalizeHumanReview(review) {
   }
 
   return {
+    reviewId: review.review_id ?? null,
     reviewType: review.review_type ?? null,
     message: review.message ?? "",
     data: review.data ?? {},

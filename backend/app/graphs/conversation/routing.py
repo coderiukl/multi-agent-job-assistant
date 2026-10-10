@@ -1,10 +1,10 @@
 from enum import StrEnum
 
 from app.graphs.conversation.state import ConversationState
-from app.schemas.conversation import ConversationRoute, RequiredInput
+from app.schemas.conversation import ConversationRoute
 from app.schemas.conversations_intent import ConversationIntent
-from app.schemas.workflow import WorkflowStep, WorkflowType
 from app.schemas.human_review import HumanReviewAction
+from app.schemas.workflow import WorkflowStep, WorkflowType
 
 INTENT_TO_STATE: dict[ConversationIntent, ConversationRoute] = {
     ConversationIntent.CV_ANALYSIS: ConversationRoute.CV_ANALYSIS,
@@ -35,23 +35,16 @@ class HumanReviewRoute(StrEnum):
     SINGLE_COVER_LETTER = "single_cover_letter"
     REJECTED = "rejected"
 
-def collect_missing_inputs(state: ConversationState) -> list[RequiredInput]:
-    intent = state["intent"]
-    missing_inputs : list[RequiredInput] = []
 
-    if intent.requires_cv and not state.get("has_cv", False):
-        missing_inputs.append(RequiredInput.CV)
-
-    if intent.requires_jd and not state.get('has_jd', False):
-        missing_inputs.append(RequiredInput.JOB_DESCRIPTION)
-
-    return missing_inputs
+class DraftReviewRoute(StrEnum):
+    WORKFLOW_APPROVED = "workflow_approved"
+    SINGLE_APPROVED = "single_approved"
+    REJECTED = "rejected"
 
 def route_after_analysis(state: ConversationState) -> IntentGateRoute:
     intent = state["intent"]
-    missing_inputs = collect_missing_inputs(state)
 
-    if intent.needs_clarification or missing_inputs:
+    if intent.primary_intent == ConversationIntent.CLARIFICATION:
         return IntentGateRoute.CLARIFICATION
 
     return IntentGateRoute.PLAN_WORKFLOW
@@ -62,6 +55,9 @@ def route_after_intent(state: ConversationState) -> ConversationRoute:
     return INTENT_TO_STATE[intent.primary_intent]
 
 def route_workflow_start(state: ConversationState) -> str:
+    if state.get("missing_inputs"):
+        return "clarification"
+
     workflow = state.get("workflow")
 
     if workflow is None or workflow.workflow_type == WorkflowType.SINGLE_AGENT:
@@ -118,3 +114,14 @@ def route_after_human_review(state: ConversationState) -> HumanReviewRoute:
         return HumanReviewRoute.SINGLE_COVER_LETTER
 
     return HumanReviewRoute.WORKFLOW_COVER_LETTER
+
+
+def route_after_draft_review(state: ConversationState) -> DraftReviewRoute:
+    decision = state.get("cover_letter_draft_decision")
+    if decision is None or decision.action != HumanReviewAction.APPROVE:
+        return DraftReviewRoute.REJECTED
+
+    workflow = state.get("workflow")
+    if workflow is None or workflow.workflow_type == WorkflowType.SINGLE_AGENT:
+        return DraftReviewRoute.SINGLE_APPROVED
+    return DraftReviewRoute.WORKFLOW_APPROVED

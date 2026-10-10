@@ -17,7 +17,6 @@ from app.schemas.job_search import (
 )
 from app.schemas.job_search_context import JobSearchContext
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -28,12 +27,12 @@ class JobSearchAgent:
             method=settings.llm_structured_output_method,
         )
 
-    async def analyze(self, request: JobSearchRequest, context: JobSearchContext | None = None) -> JobSearchPlan:
+    async def analyze(
+        self, request: JobSearchRequest, context: JobSearchContext | None = None
+    ) -> JobSearchPlan:
 
         candidate_context = (
-            context.model_dump_json(exclude_none=True)
-            if context is not None
-            else "{}"
+            context.model_dump_json(exclude_none=True) if context is not None else "{}"
         )
 
         prompt_value = JOB_SEARCH_AGENT_PROMPT.invoke(
@@ -106,21 +105,17 @@ class JobSearchAgent:
         )
 
     @staticmethod
-    def _apply_request_constraints(*, request: JobSearchRequest, plan: JobSearchPlan) -> JobSearchPlan:
+    def _apply_request_constraints(
+        *, request: JobSearchRequest, plan: JobSearchPlan
+    ) -> JobSearchPlan:
         explicit = request.filters
         inferred = plan.filters
 
         filters = JobSearchFilters(
             locations=explicit.locations or inferred.locations,
-            employment_types=(
-                explicit.employment_types
-                or inferred.employment_types
-            ),
+            employment_types=(explicit.employment_types or inferred.employment_types),
             work_modes=explicit.work_modes or inferred.work_modes,
-            seniority_levels=(
-                explicit.seniority_levels
-                or inferred.seniority_levels
-            ),
+            seniority_levels=(explicit.seniority_levels or inferred.seniority_levels),
             skills=explicit.skills or inferred.skills,
             salary_min=(
                 explicit.salary_min
@@ -132,14 +127,9 @@ class JobSearchAgent:
                 if explicit.salary_max is not None
                 else inferred.salary_max
             ),
-            salary_currency=(
-                explicit.salary_currency
-                or inferred.salary_currency
-            ),
-            posted_after=(
-                explicit.posted_after
-                or inferred.posted_after
-            ),
+            salary_currency=(explicit.salary_currency or inferred.salary_currency),
+            salary_period=(explicit.salary_period or inferred.salary_period),
+            posted_after=(explicit.posted_after or inferred.posted_after),
             include_expired=explicit.include_expired,
         )
 

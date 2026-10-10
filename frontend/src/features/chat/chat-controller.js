@@ -60,6 +60,10 @@ export function createChatController({
       return "CV đang được tải lên và xử lý. Vui lòng chờ hoàn tất.";
     }
 
+    if (state.cvUploadStatus === "failed") {
+      return "CV xử lý thất bại. Hãy xóa CV lỗi và tải lại.";
+    }
+
     return null;
   }
 
@@ -152,18 +156,31 @@ export function createChatController({
     const container = document.createElement("div");
 
     container.className = "human-review-actions";
+    const review = state.pendingHumanReview;
+
+    if (review.reviewType === "cover_letter_confirmation") {
+      renderCoverLetterInputReview(container, review);
+    } else if (review.reviewType === "cover_letter_draft") {
+      renderCoverLetterDraftReview(container, review);
+    }
+
+    const buttonRow = document.createElement("div");
+    buttonRow.className = "human-review-buttons";
 
     const approveButton = document.createElement("button");
     approveButton.type = "button";
     approveButton.className = "human-review-approve";
-    approveButton.textContent = "Tạo Cover Letter";
+    approveButton.textContent = review.reviewType === "cover_letter_draft"
+      ? "Duyệt bản nháp"
+      : "Tạo bản nháp";
 
     const rejectButton = document.createElement("button");
     rejectButton.type = "button";
     rejectButton.className = "human-review-reject";
     rejectButton.textContent = "Bỏ qua";
 
-    container.append(approveButton, rejectButton);
+    buttonRow.append(approveButton, rejectButton);
+    container.append(buttonRow);
 
     approveButton.addEventListener("click", () => {
       handleHumanReviewDecision("approve", container);
@@ -178,6 +195,110 @@ export function createChatController({
     container.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
+    });
+  }
+
+  function appendReviewField(
+    container,
+    { label, value = "", name, multiline = false },
+  ) {
+    const wrapper = document.createElement("label");
+    wrapper.className = "human-review-field";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const control = document.createElement(multiline ? "textarea" : "input");
+    control.dataset.reviewField = name;
+    control.value = value ?? "";
+    if (multiline) control.rows = name === "editedDraft" ? 14 : 5;
+    wrapper.append(caption, control);
+    container.append(wrapper);
+    return control;
+  }
+
+  function renderCoverLetterInputReview(container, review) {
+    const jobs = Array.isArray(review.data?.jobs) ? review.data.jobs : [];
+    const cvMeta = document.createElement("p");
+    cvMeta.className = "human-review-meta";
+    cvMeta.textContent = [
+      `CV: ${review.data?.cv_name || review.data?.cv_id || "không xác định"}`,
+      review.data?.cv_version ? `version ${review.data.cv_version}` : null,
+    ].filter(Boolean).join(" · ");
+    container.append(cvMeta);
+
+    const selectLabel = document.createElement("label");
+    selectLabel.className = "human-review-field";
+    const caption = document.createElement("span");
+    caption.textContent = "Công việc mục tiêu";
+    const select = document.createElement("select");
+    select.dataset.reviewField = "selectedJobId";
+
+    jobs.forEach((job, index) => {
+      const option = document.createElement("option");
+      option.value = job.job_id;
+      const score = typeof job.match_score === "number"
+        ? ` · ${job.match_score.toFixed(1)}/100`
+        : "";
+      option.textContent = `${job.title || "Chưa có chức danh"} · ${job.company || "Chưa có công ty"}${score}`;
+      option.selected = (
+        job.job_id === review.data?.selected_job_id || index === 0
+      );
+      select.append(option);
+    });
+    selectLabel.append(caption, select);
+    container.append(selectLabel);
+
+    const jobMeta = document.createElement("p");
+    jobMeta.className = "human-review-meta";
+    container.append(jobMeta);
+
+    const selectedJob = () => (
+      jobs.find((job) => job.job_id === select.value) ?? jobs[0] ?? {}
+    );
+    const updateJobMeta = () => {
+      const job = selectedJob();
+      jobMeta.textContent = [
+        `Job ID: ${job.job_id || "không xác định"}`,
+        job.jd_version ? `JD version ${job.jd_version}` : null,
+      ].filter(Boolean).join(" · ");
+    };
+    const title = appendReviewField(container, {
+      label: "Chức danh",
+      name: "jobTitle",
+      value: selectedJob().title,
+    });
+    const company = appendReviewField(container, {
+      label: "Công ty",
+      name: "company",
+      value: selectedJob().company,
+    });
+    const description = appendReviewField(container, {
+      label: "Mô tả công việc",
+      name: "jobDescription",
+      value: selectedJob().description,
+      multiline: true,
+    });
+    appendReviewField(container, {
+      label: "Yêu cầu thêm cho thư",
+      name: "instructions",
+      multiline: true,
+    });
+
+    select.addEventListener("change", () => {
+      const job = selectedJob();
+      title.value = job.title ?? "";
+      company.value = job.company ?? "";
+      description.value = job.description ?? "";
+      updateJobMeta();
+    });
+    updateJobMeta();
+  }
+
+  function renderCoverLetterDraftReview(container, review) {
+    appendReviewField(container, {
+      label: "Nội dung bản nháp (có thể chỉnh sửa)",
+      name: "editedDraft",
+      value: review.data?.draft,
+      multiline: true,
     });
   }
 
@@ -256,9 +377,30 @@ export function createChatController({
     });
 
     try {
+      const review = state.pendingHumanReview;
+      const fieldValue = (name) => (
+        container
+          .querySelector(`[data-review-field="${name}"]`)
+          ?.value?.trim() || null
+      );
+      const inputOverrides = review.reviewType === "cover_letter_confirmation"
+        ? Object.fromEntries(
+            Object.entries({
+              job_title: fieldValue("jobTitle"),
+              company: fieldValue("company"),
+              job_description: fieldValue("jobDescription"),
+              instructions: fieldValue("instructions"),
+            }).filter(([, value]) => value !== null),
+          )
+        : {};
+
       const result = await resumeConversation({
         threadId: state.threadId,
+        reviewId: review.reviewId,
         action,
+        selectedJobId: fieldValue("selectedJobId"),
+        inputOverrides,
+        editedDraft: fieldValue("editedDraft"),
       });
 
       state.pendingHumanReview = null;

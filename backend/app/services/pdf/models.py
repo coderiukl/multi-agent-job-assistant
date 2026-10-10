@@ -3,6 +3,7 @@ from typing import Literal
 
 TextExtractionMethod = Literal["native", "ocr"]
 
+
 @dataclass(frozen=True, slots=True)
 class PdfTextBlock:
     block_number: int
@@ -18,6 +19,8 @@ class PdfPageText:
     character_count: int
     word_count: int
     has_meaningful_text: bool
+    quality_score: float = 0.0
+    quality_issues: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +51,7 @@ class PdfInspectionResult:
     is_repaired: bool
     metadata: PdfMetadata
 
+
 @dataclass(frozen=True, slots=True)
 class OcrTextLine:
     text: str
@@ -73,6 +77,7 @@ class OcrTextExtractionResult:
     total_word_count: int
     ocr_page_count: int
 
+
 @dataclass(frozen=True, slots=True)
 class UnifiedPdfPageText:
     page_number: int
@@ -80,6 +85,7 @@ class UnifiedPdfPageText:
     method: TextExtractionMethod
     character_count: int
     word_count: int
+
 
 @dataclass(frozen=True, slots=True)
 class PdfTextMergeResult:

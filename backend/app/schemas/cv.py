@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+
 from app.schemas.cv_profile import CVProfile
 
 
@@ -18,11 +19,20 @@ class PdfInspectionData(BaseModel):
     is_repaired: bool
     metadata: PdfMetadataData
 
+
+class NativePageQualityData(BaseModel):
+    page_number: int = Field(ge=1)
+    quality_score: float = Field(ge=0.0, le=1.0)
+    issues: list[str]
+
+
 class NativeTextExtractionData(BaseModel):
     total_character_count: int = Field(ge=0)
     total_word_count: int = Field(ge=0)
     native_page_count: int = Field(ge=0)
     ocr_required_page_numbers: list[int]
+    page_quality: list[NativePageQualityData] = Field(default_factory=list)
+
 
 class OcrExtractionData(BaseModel):
     ocr_page_count: int = Field(ge=0)
@@ -32,6 +42,7 @@ class OcrExtractionData(BaseModel):
         ge=0.0,
         le=1.0,
     )
+
 
 class CVUploadData(BaseModel):
     file_id: str

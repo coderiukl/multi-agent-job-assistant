@@ -25,7 +25,7 @@ from app.schemas.job_search import (
     JobSearchPlan,
     JobSearchSort,
 )
-
+from app.utils.job_deduplication import build_job_location_search_terms
 
 MAX_CANDIDATE_LIMIT = 500
 
@@ -34,7 +34,9 @@ class PostgresJobSearchRepository:
     def __init__(self, session_factory: JobSessionFactory) -> None:
         self._session_factory = session_factory
 
-    async def search(self, *, plan: JobSearchPlan, page: int, page_size: int) -> JobSearchPage:
+    async def search(
+        self, *, plan: JobSearchPlan, page: int, page_size: int
+    ) -> JobSearchPage:
         self._validate_pagination(
             page=page,
             page_size=page_size,
@@ -47,25 +49,20 @@ class PostgresJobSearchRepository:
                     include_keywords=True,
                 )
 
-                count_statement = (
-                    select(func.count())
-                    .select_from(filtered_statement.subquery())
+                count_statement = select(func.count()).select_from(
+                    filtered_statement.subquery()
                 )
 
-                total = int(
-                    await session.scalar(count_statement) or 0
-                )
+                total = int(await session.scalar(count_statement) or 0)
 
                 search_statement = self._apply_sorting(
                     statement=filtered_statement,
                     plan=plan,
                 )
 
-                search_statement = (
-                    search_statement
-                    .offset((page - 1) * page_size)
-                    .limit(page_size)
-                )
+                search_statement = search_statement.offset(
+                    (page - 1) * page_size
+                ).limit(page_size)
 
                 result = await session.scalars(search_statement)
                 models = list(result.all())
@@ -79,13 +76,12 @@ class PostgresJobSearchRepository:
             total=total,
             page=page,
             page_size=page_size,
-            jobs=[
-                job_model_to_schema(model)
-                for model in models
-            ],
+            jobs=[job_model_to_schema(model) for model in models],
         )
 
-    async def search_candidates(self, *, plan: JobSearchPlan, limit: int) -> list[NormalizedJob]:
+    async def search_candidates(
+        self, *, plan: JobSearchPlan, limit: int
+    ) -> list[NormalizedJob]:
         self._validate_candidate_limit(limit)
 
         try:
@@ -105,26 +101,20 @@ class PostgresJobSearchRepository:
 
         except SQLAlchemyError as exc:
             raise StorageException(
-                message=(
-                    "Job search candidates could not be loaded "
-                    "from PostgreSQL."
-                ),
+                message=("Job search candidates could not be loaded from PostgreSQL."),
             ) from exc
 
-        return [
-            job_model_to_schema(model)
-            for model in models
-        ]
+        return [job_model_to_schema(model) for model in models]
 
-    async def get_by_ids(self, *, job_ids: Sequence[str], plan: JobSearchPlan) -> list[NormalizedJob]:
+    async def get_by_ids(
+        self, *, job_ids: Sequence[str], plan: JobSearchPlan
+    ) -> list[NormalizedJob]:
         selected_job_ids = list(dict.fromkeys(job_ids))
 
         if not selected_job_ids:
             return []
 
-        self._validate_candidate_limit(
-            len(selected_job_ids)
-        )
+        self._validate_candidate_limit(len(selected_job_ids))
 
         try:
             async with self._session_factory() as session:
@@ -146,15 +136,11 @@ class PostgresJobSearchRepository:
         except SQLAlchemyError as exc:
             raise StorageException(
                 message=(
-                    "Semantic job candidates could not be loaded "
-                    "from PostgreSQL."
+                    "Semantic job candidates could not be loaded from PostgreSQL."
                 ),
             ) from exc
 
-        models_by_id = {
-            model.job_id: model
-            for model in models
-        }
+        models_by_id = {model.job_id: model for model in models}
 
         return [
             job_model_to_schema(models_by_id[job_id])
@@ -162,7 +148,9 @@ class PostgresJobSearchRepository:
             if job_id in models_by_id
         ]
 
-    def _build_filtered_statement(self, *, plan: JobSearchPlan, include_keywords: bool) -> Select[tuple[JobModel]]:
+    def _build_filtered_statement(
+        self, *, plan: JobSearchPlan, include_keywords: bool
+    ) -> Select[tuple[JobModel]]:
         statement = select(JobModel)
 
         conditions = self._build_conditions(
@@ -175,7 +163,9 @@ class PostgresJobSearchRepository:
 
         return statement
 
-    def _build_conditions(self, *, plan: JobSearchPlan, include_keywords: bool) -> list[ColumnElement[bool]]:
+    def _build_conditions(
+        self, *, plan: JobSearchPlan, include_keywords: bool
+    ) -> list[ColumnElement[bool]]:
         filters = plan.filters
         conditions: list[ColumnElement[bool]] = []
 
@@ -190,51 +180,35 @@ class PostgresJobSearchRepository:
         if filters.locations:
             location_conditions = [
                 JobModel.location.ilike(
-                    self._contains_pattern(location),
+                    self._contains_pattern(term),
                     escape="\\",
                 )
                 for location in filters.locations
+                for term in build_job_location_search_terms(location)
             ]
 
-            conditions.append(
-                or_(*location_conditions)
-            )
+            conditions.append(or_(*location_conditions))
 
         if filters.employment_types:
             employment_type_values = [
-                employment_type.value
-                for employment_type in filters.employment_types
+                employment_type.value for employment_type in filters.employment_types
             ]
 
-            conditions.append(
-                JobModel.employment_type.in_(
-                    employment_type_values
-                )
-            )
+            conditions.append(JobModel.employment_type.in_(employment_type_values))
 
         if filters.work_modes:
-            work_mode_values = [
-                work_mode.value
-                for work_mode in filters.work_modes
-            ]
+            work_mode_values = [work_mode.value for work_mode in filters.work_modes]
 
-            conditions.append(
-                JobModel.work_mode.in_(work_mode_values)
-            )
+            conditions.append(JobModel.work_mode.in_(work_mode_values))
 
         if filters.seniority_levels:
             seniority_values = {
-                seniority.value
-                for seniority in filters.seniority_levels
+                seniority.value for seniority in filters.seniority_levels
             }
 
             seniority_values.add(SeniorityLevel.UNKNOWN.value)
 
-            conditions.append(
-                JobModel.seniority_level.in_(
-                    sorted(seniority_values)
-                )
-            )
+            conditions.append(JobModel.seniority_level.in_(sorted(seniority_values)))
 
         if filters.skills:
             serialized_skills = cast(
@@ -250,9 +224,7 @@ class PostgresJobSearchRepository:
                 for skill in filters.skills
             ]
 
-            conditions.append(
-                or_(*skill_conditions)
-            )
+            conditions.append(or_(*skill_conditions))
 
         if filters.salary_min is not None:
             salary_min = self._to_decimal(filters.salary_min)
@@ -261,10 +233,7 @@ class PostgresJobSearchRepository:
                 JobModel.salary_min,
             )
 
-            conditions.append(
-                maximum_available_salary
-                >= salary_min
-            )
+            conditions.append(maximum_available_salary >= salary_min)
 
         if filters.salary_max is not None:
             salary_max = self._to_decimal(filters.salary_max)
@@ -273,36 +242,28 @@ class PostgresJobSearchRepository:
                 JobModel.salary_max,
             )
 
-            conditions.append(
-                minimum_available_salary
-                <= salary_max
-            )
+            conditions.append(minimum_available_salary <= salary_max)
 
         if filters.salary_currency is not None:
-            conditions.append(
-                JobModel.salary_currency
-                == filters.salary_currency
-            )
+            conditions.append(JobModel.salary_currency == filters.salary_currency)
+
+        if filters.salary_period is not None:
+            conditions.append(JobModel.salary_period == filters.salary_period.value)
 
         if filters.posted_after is not None:
-            conditions.append(
-                JobModel.posted_at
-                >= filters.posted_after
-            )
+            conditions.append(JobModel.posted_at >= filters.posted_after)
 
         if include_keywords:
-            keyword_condition = (
-                self._build_keyword_condition(
-                    plan.keywords
-                )
-            )
+            keyword_condition = self._build_keyword_condition(plan.keywords)
 
             if keyword_condition is not None:
                 conditions.append(keyword_condition)
 
         return conditions
 
-    def _build_keyword_condition(self, keywords: Sequence[str]) -> ColumnElement[bool] | None:
+    def _build_keyword_condition(
+        self, keywords: Sequence[str]
+    ) -> ColumnElement[bool] | None:
         if not keywords:
             return None
 
@@ -311,9 +272,7 @@ class PostgresJobSearchRepository:
             Text,
         )
 
-        keyword_conditions: list[
-            ColumnElement[bool]
-        ] = []
+        keyword_conditions: list[ColumnElement[bool]] = []
 
         for keyword in keywords:
             pattern = self._contains_pattern(keyword)
@@ -342,7 +301,9 @@ class PostgresJobSearchRepository:
         return or_(*keyword_conditions)
 
     @staticmethod
-    def _apply_sorting(*, statement: Select[tuple[JobModel]], plan: JobSearchPlan) -> Select[tuple[JobModel]]:
+    def _apply_sorting(
+        *, statement: Select[tuple[JobModel]], plan: JobSearchPlan
+    ) -> Select[tuple[JobModel]]:
         if plan.sort == JobSearchSort.NEWEST:
             return statement.order_by(
                 JobModel.posted_at.desc().nullslast(),
@@ -358,12 +319,7 @@ class PostgresJobSearchRepository:
 
     @staticmethod
     def _contains_pattern(value: str) -> str:
-        escaped = (
-            value
-            .replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        )
+        escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
         return f"%{escaped}%"
 
@@ -383,6 +339,5 @@ class PostgresJobSearchRepository:
     def _validate_candidate_limit(limit: int) -> None:
         if not 1 <= limit <= MAX_CANDIDATE_LIMIT:
             raise ValueError(
-                "Candidate limit must be between "
-                f"1 and {MAX_CANDIDATE_LIMIT}."
+                f"Candidate limit must be between 1 and {MAX_CANDIDATE_LIMIT}."
             )

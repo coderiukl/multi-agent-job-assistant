@@ -4,6 +4,7 @@ export function normalizeConversationResponse(responseBody) {
 
   return {
     threadId: data?.thread_id ?? null,
+    turnId: data?.turn_id ?? null,
     answer:
       data?.assistant_message ??
       "Hệ thống đã tiếp nhận yêu cầu của bạn.",
@@ -20,6 +21,12 @@ export function normalizeConversationResponse(responseBody) {
     workflowJobMatches: Array.isArray(data?.workflow_job_matches)
       ? data.workflow_job_matches.map(normalizeWorkflowJobMatch)
       : [],
+    workflowJobMatchOutcomes: Array.isArray(
+      data?.workflow_job_match_outcomes,
+    )
+      ? data.workflow_job_match_outcomes.map(normalizeWorkflowJobMatchOutcome)
+      : [],
+    matchingExecution: normalizeMatchingExecution(data?.matching_execution),
     cvAnalysisResult: data?.cv_analysis_result
       ? normalizeCvAnalysisResult(data.cv_analysis_result)
       : null,
@@ -36,10 +43,25 @@ export function normalizeConversationResponse(responseBody) {
       ? normalizeJobMatchingResult(data.job_matching_result)
       : null,
     humanReview: data?.human_review ? {
+      reviewId: data.human_review.review_id ?? null,
       reviewType: data.human_review.review_type,
       message: data.human_review.message,
       data: data.human_review.data ?? {},
     } : null,
+    searchContext: normalizeSearchContext(data?.search_context),
+  };
+}
+
+function normalizeSearchContext(data) {
+  if (!data || typeof data !== "object") {
+    return {};
+  }
+
+  return {
+    role: data.role ?? null,
+    location: data.location ?? null,
+    seniority: data.seniority ?? null,
+    workMode: data.work_mode ?? null,
   };
 }
 
@@ -62,6 +84,27 @@ function normalizeWorkflowJobMatch(data) {
   return {
     job: data?.job ?? {},
     match: data?.match ? normalizeJobMatchingResult(data.match) : null,
+  };
+}
+
+function normalizeWorkflowJobMatchOutcome(data) {
+  return {
+    job: data?.job ?? {},
+    status: data?.status ?? "failed",
+    match: data?.match ? normalizeJobMatchingResult(data.match) : null,
+    errorCode: data?.error_code ?? null,
+  };
+}
+
+function normalizeMatchingExecution(data) {
+  if (!data || typeof data !== "object") return null;
+
+  return {
+    status: data.status ?? "failed",
+    total: toNumber(data.total),
+    succeeded: toNumber(data.succeeded),
+    failed: toNumber(data.failed),
+    skipped: toNumber(data.skipped),
   };
 }
 
@@ -109,6 +152,9 @@ function normalizeCareerAdviceResult(data) {
       : [],
     summary: data?.summary ?? "",
     confidence: toNullableNumber(data?.confidence),
+    modelConfidence: toNullableNumber(data?.model_confidence),
+    matchingReliability: toNullableNumber(data?.matching_reliability),
+    dataQualityWarnings: normalizeStringList(data?.data_quality_warnings),
   };
 }
 
@@ -237,6 +283,10 @@ function normalizeJobMatchingResult(data) {
       : [],
     summary: data?.summary ?? "",
     confidence: toNullableNumber(data?.confidence),
+    modelConfidence: toNullableNumber(data?.model_confidence),
+    cacheHit: Boolean(data?.cache_hit),
+    scoreInterpretation:
+      data?.score_interpretation ?? "rubric_fit_not_hiring_probability",
   };
 }
 
@@ -244,6 +294,8 @@ function normalizeMatchEvidence(evidence) {
   return {
     dimension: evidence?.dimension ?? "technical_skills",
     requirement: evidence?.requirement ?? "",
+    requirementId: evidence?.requirement_id ?? null,
+    cvEvidenceIds: normalizeStringList(evidence?.cv_evidence_ids),
     cvEvidence: normalizeStringList(evidence?.cv_evidence),
     status: evidence?.status ?? "missing",
     explanation: evidence?.explanation ?? "",
@@ -264,6 +316,8 @@ export function normalizeJobSearchResult(data) {
       query: "",
       strategy: "postgres",
       total: 0,
+      retrievedCount: 0,
+      hasMore: false,
       page: 1,
       pageSize: 10,
       items: [],
@@ -279,6 +333,11 @@ export function normalizeJobSearchResult(data) {
     strategy: data.strategy ?? "postgres",
     total:
       typeof data.total === "number" ? data.total : items.length,
+    retrievedCount:
+      typeof data.retrieved_count === "number"
+        ? data.retrieved_count
+        : items.length,
+    hasMore: data.has_more === true,
     page: typeof data.page === "number" ? data.page : 1,
     pageSize:
       typeof data.page_size === "number" ? data.page_size : 10,

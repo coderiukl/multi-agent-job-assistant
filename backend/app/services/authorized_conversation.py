@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.exceptions import ResourceNotFoundException
+from app.repositories.conversation_turn import ConversationTurnRepository
 from app.repositories.ownership import OwnershipRepository
 from app.schemas.conversation import (
     ConversationHistoryData,
@@ -22,6 +26,9 @@ if TYPE_CHECKING:
     from app.services.conversation import ConversationService
 
 
+logger = logging.getLogger(__name__)
+
+
 class AuthorizedConversationService:
     def __init__(
         self,
@@ -30,25 +37,69 @@ class AuthorizedConversationService:
         service: ConversationService,
         graph: CompiledStateGraph,
         ownership: OwnershipRepository,
+        turns: ConversationTurnRepository,
     ) -> None:
         self._user_id = user_id
         self._service = service
         self._graph = graph
         self._ownership = ownership
+        self._turns = turns
 
     async def process(
         self,
         request: ConversationRequest,
     ) -> ConversationResponseData:
         await self._authorize_turn(request)
-        return await self._service.process(request)
+        acquisition = await self._turns.begin(
+            turn_id=request.turn_id,
+            thread_id=request.thread_id,
+            user_id=self._user_id,
+            operation="message",
+            payload_hash=self._payload_hash(request.model_dump(mode="json")),
+        )
+        if acquisition.is_replay:
+            return ConversationResponseData.model_validate(
+                acquisition.replay_response
+            )
+
+        try:
+            result = await self._service.process(request)
+            await self._turns.complete(
+                turn_id=request.turn_id,
+                response_data=result.model_dump(mode="json"),
+            )
+            return result
+        except Exception as exc:
+            await self._record_turn_failure(request.turn_id, exc)
+            raise
 
     async def analyze_intent(
         self,
         request: ConversationRequest,
     ) -> IntentAnalysisResult:
         await self._authorize_turn(request)
-        return await self._service.analyze_intent(request)
+        acquisition = await self._turns.begin(
+            turn_id=request.turn_id,
+            thread_id=request.thread_id,
+            user_id=self._user_id,
+            operation="intent_analysis",
+            payload_hash=self._payload_hash(request.model_dump(mode="json")),
+        )
+        if acquisition.is_replay:
+            return IntentAnalysisResult.model_validate(
+                acquisition.replay_response
+            )
+
+        try:
+            result = await self._service.analyze_intent(request)
+            await self._turns.complete(
+                turn_id=request.turn_id,
+                response_data=result.model_dump(mode="json"),
+            )
+            return result
+        except Exception as exc:
+            await self._record_turn_failure(request.turn_id, exc)
+            raise
 
     async def get_history(
         self,
@@ -79,7 +130,28 @@ class AuthorizedConversationService:
         request: ResumeConversationRequest,
     ) -> ConversationResponseData:
         await self._authorize_existing(request.thread_id)
-        return await self._service.resume(request)
+        acquisition = await self._turns.begin(
+            turn_id=request.turn_id,
+            thread_id=request.thread_id,
+            user_id=self._user_id,
+            operation="resume",
+            payload_hash=self._payload_hash(request.model_dump(mode="json")),
+        )
+        if acquisition.is_replay:
+            return ConversationResponseData.model_validate(
+                acquisition.replay_response
+            )
+
+        try:
+            result = await self._service.resume(request)
+            await self._turns.complete(
+                turn_id=request.turn_id,
+                response_data=result.model_dump(mode="json"),
+            )
+            return result
+        except Exception as exc:
+            await self._record_turn_failure(request.turn_id, exc)
+            raise
 
     async def delete_history(
         self,
@@ -176,3 +248,25 @@ class AuthorizedConversationService:
             resource="Conversation",
             identifier=str(thread_id),
         )
+
+    @staticmethod
+    def _payload_hash(payload: dict[str, Any]) -> str:
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    async def _record_turn_failure(self, turn_id: UUID, exc: Exception) -> None:
+        try:
+            await self._turns.fail(
+                turn_id=turn_id,
+                error_code=type(exc).__name__,
+            )
+        except Exception:
+            logger.exception(
+                "Conversation turn failure status could not be recorded",
+                extra={"turn_id": str(turn_id)},
+            )

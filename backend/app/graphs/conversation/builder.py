@@ -4,13 +4,15 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.graphs.conversation.nodes import ConversationNodes
 from app.graphs.conversation.routing import (
+    DraftReviewRoute,
+    HumanReviewRoute,
     IntentGateRoute,
     WorkflowRoute,
-    HumanReviewRoute,
     route_after_analysis,
+    route_after_draft_review,
+    route_after_human_review,
     route_next_workflow_step,
     route_workflow_start,
-    route_after_human_review,
 )
 from app.graphs.conversation.state import ConversationState
 from app.schemas.conversation import ConversationRoute
@@ -53,6 +55,8 @@ def build_conversation_graph(
     # Human-in-the-loop
     graph.add_node("human_review", nodes.review_before_cover_letter)
     graph.add_node("human_review_rejected", nodes.respond_human_review_rejected)
+    graph.add_node("cover_letter_draft_review", nodes.review_cover_letter_draft)
+    graph.add_node("cover_letter_approved", nodes.respond_cover_letter_approved)
 
     graph.add_edge(START, "prepare_turn")
     graph.add_edge("prepare_turn", "resolve_context")
@@ -64,6 +68,18 @@ def build_conversation_graph(
         {
             IntentGateRoute.CLARIFICATION: "clarification",
             IntentGateRoute.PLAN_WORKFLOW: "plan_workflow",
+        },
+    )
+
+    graph.add_edge("cover_letter", "cover_letter_draft_review")
+    graph.add_edge("workflow_cover_letter", "cover_letter_draft_review")
+    graph.add_conditional_edges(
+        "cover_letter_draft_review",
+        route_after_draft_review,
+        {
+            DraftReviewRoute.WORKFLOW_APPROVED: "workflow_response",
+            DraftReviewRoute.SINGLE_APPROVED: "cover_letter_approved",
+            DraftReviewRoute.REJECTED: "human_review_rejected",
         },
     )
 
@@ -101,7 +117,7 @@ def build_conversation_graph(
     graph.add_conditional_edges(
         "plan_workflow",
         route_workflow_start,
-        workflow_start_routes,    
+        workflow_start_routes,
     )
 
     graph.add_conditional_edges(
@@ -119,7 +135,6 @@ def build_conversation_graph(
         "workflow_job_matching",
         "workflow_career_advice",
         "workflow_cv_analysis",
-        "workflow_cover_letter",
     ]
 
     for node_name in workflow_nodes:
@@ -139,7 +154,7 @@ def build_conversation_graph(
         "job_search",
         "job_matching",
         "career_advice",
-        "cover_letter",
+        "cover_letter_approved",
         "human_review_rejected",
     )
 

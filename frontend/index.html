@@ -468,6 +468,15 @@
               </div>
 
               <button
+                id="review-cv-button"
+                type="button"
+                aria-label="Xem và sửa thông tin CV"
+                hidden
+              >
+                Xem &amp; sửa
+              </button>
+
+              <button
                 id="remove-cv-button"
                 type="button"
                 aria-label="Xóa CV"
@@ -475,6 +484,28 @@
                 ×
               </button>
             </div>
+
+            <dialog id="cv-profile-dialog" class="cv-profile-dialog">
+              <form method="dialog" class="cv-profile-dialog-content">
+                <h2>Kiểm tra thông tin trích xuất</h2>
+                <p>
+                  Sửa dữ liệu nếu cần. Mỗi bằng chứng quan trọng có trang,
+                  đoạn nguồn và độ tin cậy trong trường provenance.
+                </p>
+                <textarea
+                  id="cv-profile-editor"
+                  rows="20"
+                  spellcheck="false"
+                  aria-label="Thông tin CV dạng JSON"
+                ></textarea>
+                <div class="cv-profile-dialog-actions">
+                  <button value="cancel" type="submit">Hủy</button>
+                  <button id="save-cv-profile-button" value="default" type="button">
+                    Lưu thông tin
+                  </button>
+                </div>
+              </form>
+            </dialog>
 
             <section
               id="job-description-panel"

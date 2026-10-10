@@ -6,13 +6,19 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schemas.career_advice import CareerAdviceResult
+from app.schemas.conversation_search_context import ConversationSearchContext
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cover_letter import CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisResult
 from app.schemas.human_review import HumanReviewRequest
 from app.schemas.job_matching import JobMatchingResult
 from app.schemas.job_search import JobSearchResult
-from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
+from app.schemas.workflow import (
+    MatchingExecutionSummary,
+    WorkflowJobMatch,
+    WorkflowJobMatchOutcome,
+    WorkflowPlan,
+)
 
 
 class ConversationRoute(StrEnum):
@@ -33,6 +39,8 @@ class ConversationStatus(StrEnum):
     NEEDS_CLARIFICATION = "needs_clarification"
     ROUTED = "routed"
     WAITING_FOR_HUMAN = "waiting_for_human"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
 
 
 class RequiredInput(StrEnum):
@@ -55,6 +63,9 @@ class ConversationHistoryData(BaseModel):
     job_description: str | None = None
     latest_result: dict[str, Any] | None = None
     pending_human_review: HumanReviewRequest | None = None
+    search_context: ConversationSearchContext = Field(
+        default_factory=ConversationSearchContext
+    )
 
 
 class ConversationThreadSummaryData(BaseModel):
@@ -71,6 +82,7 @@ class ConversationThreadSummaryData(BaseModel):
 
 class ConversationResponseData(BaseModel):
     thread_id: UUID
+    turn_id: UUID | None = None
     assistant_message: str = Field(min_length=1)
     status: ConversationStatus
     route: ConversationRoute
@@ -88,5 +100,12 @@ class ConversationResponseData(BaseModel):
 
     workflow: WorkflowPlan | None = None
     workflow_job_matches: list[WorkflowJobMatch] = Field(default_factory=list)
+    workflow_job_match_outcomes: list[WorkflowJobMatchOutcome] = Field(
+        default_factory=list
+    )
+    matching_execution: MatchingExecutionSummary | None = None
 
     human_review: HumanReviewRequest | None = None
+    search_context: ConversationSearchContext = Field(
+        default_factory=ConversationSearchContext
+    )

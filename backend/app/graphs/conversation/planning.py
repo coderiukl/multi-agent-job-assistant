@@ -1,4 +1,5 @@
 from app.graphs.conversation.state import ConversationState
+from app.schemas.conversation import RequiredInput
 from app.schemas.conversations_intent import ConversationIntent, IntentAnalysisResult
 from app.schemas.workflow import WorkflowPlan, WorkflowStep, WorkflowType
 
@@ -9,6 +10,18 @@ INTENT_STEP_ORDER = (
     (ConversationIntent.CAREER_ADVICE, WorkflowStep.CAREER_ADVICE),
     (ConversationIntent.COVER_LETTER, WorkflowStep.COVER_LETTER),
 )
+
+STEP_REQUIREMENTS: dict[WorkflowStep, frozenset[str]] = {
+    WorkflowStep.CV_ANALYSIS: frozenset({"cv"}),
+    WorkflowStep.JOB_SEARCH: frozenset(),
+    WorkflowStep.JOB_MATCHING: frozenset({"cv", "job_target"}),
+    WorkflowStep.CAREER_ADVICE: frozenset(),
+    WorkflowStep.COVER_LETTER: frozenset({"cv", "job_target"}),
+}
+
+STEP_OUTPUTS: dict[WorkflowStep, frozenset[str]] = {
+    WorkflowStep.JOB_SEARCH: frozenset({"job_target"}),
+}
 
 def _collect_requested_intents(intent: IntentAnalysisResult) -> set[ConversationIntent]:
     return {
@@ -44,8 +57,8 @@ def create_workflow_plan(intent: IntentAnalysisResult) -> WorkflowPlan:
     if len(steps) <= 1:
         return WorkflowPlan(
             workflow_type=WorkflowType.SINGLE_AGENT,
-            steps=[],
-            current_step=None,
+            steps=steps,
+            current_step=steps[0] if steps else None,
         )
 
     return WorkflowPlan(
@@ -57,3 +70,35 @@ def create_workflow_plan(intent: IntentAnalysisResult) -> WorkflowPlan:
 def plan_workflow(state: ConversationState) -> WorkflowPlan:
     intent = state["intent"]
     return create_workflow_plan(intent)
+
+
+def collect_missing_initial_inputs(
+    workflow: WorkflowPlan,
+    *,
+    has_cv: bool,
+    has_jd: bool,
+) -> list[RequiredInput]:
+    """Resolve only data that must exist before the first executable step."""
+
+    available = set()
+    if has_cv:
+        available.add("cv")
+    if has_jd:
+        available.add("job_target")
+
+    missing: list[RequiredInput] = []
+
+    for step in workflow.steps:
+        requirements = STEP_REQUIREMENTS.get(step, frozenset())
+
+        if "cv" in requirements and "cv" not in available:
+            if RequiredInput.CV not in missing:
+                missing.append(RequiredInput.CV)
+
+        if "job_target" in requirements and "job_target" not in available:
+            if RequiredInput.JOB_DESCRIPTION not in missing:
+                missing.append(RequiredInput.JOB_DESCRIPTION)
+
+        available.update(STEP_OUTPUTS.get(step, frozenset()))
+
+    return missing

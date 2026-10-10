@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import cast
 
 from app.agents.job_search_agent import JobSearchAgent
+from app.core.exceptions import ExternalServiceException
 from app.repositories.postgres_job_search import PostgresJobSearchRepository
 from app.schemas.job import NormalizedJob, normalize_single_line
 from app.schemas.job_search import (
@@ -18,10 +19,8 @@ from app.schemas.job_search import (
     JobVectorSearchHit,
 )
 from app.schemas.job_search_context import JobSearchContext
-
 from app.utils.job_deduplication import build_job_deduplication_key
 from app.vectorstores.base import JobVectorIndex
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +31,32 @@ KEYWORD_WEIGHT = 0.30
 FRESHNESS_WEIGHT = 0.10
 
 FRESHNESS_WINDOW_DAYS = 90.0
+FALLBACK_KEYWORD_LIMIT = 20
+FALLBACK_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "at",
+        "cho",
+        "cong",
+        "công",
+        "find",
+        "in",
+        "job",
+        "lam",
+        "làm",
+        "o",
+        "ở",
+        "the",
+        "tim",
+        "tìm",
+        "to",
+        "viec",
+        "việc",
+        "work",
+    }
+)
 
 
 class HybridJobSearchService:
@@ -45,8 +70,7 @@ class HybridJobSearchService:
     ) -> None:
         if not 1 <= candidate_limit <= MAX_CANDIDATE_LIMIT:
             raise ValueError(
-                "candidate_limit must be between "
-                f"1 and {MAX_CANDIDATE_LIMIT}."
+                f"candidate_limit must be between 1 and {MAX_CANDIDATE_LIMIT}."
             )
 
         self._agent = agent
@@ -54,23 +78,34 @@ class HybridJobSearchService:
         self._vector_index = vector_index
         self._candidate_limit = candidate_limit
 
-    async def search(self, request: JobSearchRequest, *, context: JobSearchContext | None = None) -> JobSearchResult:
-        plan = await self._agent.analyze(request, context=context)
-        
+    async def search(
+        self, request: JobSearchRequest, *, context: JobSearchContext | None = None
+    ) -> JobSearchResult:
+        try:
+            plan = await self._agent.analyze(request, context=context)
+        except asyncio.CancelledError:
+            raise
+        except ExternalServiceException as exc:
+            plan = self._build_fallback_plan(request)
+            LOGGER.warning(
+                "Job query analysis failed; using direct search plan",
+                extra={"error_type": type(exc).__name__},
+                exc_info=exc,
+            )
+
         retrieval_limit = self._resolve_retrieval_limit(request)
 
-        postgres_result, semantic_result = (
-            await asyncio.gather(
-                self._repository.search_candidates(
-                    plan=plan,
-                    limit=retrieval_limit,
-                ),
-                self._vector_index.search_jobs(
-                    query=plan.semantic_query,
-                    limit=retrieval_limit,
-                ),
-                return_exceptions=True,
-            )
+        postgres_result, semantic_result = await asyncio.gather(
+            self._repository.search_candidates(
+                plan=plan,
+                limit=retrieval_limit,
+            ),
+            self._vector_index.search_jobs(
+                query=plan.semantic_query,
+                limit=retrieval_limit,
+                filters=plan.filters,
+            ),
+            return_exceptions=True,
         )
 
         if isinstance(postgres_result, BaseException):
@@ -88,12 +123,9 @@ class HybridJobSearchService:
             semantic_hits: list[JobVectorSearchHit] = []
 
             LOGGER.warning(
-                "Semantic job retrieval failed; "
-                "falling back to PostgreSQL candidates",
+                "Semantic job retrieval failed; falling back to PostgreSQL candidates",
                 extra={
-                    "error_type": type(
-                        semantic_result
-                    ).__name__,
+                    "error_type": type(semantic_result).__name__,
                 },
                 exc_info=semantic_result,
             )
@@ -101,11 +133,9 @@ class HybridJobSearchService:
         else:
             semantic_hits = cast(list[JobVectorSearchHit], semantic_result)
 
-        semantic_jobs = (
-            await self._load_semantic_jobs(
-                plan=plan,
-                semantic_hits=semantic_hits,
-            )
+        semantic_jobs = await self._load_semantic_jobs(
+            plan=plan,
+            semantic_hits=semantic_hits,
         )
 
         semantic_scores = self._build_semantic_scores(semantic_hits)
@@ -132,6 +162,13 @@ class HybridJobSearchService:
         )
 
         total = len(sorted_hits)
+        retrieved_count = len(merged_jobs)
+        page_end = request.page * request.page_size
+        retrieval_window_saturated = (
+            len(postgres_jobs) >= retrieval_limit
+            or len(semantic_hits) >= retrieval_limit
+        )
+        has_more = page_end < total or retrieval_window_saturated
 
         page_items = self._paginate_hits(
             hits=sorted_hits,
@@ -165,19 +202,45 @@ class HybridJobSearchService:
             total=total,
             page=request.page,
             page_size=request.page_size,
+            retrieved_count=retrieved_count,
+            has_more=has_more,
             items=page_items,
         )
 
-    async def _load_semantic_jobs(self, *, plan: JobSearchPlan, semantic_hits: list[JobVectorSearchHit]) -> list[NormalizedJob]:
+    @classmethod
+    def _build_fallback_plan(cls, request: JobSearchRequest) -> JobSearchPlan:
+        keywords: list[str] = []
+        seen: set[str] = set()
+
+        for token in re.findall(r"[^\W_]+", request.query, flags=re.UNICODE):
+            key = token.casefold()
+
+            if len(key) < 2 or key in FALLBACK_STOPWORDS or key in seen:
+                continue
+
+            seen.add(key)
+            keywords.append(token)
+
+            if len(keywords) >= FALLBACK_KEYWORD_LIMIT:
+                break
+
+        return JobSearchPlan(
+            original_query=request.query,
+            semantic_query=request.query,
+            keywords=keywords,
+            filters=request.filters,
+            strategy=JobSearchStrategy.HYBRID,
+            sort=request.sort,
+            confidence=0.0,
+        )
+
+    async def _load_semantic_jobs(
+        self, *, plan: JobSearchPlan, semantic_hits: list[JobVectorSearchHit]
+    ) -> list[NormalizedJob]:
         if not semantic_hits:
             return []
 
-        job_ids = list(
-            dict.fromkeys(
-                hit.job_id
-                for hit in semantic_hits
-            )
-        )
+        job_ids = list(dict.fromkeys(hit.job_id for hit in semantic_hits))
 
         return await self._repository.get_by_ids(
             job_ids=job_ids,
@@ -193,11 +256,7 @@ class HybridJobSearchService:
 
             previous_score = scores.get(hit.job_id)
 
-            if (
-                previous_score is None
-                or normalized_score
-                > previous_score
-            ):
+            if previous_score is None or normalized_score > previous_score:
                 scores[hit.job_id] = normalized_score
 
         return scores
@@ -232,12 +291,10 @@ class HybridJobSearchService:
 
         freshness_score = self._calculate_freshness_score(job)
 
-        final_score = (
-            self._calculate_final_score(
-                semantic_score=semantic_score,
-                keyword_score=keyword_score,
-                freshness_score=freshness_score,
-            )
+        final_score = self._calculate_final_score(
+            semantic_score=semantic_score,
+            keyword_score=keyword_score,
+            freshness_score=freshness_score,
         )
 
         reasons = self._build_reasons(
@@ -262,20 +319,20 @@ class HybridJobSearchService:
         )
 
     @classmethod
-    def _calculate_keyword_score(cls, *, job: NormalizedJob, keywords: list[str]) -> tuple[float, list[str]]:
+    def _calculate_keyword_score(
+        cls, *, job: NormalizedJob, keywords: list[str]
+    ) -> tuple[float, list[str]]:
         if not keywords:
             return 0.0, []
 
-        title_and_skills = (
-            normalize_single_line(
-                " ".join(
-                    [
-                        job.title,
-                        *job.skills,
-                    ]
-                )
-            ).casefold()
-        )
+        title_and_skills = normalize_single_line(
+            " ".join(
+                [
+                    job.title,
+                    *job.skills,
+                ]
+            )
+        ).casefold()
 
         complete_text = normalize_single_line(
             " ".join(
@@ -315,10 +372,7 @@ class HybridJobSearchService:
 
         score = accumulated_score / len(keywords)
 
-        return (
-            cls._clamp_score(score),
-            list(dict.fromkeys(matched_terms))
-        )
+        return (cls._clamp_score(score), list(dict.fromkeys(matched_terms)))
 
     @staticmethod
     def _contains_term(*, text: str, term: str) -> bool:
@@ -354,20 +408,14 @@ class HybridJobSearchService:
         freshness_score: float,
     ) -> float:
         if semantic_score is None:
-            score = (
-                keyword_score * 0.75
-                + freshness_score * 0.25
-            )
+            score = keyword_score * 0.75 + freshness_score * 0.25
 
             return cls._round_score(score)
 
         score = (
-            semantic_score
-            * SEMANTIC_WEIGHT
-            + keyword_score
-            * KEYWORD_WEIGHT
-            + freshness_score
-            * FRESHNESS_WEIGHT
+            semantic_score * SEMANTIC_WEIGHT
+            + keyword_score * KEYWORD_WEIGHT
+            + freshness_score * FRESHNESS_WEIGHT
         )
 
         return cls._round_score(score)
@@ -383,56 +431,26 @@ class HybridJobSearchService:
     ) -> list[str]:
         reasons: list[str] = []
 
-        if (
-            semantic_score is not None
-            and semantic_score >= 0.75
-        ):
-            reasons.append(
-                "Nội dung công việc phù hợp cao "
-                "với yêu cầu tìm kiếm."
-            )
+        if semantic_score is not None and semantic_score >= 0.75:
+            reasons.append("Nội dung công việc phù hợp cao với yêu cầu tìm kiếm.")
 
-        elif (
-            semantic_score is not None
-            and semantic_score >= 0.50
-        ):
-            reasons.append(
-                "Nội dung công việc có liên quan "
-                "đến yêu cầu tìm kiếm."
-            )
+        elif semantic_score is not None and semantic_score >= 0.50:
+            reasons.append("Nội dung công việc có liên quan đến yêu cầu tìm kiếm.")
 
         if matched_terms:
-            reasons.append(
-                "Khớp từ khóa: "
-                + ", ".join(
-                    matched_terms[:5]
-                )
-                + "."
-            )
+            reasons.append("Khớp từ khóa: " + ", ".join(matched_terms[:5]) + ".")
 
-        if (
-            plan.filters.locations
-            and job.location
-        ):
-            reasons.append(
-                "Phù hợp với địa điểm yêu cầu."
-            )
+        if plan.filters.locations and job.location:
+            reasons.append("Phù hợp với địa điểm yêu cầu.")
 
         if plan.filters.seniority_levels:
-            reasons.append(
-                "Phù hợp với cấp độ kinh nghiệm "
-                "được yêu cầu."
-            )
+            reasons.append("Phù hợp với cấp độ kinh nghiệm được yêu cầu.")
 
         if freshness_score >= 0.70:
-            reasons.append(
-                "Công việc được đăng gần đây."
-            )
+            reasons.append("Công việc được đăng gần đây.")
 
         if not reasons:
-            reasons.append(
-                "Phù hợp với các bộ lọc tìm kiếm."
-            )
+            reasons.append("Phù hợp với các bộ lọc tìm kiếm.")
 
         return reasons
 
@@ -445,18 +463,13 @@ class HybridJobSearchService:
 
             current = best_hits.get(key)
 
-            if (
-                current is None
-                or cls._is_better_hit(
-                    candidate=hit,
-                    current=current,
-                )
+            if current is None or cls._is_better_hit(
+                candidate=hit,
+                current=current,
             ):
                 best_hits[key] = hit
 
-        return list(
-            best_hits.values()
-        )
+        return list(best_hits.values())
 
     @classmethod
     def _is_better_hit(
@@ -480,7 +493,9 @@ class HybridJobSearchService:
         return candidate_priority > current_priority
 
     @classmethod
-    def _sort_hits(cls, *, hits: list[JobSearchHit], sort: JobSearchSort) -> list[JobSearchHit]:
+    def _sort_hits(
+        cls, *, hits: list[JobSearchHit], sort: JobSearchSort
+    ) -> list[JobSearchHit]:
         if sort == JobSearchSort.NEWEST:
             return sorted(
                 hits,
@@ -513,11 +528,7 @@ class HybridJobSearchService:
         return hits[start:end]
 
     def _resolve_retrieval_limit(self, request: JobSearchRequest) -> int:
-        required_candidates = (
-            request.page
-            * request.page_size
-            * 3
-        )
+        required_candidates = request.page * request.page_size * 3
 
         return min(
             MAX_CANDIDATE_LIMIT,
@@ -529,10 +540,7 @@ class HybridJobSearchService:
 
     @classmethod
     def _job_timestamp(cls, job: NormalizedJob) -> float:
-        timestamp_source = (
-            job.posted_at
-            or job.crawled_at
-        )
+        timestamp_source = job.posted_at or job.crawled_at
 
         return cls._ensure_utc(timestamp_source).timestamp()
 
@@ -546,13 +554,15 @@ class HybridJobSearchService:
     @staticmethod
     def _normalize_semantic_score(score: float) -> float:
         return max(
-            0.0, min(1.0, float(score)),
+            0.0,
+            min(1.0, float(score)),
         )
 
     @staticmethod
     def _clamp_score(score: float) -> float:
         return max(
-            0.0, min(1.0, float(score)),
+            0.0,
+            min(1.0, float(score)),
         )
 
     @classmethod

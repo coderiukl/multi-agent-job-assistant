@@ -9,14 +9,20 @@ from app.schemas.conversation import (
     ConversationStatus,
     RequiredInput,
 )
+from app.schemas.conversation_search_context import ConversationSearchContext
 from app.schemas.conversations_intent import IntentAnalysisResult
 from app.schemas.cover_letter import CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisResult
 from app.schemas.cv_profile import CVProfile
-from app.schemas.job_matching import JobMatchingResult
-from app.schemas.job_search import JobSearchResult
-from app.schemas.workflow import WorkflowJobMatch, WorkflowPlan
 from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
+from app.schemas.job_matching import JobMatchingResult, JobMatchTarget
+from app.schemas.job_search import JobSearchResult
+from app.schemas.workflow import (
+    MatchingExecutionSummary,
+    WorkflowJobMatch,
+    WorkflowJobMatchOutcome,
+    WorkflowPlan,
+)
 
 
 class ConversationState(TypedDict, total=False):
@@ -24,6 +30,7 @@ class ConversationState(TypedDict, total=False):
 
     # Dữ liệu từ request
     message: str
+    turn_id: str
     contextual_message: str
     conversation_history: str
 
@@ -35,6 +42,7 @@ class ConversationState(TypedDict, total=False):
     cv_profile: CVProfile | None
     has_cv: bool
     has_jd: bool
+    search_context: ConversationSearchContext
 
     # Kết quả Intent Analysis
     intent: IntentAnalysisResult
@@ -53,6 +61,8 @@ class ConversationState(TypedDict, total=False):
     job_search_result: JobSearchResult | None
     job_matching_result: JobMatchingResult | None
     workflow_job_matches: list[WorkflowJobMatch]
+    workflow_job_match_outcomes: list[WorkflowJobMatchOutcome]
+    matching_execution: MatchingExecutionSummary | None
     cover_letter_result: CoverLetterResult | None
 
     # Nội dung trả về người dùng
@@ -61,3 +71,7 @@ class ConversationState(TypedDict, total=False):
     # Human-in-the-loop
     human_review_request: HumanReviewRequest | None
     human_review_decision: HumanReviewDecision | None
+    cover_letter_job: JobMatchTarget | None
+    cover_letter_instructions: str | None
+    cover_letter_draft_review: HumanReviewRequest | None
+    cover_letter_draft_decision: HumanReviewDecision | None

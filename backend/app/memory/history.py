@@ -2,9 +2,13 @@ from collections.abc import Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
+from app.schemas.conversation_search_context import (
+    ConversationSearchContext,
+    format_search_context,
+)
+
 MAX_HISTORY_MESSAGES = 6
 MAX_HISTORY_CHARS = 6_000
-MAX_CONTEXT_USER_MESSAGES = 3
 
 
 def get_previous_message(
@@ -60,30 +64,18 @@ def format_conversation_history(
 
 
 def build_contextual_user_message(
-    messages: Sequence[BaseMessage],
     *,
     current_message: str,
+    search_context: ConversationSearchContext | dict | None = None,
 ) -> str:
-    previous_messages = get_previous_message(
-        messages=messages, current_message=current_message
-    )
+    context = ConversationSearchContext.model_validate(search_context or {})
 
-    previous_user_messages = [
-        _message_text(message)
-        for message in previous_messages
-        if isinstance(message, HumanMessage) and _message_text(message)
-    ]
-
-    previous_user_messages = previous_user_messages[-MAX_CONTEXT_USER_MESSAGES:]
-
-    if not previous_user_messages:
+    if context.is_empty:
         return current_message
 
-    previous_requests = "\n".join(f"- {message}" for message in previous_user_messages)
-
     contextual_message = (
-        "Previous user requests:\n"
-        f"{previous_requests}\n\n"
+        "Saved job search constraints:\n"
+        f"{format_search_context(context)}\n\n"
         "Current user request:\n"
         f"{current_message}"
     )

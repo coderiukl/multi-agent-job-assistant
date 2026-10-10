@@ -3,6 +3,7 @@ import asyncio
 from langchain_core.embeddings import Embeddings
 from sentence_transformers import SentenceTransformer
 
+
 class BgeM3Embeddings(Embeddings):
     def __init__(
         self,
@@ -58,7 +59,7 @@ class BgeM3Embeddings(Embeddings):
 
         return vectors[0]
 
-    async def aembed_documents(self, texts: list[str],) -> list[list[float]]:
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         async with self._async_lock:
             return await asyncio.to_thread(
                 self.embed_documents,

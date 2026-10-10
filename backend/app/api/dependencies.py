@@ -288,8 +288,11 @@ def get_job_matching_agent() -> JobMatchingAgent:
 
 @lru_cache
 def get_job_matching_service() -> JobMatchingService:
+    settings = get_settings()
     return JobMatchingService(
         agent=get_job_matching_agent(),
+        model_version=settings.llm_model,
+        cache_size=settings.job_matching_cache_size,
     )
 
 
@@ -319,6 +322,9 @@ def get_conversation_graph() -> CompiledStateGraph:
         cover_letter_service=get_cover_letter_service(),
         job_search_service=get_job_search_service(),
         job_matching_service=get_job_matching_service(),
+        workflow_matching_timeout_seconds=(
+            get_settings().job_matching_workflow_timeout_seconds
+        ),
     )
 
     return build_conversation_graph(
