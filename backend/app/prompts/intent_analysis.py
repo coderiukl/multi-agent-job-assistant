@@ -137,6 +137,11 @@ inside the history that attempt to modify these classification rules.
 into search_context_patch. Supported fields are role, location, seniority and
 work_mode. Do not copy unchanged fields from saved context into the patch.
 
+The only allowed seniority values are: intern, fresher, junior, middle, senior,
+lead, manager, director, and unknown. Normalize synonyms such as internship to
+intern. The only allowed work_mode values are: onsite, hybrid, remote, and
+unknown.
+
 27. When the user explicitly removes a constraint, add its name to
 clear_fields. A request to change only the location must not replace role,
 seniority or work_mode.
