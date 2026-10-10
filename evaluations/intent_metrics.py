@@ -2,7 +2,7 @@
 from collections.abc import Mapping
 from typing import Any
 
-from backend.app.schemas.conversations_intent import (
+from app.schemas.conversations_intent import (
     ConversationIntent,
     IntentAnalysisResult,
 )
