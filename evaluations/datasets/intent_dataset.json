@@ -1,0 +1,150 @@
+
+[
+  {
+    "id": "IA_001",
+    "category": "single_intent",
+    "inputs": {
+      "message": "Tìm việc Python Fresher tại TP.HCM",
+      "has_cv": false,
+      "has_jd": false
+    },
+    "reference_outputs": {
+      "primary_intent": "job_search",
+      "secondary_intents": [],
+      "requires_cv": false,
+      "requires_jd": false,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_002",
+    "category": "single_intent",
+    "inputs": {
+      "message": "Phân tích CV của tôi",
+      "has_cv": true,
+      "has_jd": false
+    },
+    "reference_outputs": {
+      "primary_intent": "cv_analysis",
+      "secondary_intents": [],
+      "requires_cv": true,
+      "requires_jd": false,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_003",
+    "category": "single_intent",
+    "inputs": {
+      "message": "So sánh CV của tôi với JD này",
+      "has_cv": true,
+      "has_jd": true
+    },
+    "reference_outputs": {
+      "primary_intent": "job_matching",
+      "secondary_intents": [],
+      "requires_cv": true,
+      "requires_jd": true,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_004",
+    "category": "multi_intent",
+    "inputs": {
+      "message": "Tìm việc AI phù hợp CV và tư vấn kỹ năng cần học",
+      "has_cv": true,
+      "has_jd": false
+    },
+    "reference_outputs": {
+      "primary_intent": "job_search",
+      "secondary_intents": [
+        "job_matching",
+        "career_advice"
+      ],
+      "requires_cv": true,
+      "requires_jd": false,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_005",
+    "category": "missing_input",
+    "inputs": {
+      "message": "Đánh giá CV của tôi có phù hợp với JD này không",
+      "has_cv": false,
+      "has_jd": true
+    },
+    "reference_outputs": {
+      "primary_intent": "job_matching",
+      "secondary_intents": [],
+      "requires_cv": true,
+      "requires_jd": true,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_006",
+    "category": "small_talk",
+    "inputs": {
+      "message": "Xin chào bạn",
+      "has_cv": false,
+      "has_jd": false
+    },
+    "reference_outputs": {
+      "primary_intent": "small_talk",
+      "secondary_intents": [],
+      "requires_cv": false,
+      "requires_jd": false,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_007",
+    "category": "out_of_scope",
+    "inputs": {
+      "message": "Hôm nay nấu món gì ngon?",
+      "has_cv": false,
+      "has_jd": false
+    },
+    "reference_outputs": {
+      "primary_intent": "out_of_scope",
+      "secondary_intents": [],
+      "requires_cv": false,
+      "requires_jd": false,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_008",
+    "category": "general_question",
+    "inputs": {
+      "message": "Backend Developer là làm những gì?",
+      "has_cv": false,
+      "has_jd": false
+    },
+    "reference_outputs": {
+      "primary_intent": "general_question",
+      "secondary_intents": [],
+      "requires_cv": false,
+      "requires_jd": false,
+      "needs_clarification": false
+    }
+  },
+  {
+    "id": "IA_009",
+    "category": "career_advice",
+    "inputs": {
+      "message": "Tôi nên học gì để trở thành AI Engineer?",
+      "has_cv": false,
+      "has_jd": false
+    },
+    "reference_outputs": {
+      "primary_intent": "career_advice",
+      "secondary_intents": [],
+      "requires_cv": false,
+      "requires_jd": false,
+      "needs_clarification": false
+    }
+  }
+]
