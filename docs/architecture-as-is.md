@@ -268,15 +268,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    UPLOAD["POST /api/v1/cvs · 1 PDF hoặc nhiều ảnh PNG/JPEG"] --> OWNER["Xác thực và gắn quyền sở hữu CV"]
-    OWNER --> VALIDATE["Kiểm tra loại file, giới hạn kích thước/số trang"]
-    VALIDATE --> OK{"Hợp lệ?"}
-    OK -- "Không" --> ERROR["Validation error"]
-    OK -- "Có" --> QUEUE["Persist CV + enqueue durable task"]
-    QUEUE --> ACCEPT["HTTP 202 · task_id / cv_id / status"]
-    QUEUE --> WORKER["CV Worker · Claim task / Lease / Heartbeat"]
-    WORKER --> NORMALIZE["Chuẩn hóa ảnh thành PDF nếu cần"]
-    NORMALIZE --> INSPECT["PDF Inspector"]
+    UPLOAD["Upload CV PDF/PNG/JPG"] --> META["Kiểm tra metadata và chữ ký tệp"]
+    META --> FILE{"Tệp hợp lệ?"}
+
+    FILE -- "Không" --> ERROR["Trả lỗi validation"]
+    FILE -- "Có" --> NORMALIZE["Chuyển ảnh sang PDF nếu cần"]
+    NORMALIZE --> STORE["Lưu PDF chuẩn hóa"]
+
+    STORE --> INSPECT["Kiểm tra PDF"]
     INSPECT --> NATIVE["Native Text Extraction"]
     NATIVE --> OCRQ{"Trang cần OCR?"}
     OCRQ -- "Có" --> OCR["PaddleOCR"]
@@ -440,4 +439,3 @@ có đủ metadata filter và payload index tương ứng.
 - Job storage và conversation checkpoint đều có backend có thể cấu hình. Default trong code có thể dùng JSONL và in-memory, không mặc định mọi bản triển khai đã dùng PostgreSQL.
 - Chưa xác nhận từ mã nguồn đã kiểm tra: Nginx/load balancer, rate limiting, production deployment hoàn chỉnh, MinIO/S3, Redis/Celery, Interview Agent và collection Qdrant riêng cho CV. Không biểu diễn chúng thành thành phần bắt buộc đang chạy.
 - Tài liệu này mô tả **chức năng có mã nguồn**, không phải chứng nhận về vận hành, khả năng chịu tải, độ an toàn production hoặc kết quả benchmark.
-
