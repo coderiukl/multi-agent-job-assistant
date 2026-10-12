@@ -1,469 +1,292 @@
-# Multi Agent Job Assistant
+<div align="center">
 
-Multi Agent Job Assistant là hệ thống hỗ trợ tìm kiếm việc làm, phân tích CV, 
-đánh giá mức độ phù hợp giữa ứng viên và công việc, tư vấn phát triển nghề nghiệp và 
-tạo thư xin việc.
+# Multi-Agent Job Assistant
 
-Hệ thống sử dụng LangGraph để điều phối workflow giữa các Agent, Langchain để làm việc với LLM, 
-PostgreSQL để lưu dữ liệu việc làm, Qdrant để tìm kiếm ngữ nghĩa và 
-Airflow để thu thập dữ liệu việc làm theo lịch.
+Hệ thống trợ lý hướng nghiệp sử dụng kiến trúc Multi-Agent để phân tích CV, tìm kiếm việc làm, đánh giá độ phù hợp với vị trí tuyển dụng và hỗ trợ ứng viên chuẩn bị hồ sơ ứng tuyển.
 
-## Chức năng hiện tại 
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
+![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-1C3C3C)
+![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+![Qdrant](https://img.shields.io/badge/Vector_DB-Qdrant-DC244C)
+![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker&logoColor=white)
 
-- Tải lên và kiểm trả CV định dạng PDF.
-- Trích xuất nội dung PDF.
-- Sử dụng OCR đối với các trang không có đủ nội dung văn bản.
-- Chuyển nội dung CV thành dữ liệu có cấu trúc.
-- Phân tích chất lượng CV.
-- Tìm kiếm việc làm bàngw PostgreSQL và Qdrant.
-- Kết hợp độ phù hợp nội dung, từ khóa và độ mới của việc làm.
-- So khớp CV với JD (Job Description).
-- Giải thích điểm mạnh, điểm yếu và kỹ năng còn thiếu.
-- Đưa ra định hướng và lộ trình phát triển nghề nghiệp.
-- Tạo thư xin việc dựa trên CV và JD (Job Description).
-- Lưu lịch sử hội thoại bằng LangGraph Checkpoint.
-- Thu thập việc làm tự động bằng Airflow.
-- Hiển thị kết quả trên frontend HTML, CSS, JavaScript.
+[**Tính năng**](#-tính-năng-nổi-bật) · [**Kiến trúc**](#-kiến-trúc-hệ-thống) · [**Cài đặt**](#-bắt-đầu) · [**Kiểm thử**](#-kiểm-thử) · [**Roadmap**](#-lộ-trình-phát-triển)
 
-## Các Agent
+</div>
 
-| Agent | Trách nhiệm |
-|---|---|
-| CV Parser Agent | Chuyển nội dung CV thành dữ liệu có cấu trúc |
-| CV Analysis Agent | Phân tích chất lượng, điểm mạnh và điểm yếu của CV |
-| Job Search Agent | Phân tích yêu cầu tìm việc và tạo kế hoạch tìm kiếm |
-| Job Matching Agent | Đánh giá mức độ phù hợp giữa CV và công việc |
-| Career Advice Agent | Đưa ra kỹ năng, lộ trình và định hướng nghề nghiệp |
-| Cover Letter Agent | Tạo cover letter dựa trên CV và công việc |
+---
 
-Mỗi Agent có input/output được định nghĩa bằng Pydantic và không trao đổi với nhau
-thông qua văn bản tự do.
+## Tổng quan
 
-## Kiến trúc hệ thống 
-Xem mô tả chi tiết tại: [Kiến trúc hệ thống hiện tại](docs/architecture-as-is.md).
+**Multi-Agent Job Assistant** kết hợp LLM với dữ liệu tuyển dụng được thu thập và chuẩn hóa, phục vụ các tác vụ từ đọc CV đến đề xuất công việc và tư vấn nghề nghiệp. **LangGraph** đảm nhiệm điều phối quy trình hội thoại; **PostgreSQL** lưu dữ liệu nghiệp vụ; **Qdrant** hỗ trợ truy xuất ngữ nghĩa; **Apache Airflow** tự động hóa pipeline dữ liệu việc làm.
+
+> [!NOTE]
+> Đây là dự án đang phát triển. Các điểm đánh giá CV và Job Matching là kết quả theo rubric/heuristic của hệ thống, **không phải xác suất trúng tuyển**. Việc đánh giá thực nghiệm và triển khai production vẫn đang được hoàn thiện.
+
+## ✨ Tính năng nổi bật
+
+| Nhóm | Khả năng |
+| --- | --- |
+| **CV Processing** | Nhận một PDF hoặc 1–5 ảnh theo thứ tự trang; trích xuất native text và OCR bằng PaddleOCR; tạo CV profile có cấu trúc và cho phép người dùng kiểm tra/chỉnh sửa. |
+| **CV Analysis** | Phân tích chất lượng CV, điểm mạnh, điểm yếu và gợi ý cải thiện. |
+| **Hybrid Job Search** | Kết hợp PostgreSQL và Qdrant; lọc theo địa điểm, seniority, kỹ năng, hình thức làm việc, mức lương và các trường khác. |
+| **Job Matching** | So khớp CV với JD, phân tích bằng chứng, kỹ năng còn thiếu và đưa ra mức độ phù hợp. |
+| **Career Advice** | Đề xuất định hướng, kỹ năng và lộ trình phát triển nghề nghiệp. |
+| **Cover Letter** | Hỗ trợ soạn thư ứng tuyển dựa trên CV và vị trí công việc. |
+| **Data Pipeline** | Thu thập, chuẩn hóa, loại trùng, cập nhật dữ liệu tuyển dụng; tạo embedding và index; tổng hợp metrics hàng ngày. |
+| **Conversation Memory** | Lưu hội thoại và trạng thái xử lý bằng LangGraph Checkpoint. |
+
+## 🏗 Kiến trúc hệ thống
+![Multi-Agent Job Assistant Architecture](images/architecture.png)
 
 ```mermaid
-flowchart TD
-    U["Người dùng"] --> FE["Frontend<br/>HTML, CSS, JavaScript"]
+   
+flowchart TB
+    U["Users"] --> FE["Vite / HTML / CSS / JavaScript"]
     FE --> API["FastAPI REST API"]
 
-    API --> CV["CV Processing Service"]
-    API --> CG["LangGraph Conversation Workflow"]
-    API --> JS["Hybrid Job Search Service"]
+    subgraph CV["Async CV Processing"]
+        TASK["PostgreSQL Processing Tasks"]
+        WORKER["CV Worker"]
+        PDF["PDF Validation / Native Extraction"]
+        OCR["PaddleOCR Fallback"]
+        PARSER["CV Parser Agent"]
+        FILES["Local CV File Storage"]
+        TASK --> WORKER
+        WORKER --> PDF
+        PDF --> OCR
+        OCR --> PARSER
+    end
 
-    CV --> PDF["PDF Inspector<br/>Native Text và OCR"]
-    PDF --> CP["CV Parser Agent"]
-    CP --> CVS[("CV Profile Storage")]
+    subgraph GRAPH["LangGraph Conversation Workflow"]
+        PREP["Context Resolution & Checkpoint Restore"]
+        INTENT["Intent Analysis"]
+        ROUTER{"Clarification / Routing"}
+        PLAN["Workflow Planner"]
+        AGENTS["CV Analysis / Job Search / Job Matching / Career Advice / Cover Letter"]
+        CLARIFY["Clarification / General Response"]
+        PREP --> INTENT --> ROUTER
+        ROUTER -->|Business workflow| PLAN --> AGENTS
+        ROUTER -->|Missing context / Other intent| CLARIFY
+    end
 
-    CG --> IA["Intent Analysis"]
-    IA --> WP["Workflow Planning và Routing"]
+    subgraph SEARCH["Hybrid Job Search"]
+        FILTER["Structured Filters"]
+        VECTOR["Semantic Retrieval"]
+        RANK["Merge / Ranking / Dedup / Fallback"]
+        FILTER --> RANK
+        VECTOR --> RANK
+    end
 
-    WP --> CAA["CV Analysis Agent"]
-    WP --> JSA["Job Search Agent"]
-    WP --> JMA["Job Matching Agent"]
-    WP --> CAA2["Career Advice Agent"]
-    WP --> CLA["Cover Letter Agent"]
+    subgraph INGEST["Airflow Data Engineering"]
+        SOURCE["6 Job Sources"]
+        RAW["Raw JSONL / Metrics"]
+        NORM["Normalize / Validate / Deduplicate"]
+        INDEX["BAAI/bge-m3 Embeddings & Indexing"]
+        SOURCE --> RAW --> NORM
+        NORM --> INDEX
+    end
 
-    JSA --> JS
-    JS --> PG[("PostgreSQL<br/>Job Data")]
-    JS --> QD[("Qdrant<br/>Job Embeddings")]
+    PG[("PostgreSQL")]
+    QD[("Qdrant")]
+    LLM["LLM Gateway / 9router"]
+    LS["LangSmith Tracing & Evaluation"]
 
-    CG --> MEM[("LangGraph Checkpoint<br/>Memory hoặc PostgreSQL")]
-
-    AF["Airflow Job Crawling Pipeline"] --> RAW[("Raw JSONL và Metrics")]
-    AF --> PG
-    PG --> IDX["Embedding và Indexing"]
-    IDX --> QD
+    API --> TASK
+    API --> PREP
+    API --> SEARCH
+    API --> FILES
+    WORKER --> FILES
+    PARSER --> PG
+    AGENTS --> SEARCH
+    AGENTS --> LLM
+    PREP <--> PG
+    FILTER --> PG
+    VECTOR --> QD
+    NORM --> PG
+    INDEX --> QD
+    GRAPH -.-> LS
+    API -.-> LS
 ```
 
-## Luồng hoạt động chính
+Chi tiết thiết kế: [Architecture — As Is](docs/architecture-as-is.md).
 
-### 1. Phân tích CV
+### Multi-Agent workflow
 
-```mermaid
-flowchart TD
-    U["Người dùng tải CV PDF"] --> API["FastAPI nhận tệp"]
-    API --> VM["Kiểm tra tên, MIME type và dung lượng"]
-    VM --> SIG{"PDF hợp lệ?"}
+1. **Prepare & Resolve Context:** tiếp nhận tin nhắn, `cv_id`, JD và khôi phục trạng thái hội thoại.
+2. **Intent Analysis:** xác định ý định, kiểm tra thông tin cần thiết và yêu cầu bổ sung nếu thiếu.
+3. **Workflow Planning & Routing:** lựa chọn một agent hoặc chuỗi agent tương ứng với yêu cầu.
+4. **Agent Execution:** thực thi tác vụ, sử dụng dữ liệu CV, JD và job search phù hợp.
+5. **Response & Checkpoint:** trả kết quả và lưu trạng thái cho các lượt tiếp theo.
 
-    SIG -- "Không" --> ERR["Trả lỗi 413, 415, 422"]
-    SIG -- "Có" --> SAVE["Lưu tệp tạm thời"]
+Các agent chính sử dụng input/output có cấu trúc qua **Pydantic**:
 
-    SAVE --> INS["PdfInspector kiểm tra tài liệu"]
-    INS --> NT["Native Text Extractor"]
-    NT --> OCRQ{"Trang có thiếu văn bản?"}
+| Agent | Vai trò |
+| --- | --- |
+| CV Parser | Chuyển văn bản CV thành profile có cấu trúc. |
+| CV Analysis | Đánh giá chất lượng và đề xuất cải thiện CV. |
+| Job Search | Phân tích yêu cầu và lập kế hoạch tìm kiếm. |
+| Job Matching | Đánh giá CV so với yêu cầu của JD. |
+| Career Advice | Gợi ý kỹ năng và lộ trình nghề nghiệp. |
+| Cover Letter | Tạo bản nháp thư ứng tuyển phù hợp. |
 
-    OCRQ -- "Có" --> OCR["PaddleOCR xử lý trang cần thiết"]
-    OCRQ -- "Không" --> MERGE["Giữ văn bản gốc"]
-    OCR --> MERGE["Hợp nhất native text và OCR"]
+## 🔎 Tìm kiếm và đánh giá độ phù hợp
 
-    MERGE --> CPA["CV Parser Agent"]
-    CPA --> PROFILE["Tạo CVProfile có cấu trúc"]
-    PROFILE --> STORE["Lưu CVProfile"]
-    STORE --> READY["CV sẵn sàng cho các workflow"]
+### Hybrid Search
 
-    READY --> REQ["Người dùng yêu cầu phân tích CV"]
-    REQ --> CAA["CV Analysis Agent"]
-    CAA --> RESULT["Điểm chất lượng, điểm mạnh,<br/>điểm yếu và đề xuất cải thiện" ]
-```
+Hệ thống lọc và truy xuất ứng viên công việc từ **PostgreSQL** và **Qdrant**, hợp nhất theo `job_id`, khử trùng lặp và xếp hạng kết quả. Khi Qdrant không khả dụng, hệ thống có cơ chế fallback về PostgreSQL.
 
-### 2. Tìm kiếm việc làm
-
-```mermaid
-flowchart TD
-    U["Người dùng nhập yêu cầu tìm việc"] --> API["FastAPI nhận yêu cầu"]
-    API --> IA["Intent Analysis"] 
-    IA --> CONTEXT["Tạo JobSearchContext"]
-    CONTEXT --> JSA["Job Search Agent"]
-
-    JSA --> PLAN["Tạo JobSearchPlan<br/>keywords, filters, semantic query"]
-    JSA -- "Analyzer lỗi" --> DIRECT["Tạo direct search plan"]
-    DIRECT --> PLAN
-    PLAN --> PAR{"Tìm kiếm song song"}
-
-    PAR --> PG["Lọc ứng viên trong PostgreSQL"]
-    PAR --> QD["Lọc metadata rồi semantic top-K trong Qdrant"]
-    
-    QD --> QOK{"Qdrant hoạt động?"}
-    QOK -- "Không" --> FALLBACK["Fallback về kết quả PostgreSQL"]
-    QOK -- "Có" --> LOAD["Lấy chi tiết Job từ PostgreSQL"]
-
-    PG --> MERGE["Hợp nhất kết quả theo job_id"]
-    LOAD --> MERGE
-    FALLBACK --> MERGE
-
-    MERGE --> SCORE["Tính điểm tìm kiếm"]
-    SCORE --> DEDUP["Loại bỏ công việc trùng lặp"]
-    DEDUP --> SORT["Sắp xếp theo yêu cầu"]
-    SORT --> PAGE["Phân trang kết quả"]
-    PAGE --> RESULT["Trả items, retrieved_count và has_more"]
-```
-
-Các filter location, employment type, work mode, seniority, skills, khoảng
-lương, currency, salary period, ngày đăng và trạng thái hết hạn được đẩy vào
-Qdrant trước khi chọn semantic top-K. PostgreSQL vẫn áp dụng lại cùng bộ lọc
-khi tải chi tiết job. Location được so khớp qua khóa không dấu và các alias
-phổ biến như `HCMC`, `TP.HCM`, `Sài Gòn`, `Hanoi` và `Đà Nẵng`.
-
-Filter lương chỉ hợp lệ khi có cả `salary_currency` và `salary_period`; hệ
-thống không tự quy đổi giữa lương tháng và lương năm. `total` là số kết quả đã
-deduplicate trong cửa sổ ứng viên đã truy xuất, không phải phép đếm toàn bộ cơ
-sở dữ liệu. `retrieved_count` cho biết số source record được hợp nhất và
-`has_more` cho biết có thể tiếp tục phân trang.
-
-Điểm tìm kiếm được tính từ ba thành phần:
-```text
-Final Score = 0.60 x Semantic Score + 0.30 x Keyword Score + 0.10 x Freshness Score
-```
-
-Các trọng số trên là baseline. Việc thay đổi cần được đánh giá bằng tập truy
-vấn gán nhãn với Recall@K, nDCG@K và tỷ lệ vi phạm filter.
-
-Trong đó:
-
-    - Semantic Score: mức tương đồng về ý nghĩa giữa truy vấn và côngv việc.
-    - Keyword Score: mực độ khớp từ khóa trong tiêu đề, kỹ năng và mô tả.
-    - Freshness Score: mực độ mới của tin tuyển dụng
-
-### 3. So khớp CV với JD
-
-```mermaid
-flowchart TD
-    INPUT["CVProfile và Job Description"] --> VALIDATE{"Đủ dữ liệu?"}
-
-    VALIDATE -- "Không" --> CLARIFY["Yêu cầu người dùng bổ sung CV hoặc JD"]
-    VALIDATE -- "Có" --> CONTEXT["Tạo JobMatchTarget"]
-
-    CONTEXT --> JMA["Job Matching Agent"]
-    JMA --> EVIDENCE["Trích xuất yêu cầu và bằng chứng từ CV"]
-
-    EVIDENCE --> S1["Technical Skills<br/>Trọng số 40%"]
-    EVIDENCE --> S2["Experience<br/>Trọng số 25%"]
-    EVIDENCE --> S3["Projects<br/>Trọng số 15%"]
-    EVIDENCE --> S4["Education<br/>Trọng số 10%"]
-    EVIDENCE --> S5["Languages và Certifications<br/>Trọng số 10%"]
-
-    S1 --> CALC["Tính Weighted Score"]
-    S2 --> CALC
-    S3 --> CALC
-    S4 --> CALC
-    S5 --> CALC
-
-    CALC --> NA{"Có tiêu chí không áp dụng?"}
-    NA -- "Có" --> NORMALIZE["Loại tiêu chí và chuẩn hóa trọng số"]
-    NA -- "Không" --> CLASSIFY["Phân loại mức độ phù hợp"]
-    NORMALIZE --> CLASSIFY
-
-    CLASSIFY --> RESULT["Match Score, Recommendation,<br/>Strengths, Gaps, Evidence"]
-```
-
-Các mức kết quả:
-
-| Điểm | Mức độ phù hợp |
-|---|---|
-| Từ 85 trở lên | Strong Match |
-| Từ 70 đến dưới 85 | Good Match |
-| Từ 50 đến dưới 70 | Partial Match |
-| Dưới 50 | Low Match |
-
-### 4. Multi-Agent workflow
-
-```mermaid
-flowchart TD
-    U["Người dùng gửi message,<br/>CV ID hoặc Job Description"] --> API["Conversation API"]
-    API --> PREP["Prepare Turn"]
-    PREP --> RESTORE["Khôi phục state và lịch sử"]
-    RESTORE --> CONTEXT["Resolve Context"]
-    CONTEXT --> IA["Intent Analysis"]
-
-    IA --> CHECK{"Thiếu dữ liệu hoặc<br/>ý định chưa rõ?"}
-
-    CHECK -- "Có" --> CLARIFY["Tạo câu hỏi làm rõ"]
-    CLARIFY --> RECORD["Lưu Assistant Message"]
-    RECORD --> END["Trả phản hồi"]
-
-    CHECK -- "Không" --> PLAN["Lập WorkflowPlan"]
-    PLAN --> TYPE{"Loại workflow"}
-
-    TYPE -- "Single Agent" --> DISPATCH["Điều hướng theo primary intent"]
-    TYPE -- "Multi-Agent" --> EXECUTE["Chạy lần lượt các bước được yêu cầu"]
-
-    DISPATCH --> SINGLE["CV Analysis, Job Search,<br/>Job Matching, Career Advice<br/>hoặc Cover Letter"]
-
-    EXECUTE --> CVA["CV Analysis nếu được yêu cầu"]
-    CVA --> JSA["Job Search nếu được yêu cầu"]
-    JSA --> JMA["Job Matching nếu được yêu cầu"]
-    JMA --> CAA["Career Advice nếu được yêu cầu"]
-    CAA --> CLA["Cover Letter nếu được yêu cầu"]
-
-    SINGLE --> RESPONSE["Tạo Assistant Response"]
-    CLA --> RESPONSE
-
-    RESPONSE --> SAVE["Lưu message và checkpoint"]
-    SAVE --> RESULT["Trả kết quả về frontend"]
-```
-
-## Công thức tìm kiếm Hybrid
-
- Điểm xếp hạng việc làm được tổng hợp từ:
+Điểm xếp hạng baseline:
 
 ```text
-Final Score = 0.60 x Semantic Score + 0.30 x Keyword Score + 0.10 x Freshness Score
+Final Score = 0.60 × Semantic Score
+            + 0.30 × Keyword Score
+            + 0.10 × Freshness Score
 ```
 
-Khi Qdrant không hoạt động, hệ thống có thể chuyển sang tìm kiếm bằng PostgreSQL.
+| Thành phần | Ý nghĩa |
+| --- | --- |
+| Semantic (60%) | Mức tương đồng ngữ nghĩa giữa truy vấn và tin tuyển dụng. |
+| Keyword (30%) | Mức độ khớp từ khóa ở tiêu đề, kỹ năng và mô tả. |
+| Freshness (10%) | Độ mới của tin đăng. |
 
-## Công thức Job Matching
+Các trọng số là **baseline**, cần kiểm chứng trên tập truy vấn được gán nhãn bằng `Recall@K`, `nDCG@K` và tỷ lệ vi phạm filter. `total` chỉ phản ánh số kết quả đã khử trùng lặp trong cửa sổ truy xuất, **không phải** tổng số bản ghi toàn cơ sở dữ liệu.
+
+### Job Matching
 
 | Tiêu chí | Trọng số |
-|---|---:|
+| --- | ---: |
 | Technical Skills | 40% |
 | Experience | 25% |
 | Projects | 15% |
 | Education | 10% |
-| Language and Certifications | 10% |
+| Languages & Certifications | 10% |
 
-# Job Crawling Pipeline
+Nếu một tiêu chí không áp dụng, hệ thống loại tiêu chí đó và chuẩn hóa lại trọng số.
 
-Airflow thu thập việc làm từ sáu nguồn:
+| Điểm | Phân loại |
+| --- | --- |
+| ≥ 85 | Strong Match |
+| 70–<85 | Good Match |
+| 50–<70 | Partial Match |
+| < 50 | Low Match |
 
-- Himalayas
-- Arbeitnow
-- TopDev
-- Remotive
-- Jobicy
-- ITViec
-
-Pipeline thực hiện:
+## 📄 Xử lý CV
 
 ```mermaid
-flowchart TD
-    A["Airflow Scheduler"] --> B{"Chọn nguồn theo lịch"}
-    
-    B --> C1["Himalayas"]
-    B --> C2["Arbeitnow"]
-    B --> C3["TopDev"]
-    B --> C4["Remotive"]
-    B --> C5["Jobicy"]
-    B --> C6["ITViec"]
-
-    C1 --> D["Đọc pagination cursor"]
-    C2 --> D
-    C3 --> D
-    C4 --> E["Không sử dụng cursor"]
-    C5 --> E
-    C6 --> D
-
-    D --> F["Gọi API hoặc crawl trang tuyển dụng"]
-    E --> F
-
-    F --> G["Nhận danh sách RawJob"]
-    G --> H["Lưu dữ liệu thô dạng JSONL"]
-    
-    H --> I["Map RawJob thành JobCandidate"]
-    I --> J["Validate và chuẩn hóa dữ liệu"]
-
-    J --> K{"Chuẩn hóa thành công?"}
-
-    K -- "Không" --> L["Ghi nhận lỗi normalization"]
-    K -- "Có" --> M["Tạo NormalizedJob"]
-
-    L --> N["Tổng hợp kết quả batch"]
-    M --> O["Tạo content hash"]
-    O --> P["Kiểm tra và loại bỏ trùng lặp"]
-
-    P --> Q{"Trạng thái dữ liệu"}
-
-    Q -- "Job mới" --> R["Insert PostgreSQL"]
-    Q -- "Nội dung thay đổi" --> S["Update PostgreSQL"]
-    Q -- "Không thay đổi" --> T["Đánh dấu unchanged"]
-
-    R --> N
-    S --> N
-    T --> N
-
-    N --> U["Tính crawl metrics"]
-    U --> V{"Kiểm tra chất lượng batch"}
-
-    V -- "Không đạt" --> W["Đánh dấu Airflow task thất bại"]
-    W --> X["Retry theo cấu hình"]
-    X --> F
-
-    V -- "Đạt" --> Y["Lưu cursor mới"]
-    Y --> Z["Lưu file crawl metrics"]
-
-    Z --> AA["Đọc Job theo từng batch"]
-    AA --> AB["Tạo point ID ổn định từ job_id"]
-    AB --> AC["Kiểm tra content hash và embedding versions"]
-
-    AC --> AD{"Job cần cập nhật vector?"}
-
-    AD -- "Không" --> AE["Bỏ qua Job đã index"]
-    AD -- "Có" --> AF["Tạo embedding bằng BAAI/bge-m3"]
-
-    AF --> AG["Upsert vector và metadata vào Qdrant"]
-    AE --> AH["Tổng hợp indexing metrics"]
-    AG --> AH
+flowchart LR
+    Upload["PDF / 1–5 Images"] --> Validate["Validate format & size"]
+    Validate --> Queue["HTTP 202 + Task ID"]
+    Queue --> Worker["CV Worker"]
+    Worker --> Extract["Native text / OCR fallback"]
+    Extract --> Parse["CV Parser"]
+    Parse --> Profile["Editable CV Profile"]
 ```
 
-Mỗi bản ghi nguồn có một vector riêng trong collection
-`jobs_bge_m3_v2`. Kết quả từ nhiều nguồn chỉ được loại trùng sau khi
-PostgreSQL và Qdrant đã hợp nhất, tránh để các DAG nguồn ghi đè vector của
-nhau. Cần tăng `EMBEDDING_MODEL_VERSION` khi thay đổi model/checkpoint và tăng
-`JOB_EMBEDDING_TEXT_VERSION` khi thay đổi cấu trúc văn bản đầu vào embedding.
+**Quy tắc upload:** nhận **một PDF** hoặc **1–5 ảnh PNG/JPG/JPEG**, không trộn hai loại trong một lần upload; tối đa **10 MB mỗi file**, **50 MB tổng cộng**. Với CV nhiều ảnh, hệ thống ghép theo thứ tự đã chọn trước khi xử lý. API trả **HTTP 202** và `task_id`; frontend theo dõi trạng thái qua `GET /api/v1/cvs/processing-tasks/{task_id}`. Worker lưu trạng thái, số lần thử lại và processing lease trong PostgreSQL.
 
-Sau khi triển khai phiên bản này, cần chạy một lần lệnh sau trong backend để
-nạp toàn bộ job hiện có vào collection `v2` và bổ sung metadata phục vụ filter:
+## 🗃 Pipeline dữ liệu tuyển dụng
+
+Nguồn thu thập hiện được cấu hình gồm **Himalayas, Arbeitnow, TopDev, Remotive, Jobicy và ITViec**.
+
+```mermaid
+flowchart LR
+    Sources["6 Job Sources"] --> Crawl["Airflow Crawling"]
+    Crawl --> Raw["Raw JSONL"]
+    Raw --> Normalize["Normalize & Validate"]
+    Normalize --> Dedup["Content Hash & Dedup"]
+    Dedup --> DB[("PostgreSQL")]
+    DB --> Embed["BAAI/bge-m3"]
+    Embed --> Qdrant[("Qdrant")]
+    Dedup --> Metrics["Daily Crawl Metrics"]
+```
+
+Pipeline ghi nhận `fetched`, `normalized`, `failed`, `inserted`, `updated`, `unchanged` và kiểm tra độ mới của dữ liệu. **150–200 job/ngày** là mục tiêu giám sát, không phải cam kết dữ liệu thực tế. Mỗi bản ghi nguồn có vector riêng trong collection `jobs_bge_m3_v2`; thay đổi mô hình hoặc định dạng văn bản embedding cần cập nhật version tương ứng.
+
+Chạy nạp lại job hiện có vào chỉ mục vector (từ thư mục `backend/`):
 
 ```bash
 python -m app.cli index-jobs --batch-size 100
 ```
 
-### Luồng tổng hợp metrics hàng ngày
+## 🧰 Công nghệ
 
-```mermaid
-flowchart TD
-    A["Airflow chạy Daily Metrics DAG"] --> B["Xác định ngày cần thống kê"]
-    B --> C["Đọc metrics của sáu nguồn"]
+| Thành phần | Stack |
+| --- | --- |
+| Backend & API | Python 3.12, FastAPI, Pydantic, SQLAlchemy, Alembic |
+| LLM & Orchestration | LangChain, LangGraph, LangSmith |
+| Persistence & Search | PostgreSQL, Qdrant, BAAI/bge-m3 |
+| Document Processing | PyMuPDF, PaddleOCR |
+| Data Engineering | Apache Airflow, JSONL |
+| Frontend | HTML, CSS, Vanilla JavaScript, Fetch API, Vite |
+| Development | Docker, Docker Compose, pytest |
 
-    C --> D1["Himalayas metrics"]
-    C --> D2["Arbeitnow metrics"]
-    C --> D3["TopDev metrics"]
-    C --> D4["Remotive metrics"]
-    C --> D5["Jobicy metrics"]
-    C --> D6["ITViec metrics"]
-
-    D1 --> E["Tổng hợp dữ liệu trong ngày"]
-    D2 --> E
-    D3 --> E
-    D4 --> E
-    D5 --> E
-    D6 --> E
-
-    E --> F["Tính fetched, normalized và failed"]
-    F --> G["Tính inserted, updated và unchanged"]
-    G --> H{"Đạt mục tiêu 150-200 Job/ngày?"}
-
-    H -- "Không đạt" --> I["Đánh dấu kiểm tra thất bại"]
-    I --> J["Ghi cảnh báo dữ liệu"]
-
-    H -- "Đạt" --> K["Đánh dấu passed"]
-    H -- "Vượt mục tiêu" --> L["Đánh dấu above target"]
-
-    K --> M["Kiểm tra thời điểm có Job mới gần nhất"]
-    L --> M
-    J --> M
-
-    M --> N{"Dữ liệu còn mới?"}
-
-    N -- "Không" --> O["Cảnh báo không có dữ liệu mới?"]
-    N -- "Có" --> P["Xác nhận freshness đạt yêu cầu"]
-
-    O --> Q["Lưu báo cáo metrics hằng ngày"]
-    P --> Q
-
-    Q --> R["Kết thuc Daily Metrics DAG"]
-```
-
-
-## Công nghệ sử dụng
-
-### Backend
-
-- Python 3.12
-- FastAPI
-- Pydantic
-- LangChain
-- LangGraph
-- LangSmith
-- SQLAlchemy
-- PostgreSQL
-- Qdrant
-- BAAI/bge-m3
-- PaddleOCR
-- PyMuPDF
-- Apache Airflow
-
-### Frontend
-
-- HTML
-- CSS
-- Vanilla JavaScript
-- Fetch API
-- Vite
-
-## Cấu trúc thư mục
+## 📁 Cấu trúc dự án
 
 ```text
 multi-agent-job-assistant/
 ├── backend/
-│   ├── alembic/
+│   ├── alembic/              # Database migrations
 │   └── app/
-│       ├── agents/
-│       ├── api/
-│       ├── core/
-│       ├── crawlers/
-│       ├── database/
-│       ├── embeddings/
-│       ├── graphs/
-│       ├── llm/
-│       ├── memory/
-│       ├── normalizers/
-│       ├── prompts/
-│       ├── repositories/
-│       ├── schemas/
-│       ├── services/
-│       └── vectorstores/
+│       ├── agents/           # Specialized agents
+│       ├── api/              # REST endpoints
+│       ├── core/             # Configuration / core utilities
+│       ├── crawlers/         # Job ingestion
+│       ├── database/         # Database integrations
+│       ├── embeddings/       # Embedding pipeline
+│       ├── graphs/           # LangGraph workflows
+│       ├── llm/              # LLM integrations
+│       ├── memory/           # Conversation state
+│       ├── normalizers/      # Job normalization
+│       ├── prompts/          # Agent prompts
+│       ├── repositories/     # Data access
+│       ├── schemas/          # Pydantic schemas
+│       ├── services/         # Business logic
+│       └── vectorstores/     # Qdrant integration
 ├── airflow/
 │   ├── dags/
 │   └── docker-compose.yaml
 ├── frontend/
 │   ├── src/
 │   └── index.html
-└── images/
+├── images/
+└── README.md
 ```
 
-## Cài đặt backend
+## 🚀 Bắt đầu
+
+### Yêu cầu
+
+- **Docker + Docker Compose** nếu chạy bằng container.
+- Hoặc **Python 3.12**, **Node.js/npm** và các dịch vụ phụ thuộc (như PostgreSQL, Qdrant) nếu chạy thủ công.
+- Cấu hình API key và biến môi trường thích hợp. Không commit `.env` hoặc khóa truy cập.
+
+### Cách 1 — Docker Compose (khuyến nghị cho môi trường development)
+
+Tại thư mục gốc dự án, tạo `backend/.env.docker` theo cấu hình của môi trường rồi chạy:
+
+```bash
+docker compose up --build
+```
+
+Compose sử dụng các service hỗ trợ như `migrate`, `ocr-model-init`, `cv-worker` và volume chung `backend_storage`. Địa chỉ development theo cấu hình hiện tại:
+
+| Dịch vụ | URL |
+| --- | --- |
+| Frontend | http://127.0.0.1:5173 |
+| Backend API | http://127.0.0.1:8001 |
+| Swagger UI | http://127.0.0.1:8001/docs |
+
+Sau khi sửa cấu hình runtime, có thể khởi động lại các service ứng dụng:
+
+```bash
+docker compose restart backend cv-worker frontend
+```
+
+### Cách 2 — Chạy thủ công (Windows PowerShell)
+
+**1. Backend**
 
 ```powershell
 cd backend
@@ -471,62 +294,22 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
+# Chỉnh sửa backend/.env trước khi chạy
+alembic upgrade head
+uvicorn app.main:app --reload
 ```
 
-Cập nhật các biến môi trường cần thiết trong `backend/.env`.
+Backend mặc định: `http://127.0.0.1:8000` · API docs: `http://127.0.0.1:8000/docs`.
 
-Không đưa API key hoặc nội dung file `.env` lên GitHub.
-
-Chạy migration:
+**2. CV Worker** — mở terminal riêng trong `backend/` và kích hoạt môi trường Python:
 
 ```powershell
-alembic upgrade head
-```
-
-Chạy backend:
-
-~~~powershell
-uvicorn app.main:app --reload
-~~~
-
-Chạy CV worker ở terminal riêng:
-
-~~~powershell
 python -m app.cli cv-worker
-~~~
-
-Upload CV trả về HTTP 202 cùng task_id. Frontend kiểm tra
-GET /api/v1/cvs/processing-tasks/{task_id} với exponential backoff cho đến
-khi task chuyển sang completed hoặc failed. Task, retry count và processing
-lease được lưu trong PostgreSQL nên có thể tiếp tục sau khi API hoặc worker
-khởi động lại.
-
-Có thể xử lý tối đa một task rồi thoát để kiểm tra vận hành:
-
-~~~powershell
+# Hoặc xử lý một task rồi thoát:
 python -m app.cli cv-worker --once
-~~~
-
-Khi dùng Docker Compose, service backend và cv-worker dùng chung
-backend_storage volume:
-
-~~~powershell
-docker compose -f compose.backend.yaml up --build
-~~~
-
-Backend mặc định:
-
-```text
-http://127.0.0.1:8000
 ```
 
-Swagger UI:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Chạy frontend
+**3. Frontend** — mở terminal mới từ thư mục gốc:
 
 ```powershell
 cd frontend
@@ -534,50 +317,42 @@ npm install
 npm run dev
 ```
 
-Frontend mặc định:
+Frontend mặc định: `http://127.0.0.1:5173`.
 
-```text
-http://127.0.0.1:5173
-```
+> [!IMPORTANT]
+> Với chế độ chạy thủ công, cần bảo đảm PostgreSQL, Qdrant và các cấu hình kết nối được thiết lập đúng trước khi khởi chạy. Mẫu `.env.example` trong repository là điểm tham chiếu cho các biến môi trường thực tế.
 
-## Trạng thái hiện tại
+## 📍 Trạng thái dự án
 
-Đã hoàn thành:
+| Đã triển khai | Đang tiếp tục hoàn thiện |
+| --- | --- |
+| Multi-Agent workflow; CV parsing/analysis; hybrid search; job matching; career advice; cover letter | LangSmith evaluation và bộ dữ liệu đánh giá có gán nhãn |
+| Conversation checkpoint; authentication và ownership cho CV/hội thoại | Unit / integration / end-to-end test mở rộng |
+| PDF/ảnh CV, OCR worker bất đồng bộ, chỉnh sửa profile | Human-in-the-loop |
+| Airflow crawling; search context; snapshot phân trang; frontend | Health checks, CI và production deployment |
 
-- Các Agent chính.
-- LangGraph orchestration.
-- Hybrid Job Search.
-- CV–Job Matching.
-- Conversation Memory.
-- Airflow crawling pipeline.
-- Frontend demo.
+### Giới hạn hiện tại
 
-Đang hoàn thiện:
+- Giới hạn upload là một PDF hoặc tối đa năm ảnh, chưa hỗ trợ upload trộn.
+- CV được lưu trên filesystem/volume backend; chưa chuyển sang object storage production.
+- Điểm matching và ranking cần được hiệu chỉnh bằng dữ liệu được gán nhãn.
+- Kết quả tìm kiếm phụ thuộc chất lượng, metadata và độ mới của job đã thu thập/index.
+- Snapshot cũ không tự cập nhật sau khi thuật toán thay đổi; cần tìm kiếm mới.
+- Chưa có bộ kiểm thử và hệ thống đánh giá LLM tự động đầy đủ.
 
-- Automated testing.
-- LangSmith evaluation.
-- Human-in-the-loop.
-- Authentication và phân quyền.
-- Health check cho PostgreSQL và Qdrant.
-- Docker và deployment production.
-- Đánh giá chất lượng trên bộ dữ liệu thực nghiệm.
+## 🗺 Lộ trình phát triển
 
-## Hạn chế
+- [ ] Mở rộng unit, integration và end-to-end tests.
+- [ ] Hoàn thiện GitHub Actions CI và health checks.
+- [ ] Xây dựng dataset và LangSmith evaluation cho Intent Analysis, Job Search, Job Matching.
+- [ ] Hiệu chỉnh ranking/matching theo metrics và dữ liệu thực tế.
+- [ ] Hoàn thiện human-in-the-loop.
+- [ ] Củng cố bảo vệ dữ liệu CV và triển khai production.
 
-- Hiện chỉ hỗ trợ CV dạng PDF.
-- CV đang được lưu trên local storage.
-- Chưa có tài khoản và phân quyền người dùng.
-- Chưa có bộ kiểm thử tự động đầy đủ.
-- Matching score chưa được hiệu chỉnh trên bộ dữ liệu tuyển dụng thực tế.
-- Human-in-the-loop chưa hoàn thiện.
-- Chưa có hệ thống đánh giá LLM tự động.
+---
 
-## Định hướng tiếp theo
+<div align="center">
 
-1. Bổ sung unit test và integration test.
-2. Thêm GitHub Actions CI.
-3. Xây dựng LangSmith evaluation dataset.
-4. Đánh giá Intent Analysis, Job Search và Job Matching.
-5. Hoàn thiện human-in-the-loop.
-6. Bổ sung authentication và bảo vệ dữ liệu CV.
-7. Triển khai frontend và backend.
+**Multi-Agent Job Assistant** · AI Engineering × Data Engineering
+
+</div>
