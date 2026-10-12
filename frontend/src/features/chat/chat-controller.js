@@ -35,11 +35,18 @@ export function createChatController({
       : null;
     const defaultMatchingMessage =
       "Hãy đánh giá mức độ phù hợp giữa CV của tôi và công việc này";
+    const defaultCvMessage =
+      "Hãy phân tích CV của tôi và đề xuất các điểm cần cải thiện";
 
     return {
       message:
         typedMessage ||
-        (jobDescription ? defaultMatchingMessage : ""),
+        (jobDescription ? defaultMatchingMessage : "") ||
+        (
+          state.selectedCvFile && state.cvUploadStatus === "uploaded"
+            ? defaultCvMessage
+            : ""
+        ),
       jobDescription,
     };
   }
@@ -93,6 +100,7 @@ export function createChatController({
     await handleJobSearchConversation(
       originalMessage,
       conversation.jobSearchResult,
+      conversation.searchContext,
     );
   }
 
@@ -481,9 +489,9 @@ export function createChatController({
     state.isSending = true;
 
     const messageContext = {
-      cvId: state.selectedCvFile ? state.uploadedCvId : null,
-      cvName: state.selectedCvFile
-        ? state.uploadedCvName ?? state.selectedCvFile.name
+      cvId: state.uploadedCvId,
+      cvName: state.uploadedCvId
+        ? state.uploadedCvName ?? state.selectedCvFile?.name ?? null
         : null,
       jobDescription: input.jobDescription,
     };

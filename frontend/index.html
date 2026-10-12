@@ -455,49 +455,18 @@
               hidden
             ></div>
 
-            <div
-              id="selected-cv"
-              class="selected-cv"
-              hidden
-            >
-              <span class="pdf-badge">PDF</span>
-
-              <div class="selected-cv-content">
-                <strong id="selected-cv-name"></strong>
-                <small id="selected-cv-status"></small>
-              </div>
-
-              <button
-                id="review-cv-button"
-                type="button"
-                aria-label="Xem và sửa thông tin CV"
-                hidden
-              >
-                Xem &amp; sửa
-              </button>
-
-              <button
-                id="remove-cv-button"
-                type="button"
-                aria-label="Xóa CV"
-              >
-                ×
-              </button>
-            </div>
-
             <dialog id="cv-profile-dialog" class="cv-profile-dialog">
               <form method="dialog" class="cv-profile-dialog-content">
                 <h2>Kiểm tra thông tin trích xuất</h2>
                 <p>
-                  Sửa dữ liệu nếu cần. Mỗi bằng chứng quan trọng có trang,
-                  đoạn nguồn và độ tin cậy trong trường provenance.
+                  Kiểm tra và chỉnh sửa thông tin được đọc từ CV.
+                  Các mục để trống là thông tin hệ thống chưa nhận diện được.
                 </p>
-                <textarea
+                <div
                   id="cv-profile-editor"
-                  rows="20"
-                  spellcheck="false"
-                  aria-label="Thông tin CV dạng JSON"
-                ></textarea>
+                  class="cv-profile-editor"
+                  aria-label="Thông tin trích xuất từ CV"
+                ></div>
                 <div class="cv-profile-dialog-actions">
                   <button value="cancel" type="submit">Hủy</button>
                   <button id="save-cv-profile-button" value="default" type="button">
@@ -578,48 +547,98 @@
               <input
                 id="cv-input"
                 type="file"
-                accept=".pdf,application/pdf"
+                accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                multiple
                 hidden
               />
 
-              <button
-                id="toggle-jd-button"
-                class="icon-button jd-button"
-                type="button"
-                aria-label="Mở phần nhập Job Description"
-                aria-pressed="false"
-                title="So khớp CV với JD"
+              <div
+                id="selected-cv"
+                class="selected-cv"
+                aria-live="polite"
+                hidden
               >
-                JD
-              </button>
+                <span id="cv-file-type-badge" class="file-type-badge">PDF</span>
 
-              <button
-                id="attach-cv-button"
-                class="icon-button"
-                type="button"
-                aria-label="Đính kèm CV"
-                title="Đính kèm CV"
-              >
-                CV
-              </button>
+                <div class="selected-cv-content">
+                  <strong id="selected-cv-name"></strong>
+                  <small id="selected-cv-status"></small>
+                  <div
+                    id="cv-preview-list"
+                    class="cv-preview-list"
+                    role="list"
+                    aria-label="Các trang CV đã chọn"
+                    hidden
+                  ></div>
+                </div>
 
-              <textarea
-                id="message-input"
-                rows="1"
-                maxlength="2000"
-                placeholder="Nhập yêu cầu tìm việc hoặc câu hỏi nghề nghiệp..."
-                aria-label="Nội dung tin nhắn"
-              ></textarea>
+                <button
+                  id="add-cv-pages-button"
+                  type="button"
+                  aria-label="Thêm ảnh vào CV"
+                  hidden
+                >
+                  + Thêm ảnh
+                </button>
 
-              <button
-                id="send-button"
-                class="send-button"
-                type="submit"
-                aria-label="Gửi tin nhắn"
-                disabled
-              >
-                Gửi
-              </button>
+                <button
+                  id="review-cv-button"
+                  type="button"
+                  aria-label="Xem và sửa thông tin CV"
+                  hidden
+                >
+                  Xem &amp; sửa
+                </button>
+
+                <button
+                  id="remove-cv-button"
+                  type="button"
+                  aria-label="Xóa CV"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div class="composer-input-row">
+                <button
+                  id="toggle-jd-button"
+                  class="icon-button jd-button"
+                  type="button"
+                  aria-label="Mở phần nhập Job Description"
+                  aria-pressed="false"
+                  title="So khớp CV với JD"
+                >
+                  JD
+                </button>
+
+                <button
+                  id="attach-cv-button"
+                  class="icon-button"
+                  type="button"
+                  aria-label="Đính kèm CV dạng PDF hoặc ảnh"
+                  title="Đính kèm CV (PDF, PNG, JPG)"
+                >
+                  CV
+                </button>
+
+                <textarea
+                  id="message-input"
+                  rows="1"
+                  maxlength="2000"
+                  placeholder="Nhập yêu cầu tìm việc hoặc câu hỏi nghề nghiệp..."
+                  aria-label="Nội dung tin nhắn"
+                ></textarea>
+
+                <button
+                  id="send-button"
+                  class="send-button"
+                  type="submit"
+                  aria-label="Gửi tin nhắn"
+                  disabled
+                >
+                  Gửi
+                </button>
+              </div>
             </form>
 
             <p class="ai-warning">

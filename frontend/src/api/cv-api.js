@@ -2,10 +2,13 @@ import { requestJson } from "./http-client.js";
 
 const CV_UPLOAD_ENDPOINT = "/api/v1/cvs";
 
-export async function uploadCv(file) {
+export async function uploadCv(files) {
     const formData = new FormData();
+    const selectedFiles = Array.isArray(files) ? files : [files];
 
-    formData.append("file", file);
+    for (const file of selectedFiles) {
+        formData.append("file", file);
+    }
 
     const responseBody = await requestJson(
         CV_UPLOAD_ENDPOINT,
@@ -33,14 +36,18 @@ export async function uploadCv(file) {
         fileName:
             data?.fileName ??
             data?.file_name ??
-            file.name,
+            selectedFiles.length === 1
+                ? selectedFiles[0].name
+                : `CV (${selectedFiles.length} ảnh)`,
         fileSize:
             data?.fileSize ??
             data?.file_size ??
-            file.size,
+            selectedFiles.reduce((total, file) => total + file.size, 0),
         contentType:
             data?.content_type ??
-            file.type,
+            selectedFiles.length === 1
+                ? selectedFiles[0].type
+                : "application/pdf",
         inspection: data?.inspection ?? null,
         extraction: data?.extraction ?? null,
         ocr: data?.ocr ?? null,

@@ -131,6 +131,7 @@ export function createHistoryController({
     return persistConversationSnapshot(state.threadId, {
       messages: state.messages,
       results: state.conversationResults,
+      jobSearchSnapshot: state.jobSearchSnapshot,
       latestContext,
       cvId: latestContext?.cvId ?? state.uploadedCvId,
       cvName: latestContext?.cvName ?? state.uploadedCvName,
@@ -676,6 +677,7 @@ export function createHistoryController({
       cvName: serverHistory.cvName ?? cachedHistory.cvName ?? null,
       jobDescription: serverHistory.jobDescription ?? cachedHistory.jobDescription ?? null,
       pendingHumanReview: serverHistory.pendingHumanReview ?? null,
+      jobSearchSnapshot: cachedHistory.jobSearchSnapshot ?? null,
     };
   }
 
@@ -689,6 +691,7 @@ export function createHistoryController({
       cvName: cachedHistory.cvName ?? null,
       jobDescription: cachedHistory.jobDescription ?? null,
       pendingHumanReview: cachedHistory.pendingHumanReview ?? null,
+      jobSearchSnapshot: cachedHistory.jobSearchSnapshot ?? null,
     };
 
     for (const message of history.messages) {

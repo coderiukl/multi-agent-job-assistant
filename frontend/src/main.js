@@ -139,6 +139,7 @@ const historyController = createHistoryController({
 });
 
 const jobsController = createJobsController({
+  cacheConversation: historyController.cacheCurrentConversation,
   clearError,
   renderJobSearchResult:
     jobSearchRenderer.renderJobSearchResult,
@@ -419,6 +420,7 @@ async function showConversationResult(type) {
     await jobsController.handleConversationSearch(
       entry.originalMessage,
       conversation.jobSearchResult,
+      conversation.searchContext,
     );
     return;
   }
@@ -444,8 +446,11 @@ function restoreConversationContext(history) {
   const jobDescription =
     context.jobDescription ?? history.jobDescription ?? "";
 
+  state.jobSearchSnapshot = history.jobSearchSnapshot ?? null;
+
   state.uploadedCvId = cvId;
   state.uploadedCvName = cvName;
+  state.selectedCvFiles = [];
   state.selectedCvFile = null;
   state.cvUploadStatus = cvId ? "uploaded" : "idle";
   cvController.renderStatus();
@@ -487,6 +492,11 @@ function bindEvents() {
         elements.chatForm.requestSubmit();
       }
     },
+  );
+
+  elements.messageInput.addEventListener(
+    "paste",
+    cvController.handlePaste,
   );
 
   elements.chatForm.addEventListener(
@@ -532,9 +542,12 @@ function bindEvents() {
 
   elements.attachCvButton.addEventListener(
     "click",
-    () => {
-      elements.cvInput.click();
-    },
+    cvController.openFilePicker,
+  );
+
+  elements.addCvPagesButton?.addEventListener(
+    "click",
+    cvController.openFilePicker,
   );
 
   elements.cvInput.addEventListener(
@@ -717,6 +730,7 @@ function clearJobDescription() {
 
 
 function clearComposerContextAfterSubmit() {
+  state.selectedCvFiles = [];
   state.selectedCvFile = null;
   elements.cvInput.value = "";
   cvController.renderStatus();
@@ -902,6 +916,7 @@ function resetConversation() {
   state.messages = [];
   state.jobs = [];
   state.currentSearchResult = null;
+  state.jobSearchSnapshot = null;
   state.lastSearchQuery = "";
   state.currentSort = "relevance";
   state.selectedJob = null;
@@ -914,6 +929,7 @@ function resetConversation() {
   state.currentCareerAdviceResult = null;
   state.currentCoverLetterResult = null;
   state.pendingHumanReview = null;
+  state.selectedCvFiles = [];
   state.selectedCvFile = null;
   state.uploadedCvId = null;
   state.uploadedCvName = null;
@@ -1004,7 +1020,7 @@ function setComposerDisabled(disabled) {
   elements.clearJdButton.disabled = disabled;
 
   elements.sendButton.disabled =
-    disabled || !hasComposerContent();
+    disabled || isCvBlockingSend() || !hasComposerContent();
 }
 
 function updateComposerContext() {
@@ -1024,11 +1040,26 @@ function updateComposerContext() {
     String(hasCv),
   );
 
+  const cvIsProcessing = state.cvUploadStatus === "uploading";
+  elements.chatForm?.setAttribute(
+    "aria-busy",
+    String(cvIsProcessing),
+  );
+
   elements.messageInput.placeholder = state.matchingMode
     ? "Nhập yêu cầu so khớp, ví dụ: đánh giá CV này với JD..."
     : hasCv
       ? "Tìm việc phù hợp với CV, kỹ năng hoặc mục tiêu tiếp theo..."
       : "Nhập vị trí, kỹ năng, địa điểm hoặc câu hỏi nghề nghiệp...";
+
+  elements.sendButton.title = cvIsProcessing
+    ? "Đang xử lý CV, vui lòng chờ"
+    : "Gửi tin nhắn";
+  elements.sendButton.setAttribute(
+    "aria-label",
+    elements.sendButton.title,
+  );
+  updateSendButton();
 }
 
 
@@ -1044,13 +1075,24 @@ function resizeMessageInput() {
 function updateSendButton() {
   elements.sendButton.disabled =
     state.isSending ||
+    isCvBlockingSend() ||
     !hasComposerContent();
+}
+
+
+function isCvBlockingSend() {
+  return Boolean(state.selectedCvFile) &&
+    state.cvUploadStatus !== "uploaded";
 }
 
 
 function hasComposerContent() {
   return Boolean(
     elements.messageInput.value.trim() ||
+    (
+      state.selectedCvFile &&
+      state.cvUploadStatus === "uploaded"
+    ) ||
     (
       state.matchingMode &&
       elements.jobDescriptionInput.value.trim()

@@ -6,6 +6,7 @@ export const state = {
     messages: [],
 
     selectedCvFile: null,
+    selectedCvFiles: [],
     uploadedCvId: null,
     uploadedCvName: null,
     uploadedCvProfile: null,
@@ -31,6 +32,7 @@ export const state = {
     
     jobs: [],
     currentSearchResult: null,
+    jobSearchSnapshot: null,
     lastSearchQuery: "",
     currentSort: "relevance",
     selectedJob: null,

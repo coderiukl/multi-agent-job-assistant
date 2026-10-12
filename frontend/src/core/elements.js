@@ -107,6 +107,9 @@ export const elements = {
     attachCvButton: document.querySelector(
         "#attach-cv-button",
     ),
+    addCvPagesButton: document.querySelector(
+        "#add-cv-pages-button",
+    ),
     removeCvButton: document.querySelector(
         "#remove-cv-button",
     ),
@@ -129,8 +132,12 @@ export const elements = {
     selectedCvStatus: document.querySelector(
         "#selected-cv-status",
     ),
+    cvPreviewList: document.querySelector("#cv-preview-list"),
     cvStatusBadge: document.querySelector(
         "#cv-status-badge",
+    ),
+    cvFileTypeBadge: document.querySelector(
+        "#cv-file-type-badge",
     ),
 
     globalError: document.querySelector("#global-error"),
