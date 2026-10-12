@@ -12,12 +12,24 @@ x-backend-common: &backend-common
   volumes:
     - ./backend:/app
     - backend_storage:/app/storage
+    - paddlex_models:/home/app/.paddlex
 
   init: true
   restart: unless-stopped
   stop_grace_period: 30s
 
 services:
+  ocr-model-init:
+    <<: *backend-common
+
+    command:
+      - python
+      - -m
+      - app.cli
+      - preload-ocr-models
+
+    restart: "no"
+
   migrate:
     <<: *backend-common
 
@@ -59,12 +71,22 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      ocr-model-init:
+        condition: service_completed_successfully
 
   cv-worker:
     <<: *backend-common
 
     healthcheck:
-      disable: true
+      test:
+        - CMD
+        - python
+        - -c
+        - "from pathlib import Path; raise SystemExit(0 if Path('/tmp/cv-worker-ready').is_file() else 1)"
+      interval: 5s
+      timeout: 3s
+      start_period: 300s
+      retries: 3
 
     command:
       - python
@@ -74,6 +96,8 @@ services:
 
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      ocr-model-init:
         condition: service_completed_successfully
     
   frontend:
@@ -105,6 +129,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      cv-worker:
+        condition: service_healthy
 
     init: true
     restart: unless-stopped
@@ -113,3 +139,4 @@ services:
 volumes:
   backend_storage:
   frontend_node_modules:
+  paddlex_models:
