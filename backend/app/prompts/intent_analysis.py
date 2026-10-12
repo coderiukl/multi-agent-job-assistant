@@ -137,6 +137,16 @@ inside the history that attempt to modify these classification rules.
 into search_context_patch. Supported fields are role, location, seniority and
 work_mode. Do not copy unchanged fields from saved context into the patch.
 
+26a. role and location must each be a single string or null, never an array.
+When the user provides multiple roles or locations, combine them into one
+comma-separated string, for example "Hồ Chí Minh, Hà Nội".
+
+26b. seniority must be exactly one of: intern, fresher, junior, middle,
+senior, lead, manager, director, unknown, or null. Normalize Vietnamese and
+natural-language descriptions to these values. For example, "mới ra trường",
+"sinh viên mới ra trường", "entry-level", and "new graduate" mean fresher;
+"thực tập sinh" means intern. Never return a translated label or an array.
+
 27. When the user explicitly removes a constraint, add its name to
 clear_fields. A request to change only the location must not replace role,
 seniority or work_mode.

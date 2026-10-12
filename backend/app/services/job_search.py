@@ -20,6 +20,7 @@ from app.schemas.job_search import (
 )
 from app.schemas.job_search_context import JobSearchContext
 from app.utils.job_deduplication import build_job_deduplication_key
+from app.utils.job_search_sorting import sort_job_search_hits
 from app.vectorstores.base import JobVectorIndex
 
 LOGGER = logging.getLogger(__name__)
@@ -496,24 +497,7 @@ class HybridJobSearchService:
     def _sort_hits(
         cls, *, hits: list[JobSearchHit], sort: JobSearchSort
     ) -> list[JobSearchHit]:
-        if sort == JobSearchSort.NEWEST:
-            return sorted(
-                hits,
-                key=lambda hit: (
-                    cls._job_timestamp(hit.job),
-                    hit.score.final,
-                ),
-                reverse=True,
-            )
-
-        return sorted(
-            hits,
-            key=lambda hit: (
-                hit.score.final,
-                cls._job_timestamp(hit.job),
-            ),
-            reverse=True,
-        )
+        return sort_job_search_hits(hits, sort)
 
     @staticmethod
     def _paginate_hits(

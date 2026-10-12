@@ -1,10 +1,16 @@
-from typing import Literal
+import re
+import unicodedata
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.job import SeniorityLevel, WorkMode, normalize_single_line
 
 SearchContextField = Literal["role", "location", "seniority", "work_mode"]
+_LOCATION_SEPARATOR = re.compile(
+    r"\s*(?:[,;|]|\b(?:và|hoặc|and|or)\b)\s*",
+    flags=re.IGNORECASE,
+)
 
 
 class ConversationSearchContext(BaseModel):
@@ -13,14 +19,20 @@ class ConversationSearchContext(BaseModel):
     seniority: SeniorityLevel | None = None
     work_mode: WorkMode | None = None
 
-    @field_validator("role", "location")
+    @field_validator("role", "location", mode="before")
     @classmethod
-    def normalize_text(cls, value: str | None) -> str | None:
+    def normalize_text(cls, value: Any) -> str | None:
+        value = _coerce_text_value(value)
         if value is None:
             return None
 
         normalized = normalize_single_line(value)
         return normalized or None
+
+    @field_validator("seniority", mode="before")
+    @classmethod
+    def normalize_seniority(cls, value: Any) -> SeniorityLevel | None:
+        return _coerce_seniority(value)
 
     @property
     def is_empty(self) -> bool:
@@ -36,14 +48,20 @@ class SearchContextPatch(BaseModel):
     work_mode: WorkMode | None = None
     clear_fields: list[SearchContextField] = Field(default_factory=list)
 
-    @field_validator("role", "location")
+    @field_validator("role", "location", mode="before")
     @classmethod
-    def normalize_text(cls, value: str | None) -> str | None:
+    def normalize_text(cls, value: Any) -> str | None:
+        value = _coerce_text_value(value)
         if value is None:
             return None
 
         normalized = normalize_single_line(value)
         return normalized or None
+
+    @field_validator("seniority", mode="before")
+    @classmethod
+    def normalize_seniority(cls, value: Any) -> SeniorityLevel | None:
+        return _coerce_seniority(value)
 
     @field_validator("clear_fields")
     @classmethod
@@ -77,3 +95,99 @@ def format_search_context(context: ConversationSearchContext | None) -> str:
 
     values = context.model_dump(mode="json", exclude_none=True)
     return "\n".join(f"- {key}: {value}" for key, value in values.items())
+
+
+def split_search_locations(value: str | None) -> list[str]:
+    if not value:
+        return []
+
+    locations: list[str] = []
+    seen: set[str] = set()
+
+    for item in _LOCATION_SEPARATOR.split(value):
+        normalized = normalize_single_line(item)
+        key = normalized.casefold()
+        if not normalized or key in seen:
+            continue
+
+        seen.add(key)
+        locations.append(normalized)
+
+    return locations
+
+
+def _coerce_text_value(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return value
+
+    if isinstance(value, (list, tuple, set)):
+        normalized_items = [
+            normalize_single_line(item)
+            for item in value
+            if isinstance(item, str) and normalize_single_line(item)
+        ]
+        return ", ".join(dict.fromkeys(normalized_items)) or None
+
+    return str(value)
+
+
+_SENIORITY_ALIASES: dict[str, SeniorityLevel] = {
+    "intern": SeniorityLevel.INTERN,
+    "internship": SeniorityLevel.INTERN,
+    "thuc tap": SeniorityLevel.INTERN,
+    "thuc tap sinh": SeniorityLevel.INTERN,
+    "fresher": SeniorityLevel.FRESHER,
+    "entry level": SeniorityLevel.FRESHER,
+    "graduate": SeniorityLevel.FRESHER,
+    "new grad": SeniorityLevel.FRESHER,
+    "new graduate": SeniorityLevel.FRESHER,
+    "moi ra truong": SeniorityLevel.FRESHER,
+    "sinh vien moi ra truong": SeniorityLevel.FRESHER,
+    "junior": SeniorityLevel.JUNIOR,
+    "middle": SeniorityLevel.MIDDLE,
+    "mid": SeniorityLevel.MIDDLE,
+    "mid level": SeniorityLevel.MIDDLE,
+    "senior": SeniorityLevel.SENIOR,
+    "lead": SeniorityLevel.LEAD,
+    "leader": SeniorityLevel.LEAD,
+    "team lead": SeniorityLevel.LEAD,
+    "truong nhom": SeniorityLevel.LEAD,
+    "manager": SeniorityLevel.MANAGER,
+    "quan ly": SeniorityLevel.MANAGER,
+    "director": SeniorityLevel.DIRECTOR,
+    "giam doc": SeniorityLevel.DIRECTOR,
+    "unknown": SeniorityLevel.UNKNOWN,
+    "khong ro": SeniorityLevel.UNKNOWN,
+}
+
+
+def _coerce_seniority(value: Any) -> SeniorityLevel | None:
+    if value is None or isinstance(value, SeniorityLevel):
+        return value
+
+    candidates = value if isinstance(value, (list, tuple, set)) else [value]
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+
+        key = _normalize_enum_label(candidate)
+        if not key:
+            continue
+
+        mapped = _SENIORITY_ALIASES.get(key)
+        if mapped is not None:
+            return mapped
+
+    return SeniorityLevel.UNKNOWN
+
+
+def _normalize_enum_label(value: str) -> str:
+    ascii_value = (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", "ignore")
+        .decode()
+    )
+    return re.sub(r"[\s_-]+", " ", ascii_value.casefold()).strip()

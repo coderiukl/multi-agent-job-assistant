@@ -29,6 +29,7 @@ from app.schemas.conversation import (
 from app.schemas.conversation_search_context import (
     ConversationSearchContext,
     apply_search_context_patch,
+    split_search_locations,
 )
 from app.schemas.conversations_intent import IntentAnalysisInput
 from app.schemas.cover_letter import CoverLetterInput, CoverLetterResult
@@ -1304,7 +1305,7 @@ class ConversationNodes:
             state.get("search_context") or {}
         )
         filters = JobSearchFilters(
-            locations=[context.location] if context.location else [],
+            locations=split_search_locations(context.location),
             seniority_levels=[context.seniority] if context.seniority else [],
             work_modes=[context.work_mode] if context.work_mode else [],
         )
