@@ -3,58 +3,51 @@
 Tài liệu này mô tả kiến trúc đã được triển khai trên nhánh `main` của hệ thống
 Multi-Agent Job Assistant.
 
-Những thành phần chưa triển khai như authentication, Redis, MinIO,
-Interview Agent và Human-in-the-loop không thuộc kiến trúc As-is.
+Tài liệu phản ánh mã nguồn trên nhánh `main`, không đồng nghĩa mọi thành phần đã được triển khai production. Authentication/JWT, kiểm soát quyền truy cập CV và hội thoại, xử lý CV bất đồng bộ và Human-in-the-loop cho Cover Letter đã có trong mã nguồn. Các hệ thống tùy chọn như PostgreSQL checkpoint, Qdrant và LangSmith tracing cần cấu hình phù hợp để hoạt động.
 
 ## 1. Kiến trúc tổng thể
 
 ```mermaid
-flowchart TD
-    USER["Người dùng"] --> FE["Frontend<br/>HTML, CSS, JavaScript"]
+flowchart TB
+    U["Người dùng"] --> FE["Frontend · Vite / HTML / CSS / JavaScript"]
     FE --> API["FastAPI REST API"]
-
-    API --> CVAPI["CV API"]
+    API --> AUTH["Auth API · JWT"]
+    API --> CVAPI["CV API · Upload / Profile / Task status"]
     API --> JOBAPI["Job Search API"]
-    API --> CONVAPI["Conversation API"]
+    API --> CONVAPI["Conversation API · Messages / Resume / History"]
 
-    CVAPI --> CVP["CV Processing Service"]
-    CVP --> PDF["PDF Inspector<br/>Native Text và PaddleOCR"]
-    PDF --> PARSER["CV Parser Agent"]
-    PARSER --> CVSTORE[("Local CV Profile Storage")]
+    AUTH --> USERS[("PostgreSQL · Users")]
+    CVAPI --> OWNER["CV ownership authorization"]
+    CONVAPI --> THREADAUTH["Conversation ownership authorization"]
+    OWNER --> CVQUEUE["Durable CV processing tasks"]
+    CVQUEUE --> WORKER["CV Worker"]
+    WORKER --> EXTRACT["PDF / Images · Native text + PaddleOCR"]
+    EXTRACT --> PARSER["CV Parser Agent"]
+    PARSER --> CVS[("CV Profile / File Storage")]
+    CVQUEUE --> PG[("PostgreSQL")]
 
-    JOBAPI --> SEARCH["Hybrid Job Search Service"]
+    CONVAPI --> THREADAUTH
+    THREADAUTH --> GRAPH["LangGraph Conversation Workflow"]
+    GRAPH --> INTENT["Intent Analysis + Workflow Planning"]
+    INTENT --> AGENTS["CV Analysis · Job Search · Job Matching · Career Advice · Cover Letter"]
+    GRAPH --> HITL["Human Review · Cover Letter approval / rejection"]
+    HITL --> GRAPH
+    GRAPH --> CHECKPOINT[("InMemory / PostgreSQL Checkpoint")]
+    AGENTS --> SEARCH["Hybrid Search & Matching Services"]
+    JOBAPI --> SEARCH
+    SEARCH --> PG
+    SEARCH --> QD[("Qdrant · Job Embeddings")]
 
-    CONVAPI --> GRAPH["LangGraph Conversation Workflow"]
-    GRAPH --> MEMORY[("LangGraph Checkpoint")]
-
-    GRAPH --> INTENT["Intent Analyzer"]
-    GRAPH --> CVA["CV Analysis Agent"]
-    GRAPH --> JSA["Job Search Agent"]
-    GRAPH --> JMA["Job Matching Agent"]
-    GRAPH --> CAA["Career Advice Agent"]
-    GRAPH --> CLA["Cover Letter Agent"]
-
-    JSA --> SEARCH
-    SEARCH --> PG[("PostgreSQL Jobs")]
-    SEARCH --> QD[("Qdrant Job Embeddings")]
-
-    INTENT --> LLM["LLM Factory"]
+    AF["Airflow · Six Job Sources"] --> INGEST["Fetch · Normalize · Upsert · Metrics"]
+    INGEST --> PG
+    PG --> EMBED["BAAI/bge-m3 · Indexing"]
+    EMBED --> QD
+    AGENTS --> LLM["LLM Factory · OpenAI / 9Router"]
     PARSER --> LLM
-    CVA --> LLM
-    JSA --> LLM
-    JMA --> LLM
-    CAA --> LLM
-    CLA --> LLM
-
-    LLM --> PROVIDER{"LLM Provider"}
-    PROVIDER --> OPENAI["OpenAI"]
-    PROVIDER --> ROUTER["9Router"]
-
-    AF["Airflow Crawling Pipeline"] --> RAW[("Raw JSONL và Metrics")]
-    AF --> PG
-    PG --> INDEX["BAAI/bge-m3 Embedding"]
-    INDEX --> QD
+    GRAPH -. "Tracing khi bật" .-> LS["LangSmith"]
 ```
+
+> Các mũi tên thể hiện phụ thuộc logic, không nhất thiết là lời gọi đồng bộ. CV upload trả tác vụ để worker xử lý sau; cơ chế checkpoint có thể dùng bộ nhớ hoặc PostgreSQL theo cấu hình.
 
 ## 2. Các tầng kiến trúc
 
@@ -63,10 +56,10 @@ flowchart TD
     L1["Presentation Layer<br/>HTML, CSS, JavaScript"]
     L2["API Layer<br/>FastAPI Routers và Schemas"]
     L3["Workflow Layer<br/>LangGraph State và Routing"]
-    L4["Agent Layer<br/>Sáu Agent chuyên biệt"]
+    L4["Agent Layer<br/>CV Parser và 5 Agent nghiệp vụ"]
     L5["Service Layer<br/>Nghiệp vụ và tính toán xác định"]
     L6["Repository Layer<br/>Truy cập dữ liệu"]
-    L7["Data Layer<br/>PostgreSQL, Qdrant và Local Storage"]
+    L7["Data Layer<br/>PostgreSQL, Qdrant, Local Storage và JSONL"]
 
     L1 --> L2
     L2 --> L3
@@ -89,7 +82,8 @@ Frontend sử dụng:
 
 Frontend chịu trách nhiệm:
 
-- Tải CV.
+- Đăng ký, đăng nhập và lưu trạng thái xác thực trên frontend.
+- Upload CV PDF hoặc các trang ảnh PNG/JPEG; theo dõi trạng thái tác vụ xử lý CV.
 - Nhập câu hỏi.
 - Nhập Job Description.
 - Hiển thị danh sách việc làm.
@@ -97,6 +91,7 @@ Frontend chịu trách nhiệm:
 - Hiển thị Job Matching.
 - Hiển thị Career Advice và Cover Letter.
 - Quản lý danh sách cuộc hội thoại trên trình duyệt.
+- Tiếp tục hội thoại sau bước Human Review của Cover Letter.
 
 Mã nguồn chính:
 
@@ -114,10 +109,11 @@ FastAPI cung cấp các nhóm API:
 
 | API | Trách nhiệm |
 |---|---|
-| Health API | Kiểm tra trạng thái FastAPI |
-| CV API | Upload, kiểm tra và xử lý CV |
-| Job API | Tìm kiếm việc làm |
-| Conversation API | Điều phối hội thoại và lấy lịch sử |
+| Health API | Kiểm tra trạng thái ứng dụng (được đăng ký ngoài các nhóm API v1 nếu có) |
+| Auth API · `/api/v1/auth` | Register, login, thông tin người dùng hiện tại |
+| CV API · `/api/v1/cvs` | Upload CV (202 Accepted), trạng thái task, lấy/sửa/xóa CV sở hữu |
+| Job API · `/api/v1/jobs/search` | Tìm kiếm việc làm |
+| Conversation API · `/api/v1/conversation` | Gửi message, intent analysis, xem/xóa lịch sử và resume Human Review |
 
 Mã nguồn chính:
 
@@ -140,6 +136,7 @@ LangGraph chịu trách nhiệm:
 - Điều hướng đến Agent.
 - Chạy multi-agent workflow.
 - Lưu checkpoint và lịch sử hội thoại.
+- Tạm dừng/tiếp tục workflow cho Human Review trước và sau bản nháp Cover Letter.
 
 Mã nguồn chính:
 
@@ -154,7 +151,7 @@ backend/app/graphs/conversation/workflow.py
 
 ### Agent Layer
 
-Hệ thống hiện có sáu Agent:
+Hệ thống có CV Parser Agent trong pipeline CV và năm Agent nghiệp vụ trong LangGraph (Intent Analysis là tầng phân tích/điều phối, không tính là một Agent nghiệp vụ độc lập trong bảng):
 
 | Agent | Input chính | Output chính |
 |---|---|---|
@@ -182,7 +179,8 @@ Service Layer chứa nghiệp vụ không nên đặt trực tiếp trong Agent 
 
 Các trách nhiệm chính:
 
-- Xử lý file CV.
+- Tiếp nhận tác vụ CV bền vững và xử lý bằng worker độc lập.
+- Xử lý PDF hoặc các trang ảnh CV.
 - Hợp nhất native text và OCR.
 - Tính điểm Job Matching.
 - Tìm kiếm và xếp hạng việc làm.
@@ -207,7 +205,9 @@ backend/app/repositories/
 
 Các repository hiện tại chịu trách nhiệm:
 
-- Lưu và đọc CVProfile.
+- Lưu và đọc CVProfile, kiểm soát quyền sở hữu dữ liệu.
+- Quản lý tác vụ xử lý CV có trạng thái/lease/retry.
+- Truy cập dữ liệu người dùng phục vụ xác thực.
 - Lưu dữ liệu job dạng JSONL.
 - Upsert job vào PostgreSQL.
 - Truy vấn ứng viên việc làm.
@@ -217,10 +217,10 @@ Các repository hiện tại chịu trách nhiệm:
 
 | Thành phần | Dữ liệu |
 |---|---|
-| PostgreSQL | Job đã chuẩn hóa |
-| PostgreSQL Checkpoint | Trạng thái và lịch sử LangGraph |
+| PostgreSQL | Job đã chuẩn hóa, user/auth và các bản ghi tác vụ CV theo mô hình triển khai |
+| Conversation Checkpoint | InMemorySaver (mặc định theo cấu hình code) hoặc AsyncPostgresSaver |
 | Qdrant | Vector embedding của việc làm |
-| Local Storage | Tệp CV PDF và CVProfile |
+| Local Storage | File CV và các artifact xử lý CV theo storage backend |
 | JSONL | Dữ liệu job thô |
 | Metrics JSON | Kết quả crawl theo batch và theo ngày |
 
@@ -228,85 +228,69 @@ Các repository hiện tại chịu trách nhiệm:
 
 ```mermaid
 flowchart TD
-    START["Người dùng gửi yêu cầu"] --> PREP["Prepare Turn"]
+    START["POST /conversation/messages"] --> AUTH["Kiểm tra user và quyền truy cập thread/CV"]
+    AUTH --> PREP["Prepare Turn"]
     PREP --> RESOLVE["Resolve Context"]
     RESOLVE --> INTENT["Analyze Intent"]
-
-    INTENT --> REQUIRED{"Thiếu CV, JD hoặc<br/>ý định chưa rõ?"}
-
-    REQUIRED -- "Có" --> CLARIFY["Clarification"]
-    REQUIRED -- "Không" --> PLAN["Plan Workflow"]
-
-    PLAN --> TYPE{"Workflow Type"}
-
-    TYPE -- "Single Agent" --> DISPATCH["Single Agent Dispatch"]
-    TYPE -- "Multi-Agent" --> MULTI["Thực hiện các bước trong WorkflowPlan"]
-
-    DISPATCH --> SINGLE{"Primary Intent"}
-    SINGLE --> SMALL["Small Talk"]
-    SINGLE --> GENERAL["General Question"]
-    SINGLE --> OUT["Out of Scope"]
-    SINGLE --> CVA["CV Analysis"]
-    SINGLE --> SEARCH["Job Search"]
-    SINGLE --> MATCH["Job Matching"]
-    SINGLE --> ADVICE["Career Advice"]
-    SINGLE --> COVER["Cover Letter"]
-
-    MULTI --> STEP{"Current Step"}
-    STEP --> MCV["Workflow CV Analysis"]
-    STEP --> MSEARCH["Workflow Job Search"]
-    STEP --> MMATCH["Workflow Job Matching"]
-    STEP --> MADVICE["Workflow Career Advice"]
-    STEP --> MCOVER["Workflow Cover Letter"]
-
-    MCV --> NEXT["Advance Workflow"]
-    MSEARCH --> NEXT
-    MMATCH --> NEXT
-    MADVICE --> NEXT
-    MCOVER --> NEXT
-
-    NEXT --> DONE{"Hoàn thành tất cả bước?"}
-    DONE -- "Chưa" --> STEP
-    DONE -- "Rồi" --> SUMMARY["Build Workflow Response"]
-
+    INTENT --> GATE{"Thiếu CV/JD hoặc chưa rõ ý định?"}
+    GATE -- "Có" --> CLARIFY["Clarification"]
+    GATE -- "Không" --> PLAN["Plan Workflow"]
+    PLAN --> ROUTE{"Route"}
+    ROUTE --> SIMPLE["Small Talk / General / Out of Scope"]
+    ROUTE --> AGENT["CV Analysis / Job Search / Job Matching / Career Advice"]
+    ROUTE --> MULTI["Multi-agent Workflow Steps"]
+    ROUTE --> REVIEW["Human Review trước Cover Letter"]
+    MULTI --> STEP{"Bước tiếp theo"}
+    STEP -- "Tác vụ thông thường" --> TASK["Workflow Agent Step"]
+    TASK --> STEP
+    STEP -- "Cover Letter" --> REVIEW
+    REVIEW -- "Duyệt" --> COVER["Cover Letter Agent"]
+    REVIEW -- "Từ chối" --> REJECT["Human Review Rejected"]
+    COVER --> DRAFT["Cover Letter Draft Review"]
+    DRAFT -- "Duyệt" --> APPROVED["Approved Response / Workflow Response"]
+    DRAFT -- "Từ chối" --> REJECT
     CLARIFY --> RECORD["Record Assistant Message"]
-    SMALL --> RECORD
-    GENERAL --> RECORD
-    OUT --> RECORD
-    CVA --> RECORD
-    SEARCH --> RECORD
-    MATCH --> RECORD
-    ADVICE --> RECORD
-    COVER --> RECORD
+    SIMPLE --> RECORD
+    AGENT --> RECORD
+    REJECT --> RECORD
+    APPROVED --> RECORD
+    STEP -- "Hoàn tất" --> SUMMARY["Build Workflow Response"]
     SUMMARY --> RECORD
-
-    RECORD --> CHECKPOINT["Lưu Checkpoint"]
-    CHECKPOINT --> END["Trả phản hồi"]
+    RECORD --> SAVE["Checkpoint · Memory hoặc PostgreSQL"]
+    SAVE --> END["Trả phản hồi"]
+    REVIEW -. "Tạm dừng và tiếp tục" .-> RESUME["POST /conversation/resume"]
+    DRAFT -. "Tạm dừng và tiếp tục" .-> RESUME
 ```
+
+**Human-in-the-loop:** graph có các node `human_review`, `cover_letter_draft_review`, `cover_letter_approved` và `human_review_rejected`. API `POST /api/v1/conversation/resume` cho phép tiếp tục một phiên đang chờ xét duyệt. Quyết định Human Review và cơ chế khôi phục cần checkpoint thích hợp; không coi đây là quy trình duyệt thủ công cho tất cả Agent.
 
 ## 4. Luồng CV Processing
 
 ```mermaid
 flowchart TD
-    UPLOAD["Upload CV PDF"] --> META["Kiểm tra metadata"]
-    META --> FILE{"Tệp hợp lệ?"}
-
-    FILE -- "Không" --> ERROR["Trả lỗi validation"]
-    FILE -- "Có" --> STORE["Lưu PDF"]
-
-    STORE --> INSPECT["Kiểm tra PDF"]
+    UPLOAD["POST /api/v1/cvs · 1 PDF hoặc nhiều ảnh PNG/JPEG"] --> OWNER["Xác thực và gắn quyền sở hữu CV"]
+    OWNER --> VALIDATE["Kiểm tra loại file, giới hạn kích thước/số trang"]
+    VALIDATE --> OK{"Hợp lệ?"}
+    OK -- "Không" --> ERROR["Validation error"]
+    OK -- "Có" --> QUEUE["Persist CV + enqueue durable task"]
+    QUEUE --> ACCEPT["HTTP 202 · task_id / cv_id / status"]
+    QUEUE --> WORKER["CV Worker · Claim task / Lease / Heartbeat"]
+    WORKER --> NORMALIZE["Chuẩn hóa ảnh thành PDF nếu cần"]
+    NORMALIZE --> INSPECT["PDF Inspector"]
     INSPECT --> NATIVE["Native Text Extraction"]
-    NATIVE --> OCRCHECK{"Có trang cần OCR?"}
-
-    OCRCHECK -- "Có" --> OCR["PaddleOCR"]
-    OCRCHECK -- "Không" --> MERGE["Text Merger"]
+    NATIVE --> OCRQ{"Trang cần OCR?"}
+    OCRQ -- "Có" --> OCR["PaddleOCR"]
+    OCRQ -- "Không" --> MERGE["Text Merger"]
     OCR --> MERGE
-
     MERGE --> PARSER["CV Parser Agent"]
-    PARSER --> PROFILE["CVProfile"]
-    PROFILE --> SAVE["Lưu JSON Profile"]
-    SAVE --> RESULT["Trả kết quả upload"]
+    PARSER --> PROFILE["Structured CVProfile"]
+    PROFILE --> SAVE["Lưu profile, cập nhật task thành công"]
+    WORKER -. "Lỗi / timeout" .-> RETRY["Retry hoặc thất bại theo giới hạn"]
+    ACCEPT --> POLL["GET /api/v1/cvs/processing-tasks/{task_id}"]
+    SAVE --> POLL
 ```
+
+Đầu vào được mô tả trong API là một PDF hoặc tối đa số trang ảnh PNG/JPEG theo cấu hình (mặc định 5). API không chờ phân tích CV hoàn tất mới trả response. Worker được triển khai tại `backend/app/cli/cv_worker.py`; task/retry được quản lý qua service và repository. Có các endpoint lấy, cập nhật và xóa CV đã sở hữu.
 
 ## 5. Luồng Hybrid Job Search
 
@@ -440,21 +424,20 @@ tục index tăng dần theo `job_ids` của từng batch crawl.
 Khi `index_payload_version` thay đổi, cũng cần chạy full sync để các point cũ
 có đủ metadata filter và payload index tương ứng.
 
-## 8. Thành phần chưa được triển khai
+## 8. Authentication, kiểm soát truy cập và Human Review
 
-Các thành phần sau thuộc định hướng tương lai, không phải kiến trúc As-is:
+- `/api/v1/auth/register`, `/login`, `/me` được khai báo trong `backend/app/api/v1/endpoints/auth.py`.
+- JWT Bearer được xác thực tại `backend/app/api/auth_dependencies.py`; user được tra cứu và kiểm tra trạng thái.
+- CV API và Conversation API sử dụng các authorized service dependencies để ràng buộc quyền truy cập CV, task và thread với người dùng.
+- Conversation có endpoint `/resume` để tiếp tục Human-in-the-loop, đồng thời xử lý xung đột trạng thái khi phiên bận hoặc không chờ review.
+- Đây là xác thực và kiểm soát quyền sở hữu tài nguyên; không mặc định rằng RBAC nhiều vai trò hoặc giao diện quản trị đã hoàn chỉnh.
 
-- Authentication và JWT.
-- Phân quyền người dùng.
-- Redis hoặc Celery.
-- MinIO hoặc S3.
-- Interview Preparation Agent.
-- Result Synthesis Agent độc lập.
-- Human-in-the-loop hoàn chỉnh.
-- Rate limiting.
-- Qdrant collection dành riêng cho CV.
-- Production deployment hoàn chỉnh.
-- LangSmith evaluation dataset.
+## 9. Observability, cấu hình và giới hạn As-is
 
-Các thành phần này chỉ nên xuất hiện trong phần kiến trúc đề xuất hoặc hướng
-phát triển của báo cáo.
+- `backend/app/core/config.py` và `backend/.env.example` cung cấp cấu hình LangSmith tracing (mặc định tắt). Khi cấu hình API key, project và bật tracing, có thể theo dõi run của LangChain/LangGraph.
+- Không đồng nhất việc có thư viện/cấu hình LangSmith với dataset đánh giá đã triển khai trên `main`; phần evaluation cần được xác nhận độc lập theo nhánh hoặc script thực tế.
+- LLM provider được cấu hình cho OpenAI hoặc 9Router; embedding công việc sử dụng `BAAI/bge-m3`, Qdrant collection mặc định `jobs_bge_m3_v2`.
+- Job storage và conversation checkpoint đều có backend có thể cấu hình. Default trong code có thể dùng JSONL và in-memory, không mặc định mọi bản triển khai đã dùng PostgreSQL.
+- Chưa xác nhận từ mã nguồn đã kiểm tra: Nginx/load balancer, rate limiting, production deployment hoàn chỉnh, MinIO/S3, Redis/Celery, Interview Agent và collection Qdrant riêng cho CV. Không biểu diễn chúng thành thành phần bắt buộc đang chạy.
+- Tài liệu này mô tả **chức năng có mã nguồn**, không phải chứng nhận về vận hành, khả năng chịu tải, độ an toàn production hoặc kết quả benchmark.
+
