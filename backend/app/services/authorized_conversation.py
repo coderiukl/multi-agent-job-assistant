@@ -186,9 +186,12 @@ class AuthorizedConversationService:
             # Legacy checkpoints must not be claimed automatically.
             self._not_found(request.thread_id)
 
-        await self._require_checkpoint_cv(values)
+        cv_is_being_replaced = "cv_id" in request.model_fields_set
 
-        if request.cv_id is not None:
+        if not cv_is_being_replaced:
+            await self._require_checkpoint_cv(values)
+
+        if cv_is_being_replaced and request.cv_id is not None:
             await self._ownership.require_cv(
                 cv_id=request.cv_id,
                 user_id=self._user_id,

@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
 
@@ -44,12 +45,34 @@ class CVProcessingService:
             raise
 
     async def process_stored(self, stored_file: StoredFile) -> CVProcessingResult:
+        started_at = time.perf_counter()
         ingestion = await self._ingestion_service.ingest_stored(stored_file)
+        ingestion_finished_at = time.perf_counter()
         try:
-            return await self._process_ingestion(ingestion)
+            result = await self._process_ingestion(ingestion)
         except Exception:
             await self._cv_repository.delete(stored_file.file_id)
             raise
+
+        logger.info(
+            "CV processing completed",
+            extra={
+                "cv_id": stored_file.file_id,
+                "ingestion_ms": round(
+                    (ingestion_finished_at - started_at) * 1000,
+                    2,
+                ),
+                "parsing_and_save_ms": round(
+                    (time.perf_counter() - ingestion_finished_at) * 1000,
+                    2,
+                ),
+                "total_ms": round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
+                ),
+            },
+        )
+        return result
 
     async def _process_ingestion(
         self,

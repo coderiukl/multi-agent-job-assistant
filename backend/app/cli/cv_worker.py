@@ -1,5 +1,6 @@
 import os
 import socket
+from pathlib import Path
 from uuid import uuid4
 
 from app.agents import CVParserAgent
@@ -21,16 +22,19 @@ from app.services.storage import LocalStorageService
 
 
 async def run_cv_worker(*, once: bool = False) -> None:
+    ready_file = Path("/tmp/cv-worker-ready")
+    ready_file.unlink(missing_ok=True)
     settings = get_settings()
     engine = create_job_database_engine(settings)
     session_factory = create_job_session_factory(engine)
     storage = LocalStorageService(settings)
     profiles = LocalJsonCVRepository(settings)
+    ocr_extractor = PdfOcrExtractor(settings)
     ingestion = CVIngestionService(
         storage=storage,
         pdf_inspector=PdfInspector(settings),
         text_extractor=NativePdfTextExtractor(settings),
-        ocr_extractor=PdfOcrExtractor(settings),
+        ocr_extractor=ocr_extractor,
         text_merger=PdfTextMerger(),
     )
     processing = CVProcessingService(
@@ -48,13 +52,18 @@ async def run_cv_worker(*, once: bool = False) -> None:
         processing=processing,
         upload_dir=settings.upload_dir,
         lease_seconds=settings.cv_task_lease_seconds,
+        heartbeat_seconds=settings.cv_task_heartbeat_seconds,
+        timeout_seconds=settings.cv_task_timeout_seconds,
         max_attempts=settings.cv_task_max_attempts,
         poll_seconds=settings.cv_worker_poll_seconds,
     )
     try:
+        await ocr_extractor.warm_up()
+        ready_file.touch()
         if once:
             await worker.run_once()
         else:
             await worker.run_forever()
     finally:
+        ready_file.unlink(missing_ok=True)
         await engine.dispose()

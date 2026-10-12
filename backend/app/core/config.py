@@ -80,7 +80,13 @@ class Settings(BaseSettings):
 
     # File upload
     max_upload_size_mb: int = 10
-    allowed_cv_content_types: tuple[str, ...] = ("application/pdf",)
+    max_cv_images: int = Field(default=5, ge=1, le=20)
+    max_cv_total_upload_size_mb: int = Field(default=50, ge=1, le=200)
+    allowed_cv_content_types: tuple[str, ...] = (
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+    )
     storage_dir: Path = Path("storage")
     upload_dir: Path = Path("storage/uploads")
     upload_chunk_size_bytes: int = Field(default=1024 * 1024, gt=0)
@@ -88,13 +94,17 @@ class Settings(BaseSettings):
     min_native_text_chars_per_page: int = Field(default=50, ge=0, le=1000)
 
     # OCR
-    ocr_dpi: int = Field(default=250, ge=150, le=400)
+    ocr_dpi: int = Field(default=180, ge=150, le=400)
     ocr_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    ocr_text_det_limit_side_len: int = Field(default=1920, ge=960, le=4096)
+    ocr_text_recognition_batch_size: int = Field(default=8, ge=1, le=32)
 
     # Durable CV processing worker
     cv_worker_poll_seconds: float = Field(default=1.0, gt=0.0, le=60.0)
-    cv_task_lease_seconds: int = Field(default=900, ge=60, le=7200)
-    cv_task_max_attempts: int = Field(default=3, ge=1, le=10)
+    cv_task_lease_seconds: int = Field(default=120, ge=60, le=7200)
+    cv_task_heartbeat_seconds: int = Field(default=30, ge=5, le=300)
+    cv_task_timeout_seconds: int = Field(default=120, ge=30, le=1800)
+    cv_task_max_attempts: int = Field(default=2, ge=1, le=10)
 
     # Pydantic settings
     model_config = SettingsConfigDict(
@@ -144,6 +154,10 @@ class Settings(BaseSettings):
     @property
     def max_upload_size_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
+
+    @property
+    def max_cv_total_upload_size_bytes(self) -> int:
+        return self.max_cv_total_upload_size_mb * 1024 * 1024
 
     # CORS validation
     @field_validator("backend_cors_origins")

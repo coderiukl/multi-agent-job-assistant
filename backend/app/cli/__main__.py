@@ -144,6 +144,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Claim at most one task and exit.",
     )
+
+    subparsers.add_parser(
+        "preload-ocr-models",
+        help="Download and validate the configured PaddleOCR models.",
+    )
     return parser
 
 
@@ -194,6 +199,12 @@ async def execute(args: argparse.Namespace) -> int:
         await run_cv_worker(once=args.once)
         return 0
 
+    if args.command == "preload-ocr-models":
+        from app.cli.preload_ocr_models import preload_ocr_models
+
+        await preload_ocr_models()
+        return 0
+
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -215,6 +226,10 @@ def print_error(error: Exception) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from app.core.config import get_settings
+    from app.core.logging import configure_logging
+
+    configure_logging(get_settings())
     parser = build_parser()
     args = parser.parse_args(argv)
 

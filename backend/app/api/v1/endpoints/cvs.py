@@ -83,7 +83,7 @@ async def delete_cv(
         },
         422: {
             "model": ErrorResponse,
-            "description": "Invalid PDF file.",
+            "description": "Invalid PDF or image file.",
         },
         500: {
             "model": ErrorResponse,
@@ -96,13 +96,16 @@ async def delete_cv(
     },
 )
 async def upload_cv(
-    file: Annotated[
-        UploadFile,
-        File(description="PDF CV file."),
+    files: Annotated[
+        list[UploadFile],
+        File(
+            alias="file",
+            description="One PDF or up to five ordered PNG/JPEG CV pages.",
+        ),
     ],
     task_service: AuthorizedCVTaskServiceDependency,
 ) -> ApiResponse[CVTaskAcceptedData]:
-    task = await task_service.enqueue(file)
+    task = await task_service.enqueue(files)
     return ApiResponse(
         message="CV uploaded and queued for processing.",
         data=CVTaskAcceptedData(

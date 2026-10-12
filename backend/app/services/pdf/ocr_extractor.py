@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 import unicodedata
 from pathlib import Path
 from threading import Lock
@@ -28,9 +29,43 @@ class PdfOcrExtractor:
     def __init__(self, settings: Settings) -> None:
         self._dpi = settings.ocr_dpi
         self._min_confidence = settings.ocr_min_confidence
+        self._text_det_limit_side_len = settings.ocr_text_det_limit_side_len
+        self._text_recognition_batch_size = (
+            settings.ocr_text_recognition_batch_size
+        )
 
         self._engine: PaddleOCR | None = None
         self._engine_lock = Lock()
+
+    async def warm_up(self) -> None:
+        """Download and load the OCR models before accepting CV tasks."""
+        await asyncio.to_thread(self._warm_up_sync)
+
+    def _warm_up_sync(self) -> None:
+        warm_up_image = np.full((192, 960, 3), 255, dtype=np.uint8)
+
+        # Use OpenCV's built-in font so warm-up exercises both text detection
+        # and recognition without depending on system font files.
+        from cv2 import FONT_HERSHEY_SIMPLEX, LINE_AA, putText
+
+        putText(
+            warm_up_image,
+            "CURRICULUM VITAE 2026",
+            (30, 120),
+            FONT_HERSHEY_SIMPLEX,
+            1.6,
+            (0, 0, 0),
+            3,
+            LINE_AA,
+        )
+
+        started_at = time.perf_counter()
+        self._predict(warm_up_image)
+
+        logger.info(
+            "PaddleOCR models are ready after inference warm-up",
+            extra={"duration_ms": round((time.perf_counter() - started_at) * 1000, 2)},
+        )
 
     async def extract(
         self, file_path: Path, page_numbers: tuple[int, ...]
@@ -117,6 +152,7 @@ class PdfOcrExtractor:
         return result
 
     def _extract_page(self, *, page: pymupdf.Page, page_number: int) -> OcrPageText:
+        started_at = time.perf_counter()
         pixmap = page.get_pixmap(
             dpi=self._dpi,
             colorspace=pymupdf.csRGB,
@@ -173,6 +209,20 @@ class PdfOcrExtractor:
             sum(line.confidence for line in lines) / len(lines) if lines else 0.0
         )
 
+        logger.info(
+            "OCR page completed",
+            extra={
+                "page_number": page_number,
+                "image_width": pixmap.width,
+                "image_height": pixmap.height,
+                "line_count": len(lines),
+                "duration_ms": round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
+                ),
+            },
+        )
+
         return OcrPageText(
             page_number=page_number,
             text=page_text,
@@ -217,18 +267,11 @@ class PdfOcrExtractor:
 
     def _predict(self, image: np.ndarray[Any, Any]) -> list[Any]:
         with self._engine_lock:
-            if self._engine is None:
-                from paddleocr import PaddleOCR
-
-                self._engine = PaddleOCR(
-                    use_doc_orientation_classify=False,
-                    use_doc_unwarping=False,
-                    use_textline_orientation=False,
-                )
+            engine = self._ensure_engine()
 
             try:
                 return list(
-                    self._engine.predict(
+                    engine.predict(
                         input=image,
                         text_rec_score_thresh=(self._min_confidence),
                     )
@@ -240,6 +283,23 @@ class PdfOcrExtractor:
                         "reason": type(exc).__name__,
                     },
                 ) from exc
+
+    def _ensure_engine(self) -> PaddleOCR:
+        if self._engine is None:
+            from paddleocr import PaddleOCR
+
+            self._engine = PaddleOCR(
+                text_detection_model_name="PP-OCRv6_medium_det",
+                text_recognition_model_name="PP-OCRv6_medium_rec",
+                text_recognition_batch_size=self._text_recognition_batch_size,
+                text_det_limit_side_len=self._text_det_limit_side_len,
+                text_det_limit_type="max",
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+            )
+
+        return self._engine
 
     @staticmethod
     def _prediction_payload(prediction_result: Any) -> dict[str, Any]:

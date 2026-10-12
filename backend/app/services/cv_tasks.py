@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+import signal
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -30,8 +33,8 @@ class AuthorizedCVTaskService:
         self._storage = storage
         self._profiles = profiles
 
-    async def enqueue(self, file: UploadFile) -> CVTaskRecord:
-        stored_file = await self._storage.save(file)
+    async def enqueue(self, files: list[UploadFile]) -> CVTaskRecord:
+        stored_file = await self._storage.save_many(files)
         try:
             return await self._tasks.enqueue(
                 user_id=self._user_id,
@@ -75,6 +78,8 @@ class CVTaskWorker:
     processing: CVProcessingService
     upload_dir: Path
     lease_seconds: int
+    heartbeat_seconds: int
+    timeout_seconds: int
     max_attempts: int
     poll_seconds: float
 
@@ -94,6 +99,11 @@ class CVTaskWorker:
         if task is None:
             return False
 
+        heartbeat = asyncio.create_task(
+            self._renew_lease_until_finished(task.task_id),
+            name=f"cv-task-heartbeat-{task.task_id}",
+        )
+
         stored_file = StoredFile(
             file_id=task.cv_id,
             path=self.upload_dir / f"{task.cv_id}.pdf",
@@ -102,12 +112,45 @@ class CVTaskWorker:
             size_bytes=task.size_bytes,
         )
         try:
-            await self.processing.process_stored(stored_file)
+            async with asyncio.timeout(self.timeout_seconds):
+                await self.processing.process_stored(stored_file)
             await self.tasks.mark_completed(
                 task_id=task.task_id,
                 worker_id=self.worker_id,
             )
+        except TimeoutError:
+            retry = task.attempt_count < self.max_attempts
+            await self.tasks.mark_failed(
+                task_id=task.task_id,
+                worker_id=self.worker_id,
+                error_code="PROCESSING_TIMEOUT",
+                error_message=(
+                    f"CV processing exceeded {self.timeout_seconds} seconds."
+                ),
+                retry=retry,
+                retry_delay_seconds=min(2**task.attempt_count, 60),
+            )
+            logger.error(
+                "CV processing timed out; recycling worker",
+                extra={
+                    "task_id": str(task.task_id),
+                    "cv_id": task.cv_id,
+                    "duration_ms": self.timeout_seconds * 1000,
+                    "will_retry": retry,
+                },
+            )
+            logging.shutdown()
+            os.kill(os.getpid(), signal.SIGTERM)
+            return True
         except asyncio.CancelledError:
+            await self.tasks.mark_failed(
+                task_id=task.task_id,
+                worker_id=self.worker_id,
+                error_code="WORKER_STOPPED",
+                error_message="CV worker stopped before processing completed.",
+                retry=True,
+                retry_delay_seconds=0,
+            )
             raise
         except Exception as exc:
             is_retryable = not isinstance(exc, AppException) or exc.status_code >= 500
@@ -136,4 +179,31 @@ class CVTaskWorker:
                     "will_retry": retry,
                 },
             )
+        finally:
+            heartbeat.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat
         return True
+
+    async def _renew_lease_until_finished(self, task_id: UUID) -> None:
+        while True:
+            await asyncio.sleep(self.heartbeat_seconds)
+            try:
+                renewed = await self.tasks.renew_lease(
+                    task_id=task_id,
+                    worker_id=self.worker_id,
+                    lease_seconds=self.lease_seconds,
+                )
+            except Exception:
+                logger.exception(
+                    "CV processing task heartbeat failed",
+                    extra={"task_id": str(task_id)},
+                )
+                continue
+
+            if not renewed:
+                logger.warning(
+                    "CV processing task lease is no longer owned by this worker",
+                    extra={"task_id": str(task_id)},
+                )
+                return

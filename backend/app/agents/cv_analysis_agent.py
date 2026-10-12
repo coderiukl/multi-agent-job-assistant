@@ -27,7 +27,13 @@ class CVAnalysisAgent:
     async def analyze(self, analysis_input: CVAnalysisInput) -> CVAnalysisAssessment:
         prompt_value = CV_ANALYSIS_AGENT_PROMPT.invoke(
             {
-                "cv_profile":  analysis_input.cv_profile.model_dump_json(exclude_none=True),
+                # Personal/contact information is intentionally excluded from
+                # CV-quality analysis. Besides preventing it from affecting the
+                # score, this keeps identifying data out of the analysis LLM.
+                "cv_profile": analysis_input.cv_profile.model_dump_json(
+                    exclude={"personal_information"},
+                    exclude_none=True,
+                ),
                 "user_request": analysis_input.user_request,
             }
         )
@@ -48,9 +54,7 @@ class CVAnalysisAgent:
                         "confidence": assessment.confidence,
                         "strength_count": len(assessment.strengths),
                         "weakness_count": len(assessment.weaknesses),
-                        "improvement_count": len(
-                            assessment.improvements
-                        ),
+                        "improvement_count": len(assessment.improvements),
                     },
                 )
 
@@ -106,7 +110,6 @@ class CVAnalysisAgent:
 
         raise StructuredOutputException(
             message=(
-                "The CV analysis result could not be converted "
-                "to structured data."
+                "The CV analysis result could not be converted to structured data."
             )
         )

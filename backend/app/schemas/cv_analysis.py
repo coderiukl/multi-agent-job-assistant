@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.cv_profile import CVProfile
 from app.schemas.job import normalize_multiline, normalize_single_line
@@ -137,9 +137,32 @@ class CVAnalysisAssessment(CVAnalysisSchema):
     breakdown: CVAnalysisBreakdown
     strengths: list[CVAnalysisFinding] = Field(default_factory=list, max_length=15)
     weaknesses: list[CVAnalysisFinding] = Field(default_factory=list, max_length=15)
-    improvements: list[CVImprovementSuggestion] = Field(default_factory=list, max_length=20)
+    improvements: list[CVImprovementSuggestion] = Field(
+        default_factory=list,
+        max_length=20,
+    )
     summary: str = Field(min_length=1, max_length=3000)
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def exclude_personal_information_findings(self) -> "CVAnalysisAssessment":
+        """Keep legacy enum compatibility while excluding private-data feedback."""
+        self.strengths = [
+            finding
+            for finding in self.strengths
+            if finding.section != CVSection.PERSONAL_INFORMATION
+        ]
+        self.weaknesses = [
+            finding
+            for finding in self.weaknesses
+            if finding.section != CVSection.PERSONAL_INFORMATION
+        ]
+        self.improvements = [
+            improvement
+            for improvement in self.improvements
+            if improvement.section != CVSection.PERSONAL_INFORMATION
+        ]
+        return self
 
     @field_validator("summary")
     @classmethod

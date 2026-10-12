@@ -159,6 +159,37 @@ class CVTaskRepository:
             status=CVTaskStatus.COMPLETED,
         )
 
+    async def renew_lease(
+        self,
+        *,
+        task_id: UUID,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> bool:
+        now = datetime.now(UTC)
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    result = await session.execute(
+                        update(CVProcessingTaskModel)
+                        .where(
+                            CVProcessingTaskModel.task_id == task_id,
+                            CVProcessingTaskModel.status
+                            == CVTaskStatus.PROCESSING.value,
+                            CVProcessingTaskModel.lease_owner == worker_id,
+                        )
+                        .values(
+                            lease_expires_at=now
+                            + timedelta(seconds=lease_seconds)
+                        )
+                    )
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message="CV processing task lease could not be renewed."
+            ) from exc
+
+        return result.rowcount == 1
+
     async def mark_failed(
         self,
         *,

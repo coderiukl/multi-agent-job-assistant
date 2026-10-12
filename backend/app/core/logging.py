@@ -34,6 +34,19 @@ class JsonFormatter(logging.Formatter):
         "status_code",
         "duration_ms",
         "error_code",
+        "cv_id",
+        "task_id",
+        "page_number",
+        "image_width",
+        "image_height",
+        "line_count",
+        "inspection_ms",
+        "native_extraction_ms",
+        "ocr_ms",
+        "merge_ms",
+        "ingestion_ms",
+        "parsing_and_save_ms",
+        "total_ms",
     )
 
     def format(self, record: logging.LogRecord) -> str:

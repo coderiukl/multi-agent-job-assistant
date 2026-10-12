@@ -4,7 +4,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/app/storage/huggingface \
-    PADDLE_HOME=/app/storage/paddle
+    PADDLE_HOME=/app/storage/paddle \
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 
 WORKDIR /app
 
@@ -25,8 +26,8 @@ RUN groupadd --gid 10001 app \
 
 COPY --chown=app:app . .
 
-RUN mkdir -p /app/storage/uploads \
-    && chown -R app:app /app/storage
+RUN mkdir -p /app/storage/uploads /home/app/.paddlex \
+    && chown -R app:app /app/storage /home/app/.paddlex
 
 USER app
 

@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass
 
 from fastapi import UploadFile
@@ -62,15 +63,41 @@ class CVIngestionService:
             raise
 
     async def ingest_stored(self, stored_file: StoredFile) -> CVIngestionResult:
+        started_at = time.perf_counter()
         inspection = await self._pdf_inspector.inspect(stored_file.path)
+        inspection_finished_at = time.perf_counter()
         extraction = await self._text_extractor.extract(stored_file.path)
+        native_extraction_finished_at = time.perf_counter()
         ocr_extraction = await self._ocr_extractor.extract(
             file_path=stored_file.path,
             page_numbers=extraction.ocr_required_page_numbers,
         )
+        ocr_finished_at = time.perf_counter()
         merged_text = self._text_merger.merge(
             native_result=extraction,
             ocr_result=ocr_extraction,
+        )
+        finished_at = time.perf_counter()
+        logger.info(
+            "CV ingestion completed",
+            extra={
+                "cv_id": stored_file.file_id,
+                "inspection_ms": round(
+                    (inspection_finished_at - started_at) * 1000,
+                    2,
+                ),
+                "native_extraction_ms": round(
+                    (native_extraction_finished_at - inspection_finished_at)
+                    * 1000,
+                    2,
+                ),
+                "ocr_ms": round(
+                    (ocr_finished_at - native_extraction_finished_at) * 1000,
+                    2,
+                ),
+                "merge_ms": round((finished_at - ocr_finished_at) * 1000, 2),
+                "total_ms": round((finished_at - started_at) * 1000, 2),
+            },
         )
         return CVIngestionResult(
             stored_file=stored_file,
