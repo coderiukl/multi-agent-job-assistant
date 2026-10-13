@@ -1,9 +1,12 @@
+# ruff: noqa: E501
+
 import math
 import re
 from typing import Any
 
 from app.graphs.conversation.planning import create_workflow_plan
 from app.schemas.conversations_intent import IntentAnalysisResult
+
 
 def _score(key: str, passed: bool) -> dict[str, Any]:
     return {
@@ -244,12 +247,71 @@ def precision_at_k(
     }
 
 
+def hit_at_k(
+    outputs: dict[str, Any],
+    reference_outputs: dict[str, Any],
+) -> dict[str, Any]:
+    """Return 1 when at least one judged-relevant job appears in the results."""
+    relevant = set(reference_outputs.get("relevant_job_ids", []))
+
+    if not relevant:
+        return {
+            "key": "hit_at_k",
+            "score": 1.0,
+        }
+
+    retrieved = set(_result_job_ids(outputs))
+
+    return _score(
+        "hit_at_k",
+        bool(relevant.intersection(retrieved)),
+    )
+
+
+def mrr_at_k(
+    outputs: dict[str, Any],
+    reference_outputs: dict[str, Any],
+) -> dict[str, Any]:
+    """Calculate reciprocal rank of the first judged-relevant result."""
+    relevant = set(reference_outputs.get("relevant_job_ids", []))
+
+    if not relevant:
+        return {
+            "key": "mrr_at_k",
+            "score": 1.0,
+        }
+
+    for index, job_id in enumerate(_result_job_ids(outputs), start=1):
+        if job_id in relevant:
+            return {
+                "key": "mrr_at_k",
+                "score": 1.0 / index,
+            }
+
+    return {
+        "key": "mrr_at_k",
+        "score": 0.0,
+    }
+
+
 def ndcg_at_k(
     outputs: dict[str, Any],
     reference_outputs: dict[str, Any],
 ) -> dict[str, Any]:
     relevance = reference_outputs.get("relevance_by_job_id", {})
     retrieved = _result_job_ids(outputs)
+
+    if not relevance:
+        return {
+            "key": "ndcg_at_k",
+            "score": 1.0,
+        }
+
+    if not retrieved:
+        return {
+            "key": "ndcg_at_k",
+            "score": 0.0,
+        }
 
     dcg = 0.0
 
@@ -269,7 +331,7 @@ def ndcg_at_k(
 
     return {
         "key": "ndcg_at_k",
-        "score": dcg / ideal_dcg if ideal_dcg else 1.0,
+        "score": dcg / ideal_dcg if ideal_dcg else 0.0,
     }
 
 
@@ -569,6 +631,8 @@ JOB_SEARCH_PLAN_EVALUATORS = [
 JOB_SEARCH_RETRIEVAL_EVALUATORS = [
     recall_at_k,
     precision_at_k,
+    hit_at_k,
+    mrr_at_k,
     ndcg_at_k,
     duplicate_free,
     forbidden_jobs_absent,

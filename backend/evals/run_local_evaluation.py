@@ -1,12 +1,3 @@
-"""Run evaluation datasets locally without sending runs to LangSmith.
-
-Examples (run from ``backend``):
-
-    python -m evals.run_local_evaluation
-    python -m evals.run_local_evaluation intent
-    python -m evals.run_local_evaluation all --max-concurrency 2
-"""
-
 from __future__ import annotations
 
 import argparse
