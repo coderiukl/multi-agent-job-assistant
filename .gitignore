@@ -60,6 +60,10 @@ frontend/.vite/
 # Crawled data
 backend/data/jobs/
 
+backend/evals/report
+backend/evals/generate_*
+backend/evals/run_eval*
+
 # Airflow runtime
 airflow/.env
 airflow/logs/

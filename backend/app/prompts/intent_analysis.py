@@ -147,6 +147,10 @@ natural-language descriptions to these values. For example, "mới ra trường"
 "sinh viên mới ra trường", "entry-level", and "new graduate" mean fresher;
 "thực tập sinh" means intern. Never return a translated label or an array.
 
+26c. work_mode must be exactly one of: onsite, remote, hybrid, unknown, or
+null. Normalize variants such as "on-site" and "on site" to onsite. Never
+return a translated label or an array.
+
 27. When the user explicitly removes a constraint, add its name to
 clear_fields. A request to change only the location must not replace role,
 seniority or work_mode.

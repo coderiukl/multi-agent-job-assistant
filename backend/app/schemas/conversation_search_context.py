@@ -34,11 +34,14 @@ class ConversationSearchContext(BaseModel):
     def normalize_seniority(cls, value: Any) -> SeniorityLevel | None:
         return _coerce_seniority(value)
 
+    @field_validator("work_mode", mode="before")
+    @classmethod
+    def normalize_work_mode(cls, value: Any) -> WorkMode | None:
+        return _coerce_work_mode(value)
+
     @property
     def is_empty(self) -> bool:
-        return not any(
-            (self.role, self.location, self.seniority, self.work_mode)
-        )
+        return not any((self.role, self.location, self.seniority, self.work_mode))
 
 
 class SearchContextPatch(BaseModel):
@@ -62,6 +65,11 @@ class SearchContextPatch(BaseModel):
     @classmethod
     def normalize_seniority(cls, value: Any) -> SeniorityLevel | None:
         return _coerce_seniority(value)
+
+    @field_validator("work_mode", mode="before")
+    @classmethod
+    def normalize_work_mode(cls, value: Any) -> WorkMode | None:
+        return _coerce_work_mode(value)
 
     @field_validator("clear_fields")
     @classmethod
@@ -163,6 +171,24 @@ _SENIORITY_ALIASES: dict[str, SeniorityLevel] = {
     "khong ro": SeniorityLevel.UNKNOWN,
 }
 
+_WORK_MODE_ALIASES: dict[str, WorkMode] = {
+    "onsite": WorkMode.ONSITE,
+    "on site": WorkMode.ONSITE,
+    "office": WorkMode.ONSITE,
+    "in office": WorkMode.ONSITE,
+    "tai van phong": WorkMode.ONSITE,
+    "remote": WorkMode.REMOTE,
+    "work from home": WorkMode.REMOTE,
+    "working from home": WorkMode.REMOTE,
+    "wfh": WorkMode.REMOTE,
+    "lam tu xa": WorkMode.REMOTE,
+    "hybrid": WorkMode.HYBRID,
+    "flexible": WorkMode.HYBRID,
+    "ket hop": WorkMode.HYBRID,
+    "unknown": WorkMode.UNKNOWN,
+    "khong ro": WorkMode.UNKNOWN,
+}
+
 
 def _coerce_seniority(value: Any) -> SeniorityLevel | None:
     if value is None or isinstance(value, SeniorityLevel):
@@ -184,10 +210,28 @@ def _coerce_seniority(value: Any) -> SeniorityLevel | None:
     return SeniorityLevel.UNKNOWN
 
 
+def _coerce_work_mode(value: Any) -> WorkMode | None:
+    if value is None or isinstance(value, WorkMode):
+        return value
+
+    candidates = value if isinstance(value, (list, tuple, set)) else [value]
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+
+        key = _normalize_enum_label(candidate)
+        if not key:
+            continue
+
+        mapped = _WORK_MODE_ALIASES.get(key)
+        if mapped is not None:
+            return mapped
+
+    return WorkMode.UNKNOWN
+
+
 def _normalize_enum_label(value: str) -> str:
     ascii_value = (
-        unicodedata.normalize("NFKD", value)
-        .encode("ascii", "ignore")
-        .decode()
+        unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
     )
     return re.sub(r"[\s_-]+", " ", ascii_value.casefold()).strip()
