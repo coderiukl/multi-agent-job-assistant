@@ -18,6 +18,7 @@ from app.services.job_matching_context import (
     build_cv_evidence_catalog,
     build_job_requirements,
 )
+from app.utils.cv_privacy import cv_profile_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,10 @@ class JobMatchingService:
 
     def _build_cache_key(self, matching_input: JobMatchingInput) -> str:
         payload = {
-            "cv": matching_input.cv_profile.model_dump(mode="json"),
+            "cv": cv_profile_for_llm(
+                matching_input.cv_profile,
+                purpose="job_matching",
+            ),
             "job": matching_input.job.model_dump(mode="json"),
             "prompt_version": MATCHING_PROMPT_VERSION,
             "model_version": self._model_version,

@@ -7,6 +7,7 @@ from app.api.resource_dependencies import (
     AuthorizedCVProcessingServiceDependency,
     AuthorizedCVTaskServiceDependency,
 )
+from app.schemas.cv import CVDeletionData
 from app.schemas.cv_profile import CVProfile
 from app.schemas.cv_task import CVTaskAcceptedData, CVTaskStatusData
 from app.schemas.error import ErrorResponse
@@ -53,17 +54,19 @@ async def update_cv(
 
 @router.delete(
     "/{cv_id}",
-    response_model=ApiResponse[dict[str, bool]],
+    response_model=ApiResponse[CVDeletionData],
     summary="Delete an owned CV and its parsed profile",
 )
 async def delete_cv(
     cv_id: str,
     processing_service: AuthorizedCVProcessingServiceDependency,
-) -> ApiResponse[dict[str, bool]]:
-    await processing_service.delete(cv_id)
+) -> ApiResponse[CVDeletionData]:
+    purged_thread_ids = await processing_service.delete(cv_id)
     return ApiResponse(
         message="CV deleted successfully.",
-        data={"deleted": True},
+        data=CVDeletionData(
+            purged_conversation_ids=purged_thread_ids,
+        ),
     )
 
 

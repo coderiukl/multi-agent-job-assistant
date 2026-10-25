@@ -149,6 +149,22 @@ def build_parser() -> argparse.ArgumentParser:
         "preload-ocr-models",
         help="Download and validate the configured PaddleOCR models.",
     )
+
+    purge_parser = subparsers.add_parser(
+        "purge-expired-cvs",
+        help="List or permanently delete CVs past their retention deadline.",
+    )
+    purge_parser.add_argument(
+        "--limit",
+        type=positive_int,
+        default=100,
+        help="Maximum number of expired CVs to inspect.",
+    )
+    purge_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Permanently delete candidates; without this flag, only list them.",
+    )
     return parser
 
 
@@ -203,6 +219,17 @@ async def execute(args: argparse.Namespace) -> int:
         from app.cli.preload_ocr_models import preload_ocr_models
 
         await preload_ocr_models()
+        return 0
+
+    if args.command == "purge-expired-cvs":
+        from app.cli.crawl_jobs import print_result
+        from app.cli.purge_cvs import purge_expired_cvs
+
+        result = await purge_expired_cvs(
+            limit=args.limit,
+            execute=args.execute,
+        )
+        print_result(result)
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")

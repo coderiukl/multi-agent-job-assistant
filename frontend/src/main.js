@@ -179,6 +179,7 @@ const chatController = createChatController({
 const cvController = createCvController({
   addMessage,
   clearError,
+  purgeCvConversations: historyController.purgeLocalThreads,
   showError,
   updateComposerContext,
 });

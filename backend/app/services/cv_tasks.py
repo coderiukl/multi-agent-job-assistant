@@ -4,6 +4,7 @@ import os
 import signal
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -27,11 +28,13 @@ class AuthorizedCVTaskService:
         tasks: CVTaskRepository,
         storage: StorageService,
         profiles: CVRepository,
+        retention_days: int,
     ) -> None:
         self._user_id = user_id
         self._tasks = tasks
         self._storage = storage
         self._profiles = profiles
+        self._retention_days = retention_days
 
     async def enqueue(self, files: list[UploadFile]) -> CVTaskRecord:
         stored_file = await self._storage.save_many(files)
@@ -39,6 +42,9 @@ class AuthorizedCVTaskService:
             return await self._tasks.enqueue(
                 user_id=self._user_id,
                 file=stored_file,
+                retention_expires_at=(
+                    datetime.now(UTC) + timedelta(days=self._retention_days)
+                ),
             )
         except Exception:
             await self._storage.delete(stored_file)

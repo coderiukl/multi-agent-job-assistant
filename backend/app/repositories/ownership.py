@@ -20,7 +20,13 @@ class OwnershipRepository:
     def __init__(self, session_factory: JobSessionFactory) -> None:
         self._session_factory = session_factory
 
-    async def add_cv(self, *, cv_id: str, user_id: UUID) -> None:
+    async def add_cv(
+        self,
+        *,
+        cv_id: str,
+        user_id: UUID,
+        retention_expires_at: datetime,
+    ) -> None:
         try:
             async with self._session_factory() as session:
                 async with session.begin():
@@ -28,11 +34,42 @@ class OwnershipRepository:
                         CVOwnershipModel(
                             cv_id=cv_id,
                             user_id=user_id,
+                            retention_expires_at=retention_expires_at,
                         )
                     )
 
         except SQLAlchemyError as exc:
             raise StorageException(message="CV ownership could not be stored.") from exc
+
+    async def list_expired_cvs(
+        self,
+        *,
+        before: datetime,
+        limit: int,
+    ) -> list[tuple[str, UUID, datetime]]:
+        statement = (
+            select(
+                CVOwnershipModel.cv_id,
+                CVOwnershipModel.user_id,
+                CVOwnershipModel.retention_expires_at,
+            )
+            .where(CVOwnershipModel.retention_expires_at <= before)
+            .order_by(CVOwnershipModel.retention_expires_at)
+            .limit(limit)
+        )
+
+        try:
+            async with self._session_factory() as session:
+                rows = (await session.execute(statement)).all()
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message="Expired CV ownerships could not be read."
+            ) from exc
+
+        return [
+            (row.cv_id, row.user_id, row.retention_expires_at)
+            for row in rows
+        ]
 
     async def require_cv(self, *, cv_id: str, user_id: UUID) -> None:
         statement = select(CVOwnershipModel.cv_id).where(

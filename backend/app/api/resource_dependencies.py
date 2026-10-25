@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.api.auth_dependencies import CurrentUserDependency
+from app.core.config import get_settings
 from app.repositories.conversation_turn import ConversationTurnRepository
 from app.repositories.ownership import OwnershipRepository
 from app.services.authorized_conversation import (
@@ -11,6 +12,7 @@ from app.services.authorized_conversation import (
 from app.services.authorized_cv import (
     AuthorizedCVProcessingService,
 )
+from app.services.cv_lifecycle import CVDataLifecycleService
 from app.services.cv_tasks import AuthorizedCVTaskService
 
 
@@ -39,6 +41,7 @@ def get_authorized_cv_processing_service(
 ) -> AuthorizedCVProcessingService:
     from app.api.dependencies import (
         get_chat_model,
+        get_conversation_memory,
         get_cv_ingestion_service,
         get_cv_parser_agent,
         get_cv_processing_service,
@@ -69,12 +72,25 @@ def get_authorized_cv_processing_service(
         cv_repository=repository,
     )
 
+    ownership = OwnershipRepository(get_job_session_factory())
+    turns = ConversationTurnRepository(get_job_session_factory())
+    lifecycle = CVDataLifecycleService(
+        user_id=user.user_id,
+        ownership=ownership,
+        turns=turns,
+        profiles=repository,
+        storage=storage,
+        checkpointer=get_conversation_memory().checkpointer,
+    )
+
     return AuthorizedCVProcessingService(
         user_id=user.user_id,
         processing=processing,
-        ownership=OwnershipRepository(get_job_session_factory()),
+        ownership=ownership,
         cv_repository=repository,
         storage=storage,
+        lifecycle=lifecycle,
+        retention_days=get_settings().cv_retention_days,
     )
 
 
@@ -93,6 +109,7 @@ def get_authorized_cv_task_service(
         tasks=CVTaskRepository(get_job_session_factory()),
         storage=get_storage_service(),
         profiles=get_cv_repository(),
+        retention_days=get_settings().cv_retention_days,
     )
 
 

@@ -78,12 +78,20 @@ class CVOwnershipModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+    retention_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
 
     __table_args__ = (
         Index(
             "ix_cv_ownerships_user_id_created_at",
             "user_id",
             "created_at",
+        ),
+        Index(
+            "ix_cv_ownerships_retention_expires_at",
+            "retention_expires_at",
         ),
     )
 

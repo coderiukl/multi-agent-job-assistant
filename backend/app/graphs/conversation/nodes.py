@@ -1254,7 +1254,11 @@ class ConversationNodes:
                         "result": self._build_message_result(state),
                     },
                 ),
-            ]
+            ],
+            # The source profile is reloaded from the owned CV on the next
+            # turn. Do not retain the full document in the terminal graph
+            # state after a response has been produced.
+            "cv_profile": None,
         }
 
     @staticmethod

@@ -33,12 +33,24 @@ class CVTaskRepository:
     def __init__(self, session_factory: JobSessionFactory) -> None:
         self._session_factory = session_factory
 
-    async def enqueue(self, *, user_id: UUID, file: StoredFile) -> CVTaskRecord:
+    async def enqueue(
+        self,
+        *,
+        user_id: UUID,
+        file: StoredFile,
+        retention_expires_at: datetime,
+    ) -> CVTaskRecord:
         task_id = uuid4()
         try:
             async with self._session_factory() as session:
                 async with session.begin():
-                    session.add(CVOwnershipModel(cv_id=file.file_id, user_id=user_id))
+                    session.add(
+                        CVOwnershipModel(
+                            cv_id=file.file_id,
+                            user_id=user_id,
+                            retention_expires_at=retention_expires_at,
+                        )
+                    )
                     task = CVProcessingTaskModel(
                         task_id=task_id,
                         cv_id=file.file_id,

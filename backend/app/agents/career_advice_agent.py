@@ -14,7 +14,7 @@ from app.core.exceptions import (
 )
 from app.prompts.career_advice import CAREER_ADVICE_AGENT_PROMPT
 from app.schemas.career_advice import CareerAdviceAssessment, CareerAdviceInput
-
+from app.utils.cv_privacy import cv_profile_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,13 @@ class CareerAdviceAgent:
 
     async def advise(self, advice_input: CareerAdviceInput) -> CareerAdviceAssessment:
         cv_profile = (
-            advice_input.cv_profile.model_dump_json(exclude_none=True)
+            json.dumps(
+                cv_profile_for_llm(
+                    advice_input.cv_profile,
+                    purpose="career_advice",
+                ),
+                ensure_ascii=False,
+            )
             if advice_input.cv_profile is not None
             else "null"
         )

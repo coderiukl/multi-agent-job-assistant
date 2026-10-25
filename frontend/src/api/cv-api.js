@@ -92,9 +92,17 @@ export async function updateCvProfile(fileId, profile) {
 }
 
 export async function deleteCv(fileId) {
-    await requestJson(
+    const responseBody = await requestJson(
         CV_UPLOAD_ENDPOINT + "/" + encodeURIComponent(fileId),
         {method: "DELETE"},
         "Không thể xóa CV.",
     );
+    const data = responseBody?.data ?? responseBody;
+    return {
+        deleted: Boolean(data?.deleted),
+        purgedConversationIds:
+            data?.purgedConversationIds ??
+            data?.purged_conversation_ids ??
+            [],
+    };
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from app.core.exceptions import ResourceNotFoundException
 from app.repositories.cv import CVRepository
 from app.repositories.ownership import OwnershipRepository
 from app.schemas.cv_profile import CVProfile
+from app.services.cv_lifecycle import CVDataLifecycleService
 from app.services.storage import StorageService
 
 if TYPE_CHECKING:
@@ -31,12 +33,16 @@ class AuthorizedCVProcessingService:
         ownership: OwnershipRepository,
         cv_repository: CVRepository,
         storage: StorageService,
+        lifecycle: CVDataLifecycleService,
+        retention_days: int,
     ) -> None:
         self._user_id = user_id
         self._processing = processing
         self._ownership = ownership
         self._cv_repository = cv_repository
         self._storage = storage
+        self._lifecycle = lifecycle
+        self._retention_days = retention_days
 
     async def process(
         self,
@@ -49,6 +55,10 @@ class AuthorizedCVProcessingService:
             await self._ownership.add_cv(
                 cv_id=stored_file.file_id,
                 user_id=self._user_id,
+                retention_expires_at=(
+                    datetime.now(UTC)
+                    + timedelta(days=self._retention_days)
+                ),
             )
 
         except Exception:
@@ -95,23 +105,5 @@ class AuthorizedCVProcessingService:
         await self._cv_repository.save(cv_id=cv_id, profile=profile)
         return profile
 
-    async def delete(self, cv_id: str) -> None:
-        await self._ownership.require_cv(
-            cv_id=cv_id,
-            user_id=self._user_id,
-        )
-        cleanup_results = await asyncio.gather(
-            self._cv_repository.delete(cv_id),
-            self._storage.delete_by_id(cv_id),
-            return_exceptions=True,
-        )
-        failures = [
-            failure for failure in cleanup_results if isinstance(failure, BaseException)
-        ]
-        if failures:
-            raise failures[0]
-
-        await self._ownership.delete_cv(
-            cv_id=cv_id,
-            user_id=self._user_id,
-        )
+    async def delete(self, cv_id: str) -> list[UUID]:
+        return await self._lifecycle.delete(cv_id)

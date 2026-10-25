@@ -165,6 +165,7 @@ class AuthorizedConversationService:
         if not await self._get_values(thread_id):
             self._not_found(thread_id)
 
+        await self._turns.delete_for_thread(thread_id)
         await self._service.delete_history(thread_id)
 
         # Keep ownership so another account cannot reuse this ID.

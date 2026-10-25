@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -13,6 +14,7 @@ from app.core.exceptions import (
 )
 from app.prompts.cover_letter import COVER_LETTER_AGENT_PROMPT
 from app.schemas.cover_letter import CoverLetterDraft, CoverLetterInput
+from app.utils.cv_privacy import cv_profile_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,13 @@ class CoverLetterAgent:
         prompt_value = COVER_LETTER_AGENT_PROMPT.invoke(
             {
                 "user_request": letter_input.user_request,
-                "cv_profile": letter_input.cv_profile.model_dump_json(exclude_none=True),
+                "cv_profile": json.dumps(
+                    cv_profile_for_llm(
+                        letter_input.cv_profile,
+                        purpose="cover_letter",
+                    ),
+                    ensure_ascii=False,
+                ),
                 "job_context": letter_input.job.model_dump_json(exclude_none=True),
             }
         )

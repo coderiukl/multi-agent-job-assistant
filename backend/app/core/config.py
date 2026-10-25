@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     nine_router_base_url: str | None = Field(default=None, repr=False)
 
     max_cv_text_chars: int = Field(default=100_000, ge=1_000, le=500_000)
+    cv_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description="Days to retain an uploaded CV before it is purge-eligible.",
+    )
 
     # LangSmith
     langsmith_tracing: bool = False

@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.exceptions import AppException, StorageException
@@ -105,6 +105,22 @@ class ConversationTurnRepository:
                 "completed_at": datetime.now(UTC),
             },
         )
+
+    async def delete_for_thread(self, thread_id: UUID) -> None:
+        """Delete idempotency payloads and derived results for a thread."""
+
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    await session.execute(
+                        delete(ConversationTurnModel).where(
+                            ConversationTurnModel.thread_id == thread_id
+                        )
+                    )
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message="Conversation turn data could not be deleted."
+            ) from exc
 
     async def _update_status(
         self, *, turn_id: UUID, values: dict[str, Any]

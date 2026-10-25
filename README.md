@@ -186,6 +186,21 @@ flowchart LR
 
 **Quy tắc upload:** nhận **một PDF** hoặc **1–5 ảnh PNG/JPG/JPEG**, không trộn hai loại trong một lần upload; tối đa **10 MB mỗi file**, **50 MB tổng cộng**. Với CV nhiều ảnh, hệ thống ghép theo thứ tự đã chọn trước khi xử lý. API trả **HTTP 202** và `task_id`; frontend theo dõi trạng thái qua `GET /api/v1/cvs/processing-tasks/{task_id}`. Worker lưu trạng thái, số lần thử lại và processing lease trong PostgreSQL.
 
+### Bảo vệ và vòng đời dữ liệu CV
+
+- CV mới có thời hạn lưu giữ cấu hình bằng `CV_RETENTION_DAYS` (mặc định 90 ngày). Hết hạn nghĩa là CV đủ điều kiện để purge; cần chạy lệnh purge theo lịch vận hành.
+- CV Analysis, Career Advice và Job Matching không gửi khối thông tin cá nhân sang LLM. Cover Letter chỉ gửi họ tên để tạo chữ ký, không gửi email, số điện thoại, địa chỉ hoặc URL hồ sơ.
+- Profile đầy đủ được gỡ khỏi trạng thái cuối của hội thoại và được nạp lại từ kho CV có kiểm tra ownership khi cần.
+- Xóa CV đồng thời xóa file gốc, profile JSON, task/ownership, checkpoint hội thoại và dữ liệu replay của các hội thoại đã dùng CV đó. API trả danh sách hội thoại đã purge để frontend xóa cache IndexedDB/localStorage tương ứng.
+- Lệnh dưới đây mặc định chỉ xem trước. Chỉ `--execute` mới xóa vĩnh viễn:
+
+```bash
+python -m app.cli purge-expired-cvs --limit 100
+python -m app.cli purge-expired-cvs --limit 100 --execute
+```
+
+Mã nguồn không tự tuyên bố mã hóa at-rest. Môi trường production phải mã hóa volume/object storage và quản lý khóa bên ngoài ứng dụng; không lưu khóa mã hóa cạnh dữ liệu CV.
+
 ## 🗃 Pipeline dữ liệu tuyển dụng
 
 Nguồn thu thập hiện được cấu hình gồm **Himalayas, Arbeitnow, TopDev, Remotive, Jobicy và ITViec**.
@@ -335,6 +350,8 @@ Frontend mặc định: `http://127.0.0.1:5173`.
 
 - Giới hạn upload là một PDF hoặc tối đa năm ảnh, chưa hỗ trợ upload trộn.
 - CV được lưu trên filesystem/volume backend; chưa chuyển sang object storage production.
+- Purge theo thời hạn cần được scheduler của môi trường vận hành gọi định kỳ; repository chưa tự chạy lịch purge.
+- Chưa có KMS/envelope encryption ở tầng ứng dụng; cần kết hợp mã hóa volume/object storage của hạ tầng production.
 - Điểm matching và ranking cần được hiệu chỉnh bằng dữ liệu được gán nhãn.
 - Kết quả tìm kiếm phụ thuộc chất lượng, metadata và độ mới của job đã thu thập/index.
 - Snapshot cũ không tự cập nhật sau khi thuật toán thay đổi; cần tìm kiếm mới.

@@ -451,6 +451,25 @@ export function createHistoryController({
     renderConversationHistory();
   }
 
+  async function purgeLocalThreads(threadIds) {
+    const removed = new Set(threadIds ?? []);
+    if (!removed.size) return;
+
+    state.conversationThreads = state.conversationThreads.filter(
+      (item) => !removed.has(item.threadId),
+    );
+    await Promise.all(
+      [...removed].map((threadId) => deleteConversationSnapshot(threadId)),
+    );
+    saveConversationThreads();
+
+    if (removed.has(state.threadId)) {
+      resetConversation();
+      return;
+    }
+    renderConversationHistory();
+  }
+
   async function handleHistoryClick(event) {
     const menuButton = event.target.closest("[data-history-menu-button]");
     if (menuButton) {
@@ -709,6 +728,7 @@ export function createHistoryController({
     handleDocumentKeydown,
     handleHistoryClick,
     rememberConversationThread,
+    purgeLocalThreads,
     renderConversationHistory,
     restoreConversationHistory,
     restoreConversationThreads,

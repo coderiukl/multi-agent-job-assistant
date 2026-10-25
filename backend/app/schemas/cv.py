@@ -1,6 +1,13 @@
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from app.schemas.cv_profile import CVProfile
+
+
+class CVDeletionData(BaseModel):
+    deleted: bool = True
+    purged_conversation_ids: list[UUID] = Field(default_factory=list)
 
 
 class PdfMetadataData(BaseModel):

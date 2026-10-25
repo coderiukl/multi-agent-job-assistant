@@ -18,6 +18,7 @@ import {
 export function createCvController({
   addMessage,
   clearError,
+  purgeCvConversations,
   showError,
   updateComposerContext,
 }) {
@@ -299,7 +300,8 @@ export function createCvController({
 
       if (previousCv?.id && previousCv.id !== result.fileId) {
         try {
-          await deleteCv(previousCv.id);
+          const deletion = await deleteCv(previousCv.id);
+          await purgeCvConversations?.(deletion.purgedConversationIds);
         } catch (cleanupError) {
           console.warn("Could not delete the replaced CV.", cleanupError);
         }
@@ -437,7 +439,8 @@ export function createCvController({
 
     if (cvId) {
       try {
-        await deleteCv(cvId);
+        const deletion = await deleteCv(cvId);
+        await purgeCvConversations?.(deletion.purgedConversationIds);
       } catch (error) {
         showError(error?.message || "Không thể xóa CV.");
         return;
