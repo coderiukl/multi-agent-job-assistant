@@ -49,7 +49,6 @@ def build_conversation_graph(
     graph.add_node("cv_analysis", nodes.execute_cv_analysis)
     graph.add_node("career_advice", nodes.execute_career_advice)
     graph.add_node("cover_letter", nodes.execute_cover_letter)
-    graph.add_node("job_search", nodes.execute_job_search)
     graph.add_node("job_matching", nodes.execute_job_matching)
 
     # Human-in-the-loop
@@ -90,7 +89,8 @@ def build_conversation_graph(
         ConversationRoute.OUT_OF_SCOPE: "out_of_scope",
         ConversationRoute.GENERAL_QUESTION: "general_question",
         ConversationRoute.CV_ANALYSIS: "cv_analysis",
-        ConversationRoute.JOB_SEARCH: "job_search",
+        # A lone job-search intent is always planned as a JOB_DISCOVERY
+        # workflow, so there is no single-agent search node (BUG-030).
         ConversationRoute.JOB_MATCHING: "job_matching",
         ConversationRoute.CAREER_ADVICE: "career_advice",
         ConversationRoute.COVER_LETTER: "human_review",
@@ -127,6 +127,7 @@ def build_conversation_graph(
             HumanReviewRoute.WORKFLOW_COVER_LETTER: "workflow_cover_letter",
             HumanReviewRoute.SINGLE_COVER_LETTER: "cover_letter",
             HumanReviewRoute.REJECTED: "human_review_rejected",
+            HumanReviewRoute.NO_TARGET: "record_assistant_message",
         },
     )
 
@@ -151,7 +152,6 @@ def build_conversation_graph(
         "out_of_scope",
         "general_question",
         "cv_analysis",
-        "job_search",
         "job_matching",
         "career_advice",
         "cover_letter_approved",

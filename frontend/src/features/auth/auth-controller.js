@@ -301,6 +301,10 @@ function getFriendlyAuthError(error) {
     return "Email hoặc mật khẩu không chính xác.";
   }
 
+  if (error?.status === 429 || code === "RATE_LIMIT_EXCEEDED") {
+    return "Bạn đã thử quá nhiều lần. Vui lòng đợi vài phút rồi thử lại.";
+  }
+
   if (code === "EMAIL_ALREADY_REGISTERED") {
     return "Email này đã được đăng ký. Hãy chuyển sang đăng nhập.";
   }

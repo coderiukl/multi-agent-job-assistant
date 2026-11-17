@@ -39,6 +39,8 @@ class WorkflowExecutionStatus(StrEnum):
     SUCCESS = "success"
     PARTIAL_SUCCESS = "partial_success"
     FAILED = "failed"
+    # Nothing to match (e.g. the search returned no job): not an error.
+    NO_RESULTS = "no_results"
 
 
 class WorkflowJobMatchOutcome(BaseModel):
@@ -79,6 +81,8 @@ class MatchingExecutionSummary(BaseModel):
                 raise ValueError("Partial success requires mixed outcomes.")
         if self.status == WorkflowExecutionStatus.FAILED and self.succeeded:
             raise ValueError("Failed execution cannot contain successes.")
+        if self.status == WorkflowExecutionStatus.NO_RESULTS and self.total:
+            raise ValueError("no_results requires an empty candidate list.")
         return self
 
 

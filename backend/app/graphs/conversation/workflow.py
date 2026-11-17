@@ -12,8 +12,13 @@ def advance_workflow(
     try:
         current_index = workflow.steps.index(completed_step)
     except ValueError:
+        # A step outside the plan must never leave current_step unchanged:
+        # workflow nodes loop back to themselves while current_step points at
+        # them, so not advancing would spin until the recursion limit
+        # (BUG-030). Finish the workflow instead.
         return workflow.model_copy(
             update={
+                "current_step": WorkflowStep.COMPLETED,
                 "completed_steps": completed_steps,
             }
         )

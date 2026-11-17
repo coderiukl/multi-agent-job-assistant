@@ -1,6 +1,7 @@
 from fastapi import APIRouter, status
 
 from app.api.dependencies import JobSearchServiceDependency
+from app.api.rate_limit_dependencies import JobSearchUserDependency
 
 from app.schemas.error import ErrorResponse
 from app.schemas.job_search import JobSearchRequest, JobSearchResult
@@ -14,6 +15,14 @@ router = APIRouter()
     status_code=status.HTTP_200_OK,
     summary="Search jobs",
     responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "A valid bearer token is required.",
+        },
+        429: {
+            "model": ErrorResponse,
+            "description": "The per-user search quota was exceeded.",
+        },
         422: {
             "model": ErrorResponse,
             "description": (
@@ -37,7 +46,8 @@ router = APIRouter()
 )
 async def search_jobs(
     request: JobSearchRequest,
-    search_service: JobSearchServiceDependency
+    search_service: JobSearchServiceDependency,
+    _user: JobSearchUserDependency,
 ) -> ApiResponse[JobSearchResult]:
     result = await search_service.search(request)
     return ApiResponse(

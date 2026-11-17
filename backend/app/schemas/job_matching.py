@@ -13,6 +13,11 @@ from app.schemas.job import (
 )
 
 
+# The agent must assess every extracted requirement exactly once, so the
+# requirement list and the evidence list share one upper bound (BUG-002).
+MAX_MATCH_REQUIREMENTS = 60
+
+
 class JobMatchingSchema(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -118,7 +123,9 @@ class JobMatchTarget(JobMatchingSchema):
 class JobMatchingInput(JobMatchingSchema):
     cv_profile: CVProfile
     job: JobMatchTarget
-    requirements: list[JobRequirement] = Field(default_factory=list, max_length=100)
+    requirements: list[JobRequirement] = Field(
+        default_factory=list, max_length=MAX_MATCH_REQUIREMENTS
+    )
     cv_evidence_catalog: list[CVEvidenceItem] = Field(
         default_factory=list, max_length=500
     )
@@ -204,7 +211,9 @@ class JobMatchingAssessment(JobMatchingSchema):
     breakdown: JobMatchingBreakDown
     strengths: list[str] = Field(default_factory=list, max_length=20)
     gaps: list[str] = Field(default_factory=list, max_length=20)
-    evidence: list[MatchEvidence] = Field(default_factory=list, max_length=30)
+    evidence: list[MatchEvidence] = Field(
+        default_factory=list, max_length=MAX_MATCH_REQUIREMENTS
+    )
     summary: str = Field(min_length=1, max_length=3000)
     confidence: float = Field(ge=0.0, le=1.0)
 

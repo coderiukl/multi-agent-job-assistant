@@ -102,7 +102,7 @@ class ArbeitnowJobSource:
                 f"1 and {self._MAX_LIMIT}."
             )
 
-        page_number = self._parse_cursor(cursor)
+        page_number, offset = self._parse_cursor(cursor)
 
         response = await self._client.get(
             self._API_URL,
@@ -114,7 +114,11 @@ class ArbeitnowJobSource:
             response.json()
         )
 
-        selected_jobs = page.data[:limit]
+        # An API page holds up to 100 jobs while a run may take fewer: keep
+        # the position inside the page in the cursor ("page:offset") instead
+        # of jumping to the next page and losing the rest (BUG-022).
+        end = offset + limit
+        selected_jobs = page.data[offset:end]
 
         raw_jobs = [
             RawJob(
@@ -129,12 +133,17 @@ class ArbeitnowJobSource:
             for job in selected_jobs
         ]
 
-        return CrawlPage(
-            items=raw_jobs,
-            next_cursor=self._build_next_cursor(
+        if end < len(page.data):
+            next_cursor: str | None = f"{page_number}:{end}"
+        else:
+            next_cursor = self._build_next_cursor(
                 page=page,
                 current_page=page_number,
-            ),
+            )
+
+        return CrawlPage(
+            items=raw_jobs,
+            next_cursor=next_cursor,
         )
 
     def map_to_candidate(
@@ -185,30 +194,34 @@ class ArbeitnowJobSource:
     @staticmethod
     def _parse_cursor(
         cursor: str | None,
-    ) -> int:
+    ) -> tuple[int, int]:
+        """Parse "page" (legacy) or "page:offset" into (page, offset)."""
         if cursor is None:
-            return 1
+            return 1, 0
 
         normalized = cursor.strip()
 
         if not normalized:
-            return 1
+            return 1, 0
+
+        page_part, _, offset_part = normalized.partition(":")
 
         try:
-            page_number = int(normalized)
+            page_number = int(page_part)
+            offset = int(offset_part) if offset_part else 0
         except ValueError as error:
             raise ValueError(
                 "Arbeitnow cursor must be "
                 "a positive page number."
             ) from error
 
-        if page_number < 1:
+        if page_number < 1 or offset < 0:
             raise ValueError(
                 "Arbeitnow cursor must be "
                 "a positive page number."
             )
 
-        return page_number
+        return page_number, offset
 
     @staticmethod
     def _build_next_cursor(

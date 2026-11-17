@@ -15,6 +15,7 @@ from app.schemas.cover_letter import CoverLetterResult
 from app.schemas.cv_analysis import CVAnalysisResult
 from app.schemas.cv_profile import CVProfile
 from app.schemas.human_review import HumanReviewDecision, HumanReviewRequest
+from app.schemas.job import NormalizedJob
 from app.schemas.job_matching import JobMatchingResult, JobMatchTarget
 from app.schemas.job_search import JobSearchResult
 from app.schemas.workflow import (
@@ -37,12 +38,21 @@ class ConversationState(TypedDict, total=False):
     cv_id: str | None
     cv_name: str | None
     job_description: str | None
+    # True when this turn's request carried job_description explicitly, so a
+    # freshly pasted JD wins over jobs remembered from earlier turns.
+    job_description_provided: bool
 
     # Context được backend xác thực
     cv_profile: CVProfile | None
     has_cv: bool
     has_jd: bool
     search_context: ConversationSearchContext
+
+    # Conversation focus kept ACROSS turns (never reset in prepare_turn), so
+    # "the job just found" / "this job" can be resolved later (BUG-005/006).
+    recent_jobs: list[NormalizedJob]
+    last_matching_results: list[JobMatchingResult]
+    last_matching_cv_id: str | None
 
     # Kết quả Intent Analysis
     intent: IntentAnalysisResult

@@ -55,9 +55,14 @@ class QdrantJobVectorIndex:
                         distance=models.Distance.COSINE,
                     ),
                 )
+            else:
+                await self._validate_existing_collection()
 
             await self._ensure_payload_indexes()
             self._collection_ready = True
+
+        except AppException:
+            raise
 
         except Exception as exc:
             LOGGER.exception(
@@ -72,6 +77,106 @@ class QdrantJobVectorIndex:
                 service="qdrant",
                 message=("The job vector collection could not be initialized."),
             ) from exc
+
+    async def _validate_existing_collection(self) -> None:
+        """Refuse a collection whose vectors do not match the embedding model.
+
+        Otherwise the mismatch only surfaces later as failing upserts/queries
+        (BUG-032), e.g. after changing EMBEDDING_MODEL without a new collection.
+        """
+        info = await self._client.get_collection(self._collection_name)
+        vectors = info.config.params.vectors
+        if isinstance(vectors, dict):
+            # Named vectors: this index only writes the default unnamed vector.
+            vectors = vectors.get("") if "" in vectors else None
+
+        size = getattr(vectors, "size", None)
+        distance = getattr(vectors, "distance", None)
+        if size != self._dimensions or distance != models.Distance.COSINE:
+            LOGGER.error(
+                "Qdrant collection configuration does not match the embeddings",
+                extra={
+                    "collection": self._collection_name,
+                    "expected_size": self._dimensions,
+                    "actual_size": size,
+                    "actual_distance": str(distance),
+                },
+            )
+            raise AppException(
+                status_code=500,
+                code="VECTOR_COLLECTION_MISCONFIGURED",
+                message=(
+                    "The job vector collection does not match the configured "
+                    "embedding model."
+                ),
+                details={
+                    "collection": self._collection_name,
+                    "expected_size": self._dimensions,
+                    "actual_size": size,
+                },
+            )
+
+    async def delete_jobs(self, job_ids: list[str]) -> int:
+        """Remove the vectors of jobs deleted from PostgreSQL."""
+        unique_ids = list(dict.fromkeys(job_id for job_id in job_ids if job_id))
+        if not unique_ids:
+            return 0
+
+        await self.ensure_collection()
+        point_ids = [self._point_id_for_job_id(job_id) for job_id in unique_ids]
+        try:
+            await self._client.delete(
+                collection_name=self._collection_name,
+                points_selector=models.PointIdsList(points=point_ids),
+                wait=True,
+            )
+        except Exception as exc:
+            LOGGER.exception(
+                "Could not delete Qdrant job points",
+                extra={"collection": self._collection_name,
+                       "error_type": type(exc).__name__},
+            )
+            raise ExternalServiceException(
+                service="qdrant",
+                message="Job vectors could not be deleted.",
+            ) from exc
+        return len(point_ids)
+
+    async def delete_expired_jobs(self, *, before: datetime | None = None) -> int:
+        """Remove vectors of jobs that expired before ``before`` (default: now)."""
+        await self.ensure_collection()
+        cutoff = before or datetime.now(UTC)
+        expired = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="expires_at",
+                    range=models.DatetimeRange(lt=cutoff),
+                )
+            ]
+        )
+        try:
+            counted = await self._client.count(
+                collection_name=self._collection_name,
+                count_filter=expired,
+                exact=True,
+            )
+            if counted.count:
+                await self._client.delete(
+                    collection_name=self._collection_name,
+                    points_selector=models.FilterSelector(filter=expired),
+                    wait=True,
+                )
+        except Exception as exc:
+            LOGGER.exception(
+                "Could not prune expired Qdrant job points",
+                extra={"collection": self._collection_name,
+                       "error_type": type(exc).__name__},
+            )
+            raise ExternalServiceException(
+                service="qdrant",
+                message="Expired job vectors could not be pruned.",
+            ) from exc
+        return counted.count
 
     async def get_jobs_requiring_index(
         self,
@@ -318,12 +423,16 @@ class QdrantJobVectorIndex:
 
     @staticmethod
     def _point_id(job: NormalizedJob) -> str:
+        return QdrantJobVectorIndex._point_id_for_job_id(job.job_id)
+
+    @staticmethod
+    def _point_id_for_job_id(job_id: str) -> str:
         # Qdrant only accepts unsigned integers or UUIDs as point IDs. Use a
         # deterministic UUID derived solely from PostgreSQL's stable job_id.
         return str(
             uuid5(
                 NAMESPACE_URL,
-                f"source-record-job:{job.job_id}",
+                f"source-record-job:{job_id}",
             )
         )
 

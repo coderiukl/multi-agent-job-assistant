@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
@@ -23,9 +24,25 @@ from app.schemas.human_review import HumanReviewRequest, ResumeConversationReque
 from app.utils.serialization import to_json_compatible
 
 
+# Durable conversation memory copied into the throw-away diagnostic run, so
+# intent analysis sees the same context as a real turn.
+_DIAGNOSTIC_SEED_KEYS = (
+    "messages",
+    "cv_id",
+    "cv_name",
+    "job_description",
+    "search_context",
+    "recent_jobs",
+    "last_matching_results",
+    "last_matching_cv_id",
+)
+
+
 class ConversationService:
     def __init__(self, *, graph: CompiledStateGraph) -> None:
         self._graph = graph
+        self._diagnostic_graph: CompiledStateGraph | None = None
+        self._diagnostic_saver: InMemorySaver | None = None
 
     async def process(self, request: ConversationRequest) -> ConversationResponseData:
         pending_review = await self._get_pending_review(request.thread_id)
@@ -209,15 +226,48 @@ class ConversationService:
         self,
         request: ConversationRequest,
     ) -> IntentAnalysisResult:
-        state = await self._invoke_graph(request, stop_after_intent=True)
+        """Diagnostic intent analysis with no side effects on the thread.
 
-        return state["intent"]
+        The real thread is only read. The graph runs on a throw-away thread of
+        a private in-memory checkpointer, so neither the user message nor the
+        loaded CV profile is written to the conversation (BUG-009).
+        """
+        snapshot = await self._graph.aget_state(
+            {"configurable": {"thread_id": str(request.thread_id)}}
+        )
+        seed = {
+            key: snapshot.values[key]
+            for key in _DIAGNOSTIC_SEED_KEYS
+            if snapshot.values and key in snapshot.values
+        }
+        initial_state = self._build_initial_state(request)
+        initial_state = {
+            **seed,
+            **initial_state,
+            "messages": [*seed.get("messages", []), *initial_state["messages"]],
+        }
 
-    async def _invoke_graph(
-        self,
-        request: ConversationRequest,
-        stop_after_intent: bool = False,
-    ) -> ConversationState:
+        graph, saver = self._get_diagnostic_graph()
+        diagnostic_thread_id = f"diagnostic-{uuid4().hex}"
+        config: dict[str, Any] = {"configurable": {"thread_id": diagnostic_thread_id}}
+        try:
+            result = await graph.ainvoke(initial_state, config=config)
+        finally:
+            await saver.adelete_thread(diagnostic_thread_id)
+
+        return cast(ConversationState, result)["intent"]
+
+    def _get_diagnostic_graph(self) -> tuple[CompiledStateGraph, InMemorySaver]:
+        if self._diagnostic_graph is None or self._diagnostic_saver is None:
+            saver = InMemorySaver()
+            self._diagnostic_graph = self._graph.builder.compile(
+                checkpointer=saver,
+                interrupt_after=["analyze_intent"],
+            )
+            self._diagnostic_saver = saver
+        return self._diagnostic_graph, self._diagnostic_saver
+
+    def _build_initial_state(self, request: ConversationRequest) -> ConversationState:
         message_context = {
             key: value
             for key, value in {
@@ -248,18 +298,25 @@ class ConversationService:
         if "job_description" in request.model_fields_set:
             initial_state["job_description"] = request.job_description
 
+        initial_state["job_description_provided"] = bool(
+            "job_description" in request.model_fields_set and request.job_description
+        )
+
+        return initial_state
+
+    async def _invoke_graph(
+        self,
+        request: ConversationRequest,
+    ) -> ConversationState:
+        initial_state = self._build_initial_state(request)
+
         config: dict[str, Any] = {
             "configurable": {
                 "thread_id": str(request.thread_id),
             }
         }
 
-        if stop_after_intent:
-            result = await self._graph.ainvoke(
-                initial_state, config=config, interrupt_after=["analyze_intent"]
-            )
-        else:
-            result = await self._graph.ainvoke(initial_state, config=config)
+        result = await self._graph.ainvoke(initial_state, config=config)
 
         return cast(ConversationState, result)
 

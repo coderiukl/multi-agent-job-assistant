@@ -135,6 +135,24 @@ def _validate_metrics(
     normalized = metrics["normalized_count"]
     failed = metrics["failed_count"]
 
+    if _is_source_exhausted(metrics):
+        # The paginated source has no page after the stored cursor. This is
+        # the normal end of a crawl cycle, not a failure: let the run succeed
+        # so commit_source_cursor resets the cursor (next_cursor=None -> "")
+        # and the next run starts again from the first page (BUG-023).
+        LOGGER.warning(
+            "Source %s exhausted after cursor %r; the cursor will be reset.",
+            metrics.get("source"),
+            metrics.get("current_cursor"),
+        )
+        return {
+            **metrics,
+            "duplicate_count": 0,
+            "failure_rate": 0.0,
+            "minimum_fetched": 0,
+            "quality_status": "source_exhausted",
+        }
+
     if fetched != normalized + failed:
         raise ValueError(
             "Invalid processing totals: "
@@ -218,6 +236,24 @@ def _validate_metrics(
         "minimum_fetched": minimum_fetched,
         "quality_status": quality_status,
     }
+
+
+def _is_source_exhausted(metrics: dict[str, Any]) -> bool:
+    """True when a cursor-paginated crawl ran past the last page.
+
+    An empty *first* page (no stored cursor) is still a failure: the source
+    returned nothing at all, which needs attention.
+    """
+    return (
+        all(metrics.get(field) == 0 for field in COUNT_FIELDS)
+        and metrics.get("next_cursor") in (None, "")
+        and bool(metrics.get("current_cursor"))
+    )
+
+
+def _index_job_ids(metrics: dict[str, Any]) -> list[str]:
+    """IDs written to PostgreSQL by the crawl, regardless of the quality gate."""
+    return [str(job_id) for job_id in (metrics.get("normalized_job_ids") or [])]
 
 
 def _persist_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
@@ -360,13 +396,20 @@ def build_source_dag(configuration: SourceSchedule) -> Any:
             execution_timeout=timedelta(minutes=45),
         )
         def index_jobs(metrics: dict[str, Any]) -> dict[str, Any]:
+            job_ids = _index_job_ids(metrics)
+
+            if not job_ids:
+                # Nothing was written; do not load the embedding model.
+                return {"source": source_name, "scanned": 0, "indexed": 0,
+                        "skipped": True}
+
             from app.cli.index_jobs import sync_job_index
 
             result = asyncio.run(
                 sync_job_index(
                     scan_batch_size=JOB_INDEX_SCAN_BATCH_SIZE,
                     source=source_name,
-                    job_ids=list(metrics.get("normalized_job_ids") or []),
+                    job_ids=job_ids,
                 )
             )
 
@@ -380,9 +423,12 @@ def build_source_dag(configuration: SourceSchedule) -> Any:
         crawl_metrics = crawl_source_jobs()
         validated_metrics = validate_crawl_quality(crawl_metrics)
         committed_metrics = commit_source_cursor(validated_metrics)
-        recorded_metrics = record_crawl_metrics(committed_metrics)
-        indexing_result = index_jobs(committed_metrics)
-        recorded_metrics >> indexing_result
+        record_crawl_metrics(committed_metrics)
+        # Rows are already in PostgreSQL once the crawl task succeeds, so they
+        # are indexed even when the quality gate fails (the run still fails
+        # and alerts); otherwise PostgreSQL and Qdrant drift apart (BUG-023).
+        # Indexing is idempotent (content-hash based), so retries are safe.
+        index_jobs(crawl_metrics)
 
     return source_pipeline()
 

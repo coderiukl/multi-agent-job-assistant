@@ -3,14 +3,19 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.exceptions import AppException, StorageException
 from app.database.auth_models import ConversationTurnModel
 from app.database.session import JobSessionFactory
 
-TURN_LEASE_SECONDS = 3600
+# A turn keeps its thread locked only while its process is alive: the lease
+# is short and renewed by a heartbeat (TURN_HEARTBEAT_SECONDS) for as long as
+# the turn runs. A crashed API process frees the thread after at most
+# TURN_LEASE_SECONDS instead of one hour (BUG-029).
+TURN_LEASE_SECONDS = 120
+TURN_HEARTBEAT_SECONDS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,11 +40,11 @@ class ConversationTurnRepository:
         operation: str,
         payload_hash: str,
     ) -> TurnAcquisition:
-        now = datetime.now(UTC)
-
         try:
             async with self._session_factory() as session:
                 async with session.begin():
+                    # One clock (the database's) for leases, as in the CV queue.
+                    now = await session.scalar(select(func.now()))
                     await session.execute(
                         update(ConversationTurnModel)
                         .where(
@@ -79,6 +84,29 @@ class ConversationTurnRepository:
             ) from exc
 
         return TurnAcquisition()
+
+    async def renew_lease(self, *, turn_id: UUID) -> bool:
+        """Extend the lease of a turn that is still processing."""
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    result = await session.execute(
+                        update(ConversationTurnModel)
+                        .where(
+                            ConversationTurnModel.turn_id == turn_id,
+                            ConversationTurnModel.status == "processing",
+                        )
+                        .values(
+                            lease_expires_at=func.now()
+                            + timedelta(seconds=TURN_LEASE_SECONDS)
+                        )
+                    )
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message="Conversation turn lease could not be renewed."
+            ) from exc
+
+        return result.rowcount == 1
 
     async def complete(
         self,

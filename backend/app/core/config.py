@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     )
     backend_cors_allow_credentials: bool = True
 
+    # Abuse protection (in-process limits; also enforce at the reverse proxy
+    # when the API runs with more than one process).
+    job_search_rate_limit_per_minute: int = Field(default=20, ge=1, le=1000)
+    auth_login_max_failures_per_email: int = Field(default=5, ge=1, le=100)
+    auth_login_max_failures_per_ip: int = Field(default=20, ge=1, le=1000)
+    auth_login_failure_window_seconds: int = Field(default=900, ge=10, le=86_400)
+    auth_register_rate_limit_per_hour: int = Field(default=10, ge=1, le=1000)
+
     # LLM
     llm_provider: Literal["openai", "9router"] = "openai"
     llm_model: str = "gpt-5-mini"
@@ -110,6 +118,10 @@ class Settings(BaseSettings):
     cv_task_lease_seconds: int = Field(default=120, ge=60, le=7200)
     cv_task_heartbeat_seconds: int = Field(default=30, ge=5, le=300)
     cv_task_timeout_seconds: int = Field(default=120, ge=30, le=1800)
+    # OCR runs on CPU at ~17-36 s per page (BUG-028), so the processing budget
+    # grows with the page count: timeout + pages * per_page, capped below.
+    cv_task_timeout_seconds_per_page: int = Field(default=45, ge=0, le=600)
+    cv_task_max_timeout_seconds: int = Field(default=1800, ge=60, le=7200)
     cv_task_max_attempts: int = Field(default=2, ge=1, le=10)
 
     # Pydantic settings

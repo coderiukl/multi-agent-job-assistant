@@ -51,7 +51,8 @@ General rules:
 5. Experience score:
    - Evaluate relevance of previous roles, responsibilities, and achievements.
    - Consider the requested seniority level when it is known.
-   - Do not calculate or invent years of experience when dates are incomplete or ambiguous.
+   - Do not calculate or invent years of experience yourself. When CV_EVIDENCE_CATALOG contains a "total experience" item, use it as the authoritative number of years and compare it with any years or seniority requirement. If no such item exists, treat the duration as unknown.
+   - When the CV total is below a required number of years, use partial and cite the total-experience item if it is more than half of the requirement; otherwise use missing with an empty cv_evidence_ids list and state the CV total in the explanation. Never attach cv_evidence_ids to a missing entry.
    - Relevant project experience may provide partial evidence for candidates with limited professional experience.
 
 6. Education score:

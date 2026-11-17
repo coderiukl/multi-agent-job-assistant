@@ -6,6 +6,8 @@ from typing import Any
 
 from app.graphs.conversation.planning import create_workflow_plan
 from app.schemas.conversations_intent import IntentAnalysisResult
+from app.schemas.cv_profile import CVProfile
+from app.services.job_matching_context import build_cv_evidence_catalog
 
 
 def _score(key: str, passed: bool) -> dict[str, Any]:
@@ -432,6 +434,14 @@ def matching_evidence_grounded(
     outputs: dict[str, Any],
 ) -> dict[str, Any]:
     cv_text = _normalize_text(inputs.get("cv_profile", {}))
+
+    try:
+        profile = CVProfile.model_validate(inputs.get("cv_profile", {}))
+        cv_text += " " + _normalize_text(
+            [item.text for item in build_cv_evidence_catalog(profile)]
+        )
+    except ValueError:
+        pass
 
     evidence_items = [
         evidence

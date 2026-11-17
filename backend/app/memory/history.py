@@ -9,6 +9,9 @@ from app.schemas.conversation_search_context import (
 
 MAX_HISTORY_MESSAGES = 6
 MAX_HISTORY_CHARS = 6_000
+# Downstream agent inputs (user_request / query) accept at most 2,000 chars.
+MAX_CONTEXTUAL_MESSAGE_CHARS = 2_000
+_TRUNCATION_MARK = "…"
 
 
 def get_previous_message(
@@ -73,14 +76,22 @@ def build_contextual_user_message(
     if context.is_empty:
         return current_message
 
-    contextual_message = (
+    prefix = (
         "Saved job search constraints:\n"
         f"{format_search_context(context)}\n\n"
         "Current user request:\n"
-        f"{current_message}"
     )
+    # Truncate the user's message, never the saved constraints (BUG-025):
+    # slicing the whole string from the end silently dropped them.
+    prefix = prefix[: MAX_CONTEXTUAL_MESSAGE_CHARS // 2]
+    budget = MAX_CONTEXTUAL_MESSAGE_CHARS - len(prefix)
+    if len(current_message) > budget:
+        current_message = (
+            current_message[: budget - len(_TRUNCATION_MARK)].rstrip()
+            + _TRUNCATION_MARK
+        )
 
-    return contextual_message[-2000:]
+    return prefix + current_message
 
 
 def _message_text(message: BaseMessage) -> str:

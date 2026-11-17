@@ -80,6 +80,15 @@ class IntentAnalysisResult(BaseModel):
     needs_clarification: bool = False
     clarification_question: str | None = None
 
+    @field_validator("clarification_question", mode="before")
+    @classmethod
+    def blank_question_is_none(cls, value: object) -> object:
+        # LLMs commonly emit "" instead of null when no question is needed.
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
     @model_validator(mode="after")
     def validate_clarification(self) -> "IntentAnalysisResult":
         if self.needs_clarification and not self.clarification_question:

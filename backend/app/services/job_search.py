@@ -7,7 +7,7 @@ from typing import cast
 from app.agents.job_search_agent import JobSearchAgent
 from app.core.exceptions import ExternalServiceException
 from app.repositories.postgres_job_search import PostgresJobSearchRepository
-from app.schemas.job import NormalizedJob, normalize_single_line
+from app.schemas.job import NormalizedJob, SeniorityLevel, normalize_single_line
 from app.schemas.job_search import (
     JobSearchHit,
     JobSearchPlan,
@@ -19,7 +19,11 @@ from app.schemas.job_search import (
     JobVectorSearchHit,
 )
 from app.schemas.job_search_context import JobSearchContext
-from app.utils.job_deduplication import build_job_deduplication_key
+from app.utils.job_deduplication import (
+    build_job_deduplication_key,
+    normalize_deduplication_text,
+    normalize_job_location,
+)
 from app.utils.job_search_sorting import sort_job_search_hits
 from app.vectorstores.base import JobVectorIndex
 
@@ -151,6 +155,7 @@ class HybridJobSearchService:
                 job=job,
                 plan=plan,
                 semantic_score=semantic_scores.get(job.job_id),
+                semantic_available=semantic_available,
             )
             for job in merged_jobs
         ]
@@ -169,7 +174,15 @@ class HybridJobSearchService:
             len(postgres_jobs) >= retrieval_limit
             or len(semantic_hits) >= retrieval_limit
         )
-        has_more = page_end < total or retrieval_window_saturated
+        # A saturated window only means "more may exist" if the next page
+        # would be retrieved with a larger window; at MAX_CANDIDATE_LIMIT no
+        # further page can ever be served (BUG-031: infinite "load more").
+        next_retrieval_limit = self._resolve_retrieval_limit(
+            request.model_copy(update={"page": request.page + 1})
+        )
+        has_more = page_end < total or (
+            retrieval_window_saturated and next_retrieval_limit > retrieval_limit
+        )
 
         page_items = self._paginate_hits(
             hits=sorted_hits,
@@ -284,6 +297,7 @@ class HybridJobSearchService:
         job: NormalizedJob,
         plan: JobSearchPlan,
         semantic_score: float | None,
+        semantic_available: bool = True,
     ) -> JobSearchHit:
         keyword_score, matched_terms = self._calculate_keyword_score(
             job=job,
@@ -296,6 +310,7 @@ class HybridJobSearchService:
             semantic_score=semantic_score,
             keyword_score=keyword_score,
             freshness_score=freshness_score,
+            semantic_available=semantic_available,
         )
 
         reasons = self._build_reasons(
@@ -311,7 +326,7 @@ class HybridJobSearchService:
             score=JobSearchScore(
                 semantic=semantic_score,
                 keyword=keyword_score,
-                filter_match=1.0,
+                filter_match=self._calculate_filter_match(job=job, plan=plan),
                 freshness=freshness_score,
                 final=final_score,
             ),
@@ -407,19 +422,80 @@ class HybridJobSearchService:
         semantic_score: float | None,
         keyword_score: float,
         freshness_score: float,
+        semantic_available: bool = True,
     ) -> float:
-        if semantic_score is None:
+        """One formula for every candidate of a search (BUG-013).
+
+        When Qdrant answered, a PostgreSQL-only candidate was *not* among the
+        semantic top-k, so its semantic contribution is 0 on the same scale
+        as the semantic hits, instead of being re-weighted onto a different
+        scale that let it outrank a 0.95 semantic hit. Only when semantic
+        retrieval is unavailable for the whole search are keyword/freshness
+        re-weighted (all candidates then share that scale).
+        """
+        if semantic_score is None and not semantic_available:
             score = keyword_score * 0.75 + freshness_score * 0.25
 
             return cls._round_score(score)
 
         score = (
-            semantic_score * SEMANTIC_WEIGHT
+            (semantic_score or 0.0) * SEMANTIC_WEIGHT
             + keyword_score * KEYWORD_WEIGHT
             + freshness_score * FRESHNESS_WEIGHT
         )
 
         return cls._round_score(score)
+
+    @staticmethod
+    def _filter_checks(
+        job: NormalizedJob, plan: JobSearchPlan
+    ) -> dict[str, bool | None]:
+        """Per active filter: True = job explicitly matches, None = unknown."""
+        filters = plan.filters
+        checks: dict[str, bool | None] = {}
+
+        if filters.locations:
+            job_location = normalize_job_location(job.location)
+            checks["location"] = (
+                None
+                if not job_location
+                else any(
+                    normalize_job_location(location) in job_location
+                    for location in filters.locations
+                )
+            )
+        if filters.seniority_levels:
+            checks["seniority"] = (
+                None
+                if job.seniority_level == SeniorityLevel.UNKNOWN
+                else job.seniority_level in filters.seniority_levels
+            )
+        if filters.work_modes:
+            work_mode = getattr(job, "work_mode", None)
+            checks["work_mode"] = (
+                None
+                if work_mode in (None, "unknown")
+                else work_mode in filters.work_modes
+            )
+        if filters.skills:
+            job_skills = {normalize_deduplication_text(skill) for skill in job.skills}
+            checks["skills"] = any(
+                normalize_deduplication_text(skill) in job_skills
+                for skill in filters.skills
+            )
+        return checks
+
+    @classmethod
+    def _calculate_filter_match(
+        cls, *, job: NormalizedJob, plan: JobSearchPlan
+    ) -> float:
+        """Share of active filters the job explicitly satisfies (unknown = 0.5)."""
+        checks = cls._filter_checks(job, plan)
+        if not checks:
+            return 1.0
+        points = sum(1.0 if value else 0.5 if value is None else 0.0
+                     for value in checks.values())
+        return round(points / len(checks), 6)
 
     @staticmethod
     def _build_reasons(
@@ -441,10 +517,13 @@ class HybridJobSearchService:
         if matched_terms:
             reasons.append("Khớp từ khóa: " + ", ".join(matched_terms[:5]) + ".")
 
-        if plan.filters.locations and job.location:
+        # Only claim a filter match the job data actually supports (BUG-031).
+        checks = HybridJobSearchService._filter_checks(job, plan)
+
+        if checks.get("location"):
             reasons.append("Phù hợp với địa điểm yêu cầu.")
 
-        if plan.filters.seniority_levels:
+        if checks.get("seniority"):
             reasons.append("Phù hợp với cấp độ kinh nghiệm được yêu cầu.")
 
         if freshness_score >= 0.70:

@@ -134,11 +134,28 @@ class CVProcessingService:
             + len(profile.work_experiences)
             + len(profile.educations)
         )
+        # OCR pages whose text is known to be lossy (e.g. Vietnamese letters
+        # the recognizer cannot output) always require a human check (BUG-026).
+        used_ocr_pages = {
+            page_number for page_number, method in method_by_page.items()
+            if method == "ocr"
+        }
+        lossy_ocr = any(
+            page.quality_issues
+            for page in ingestion.ocr_extraction.pages
+            if page.page_number in used_ocr_pages
+        )
+        if lossy_ocr:
+            logger.warning(
+                "CV relies on lossy OCR text; profile flagged for review",
+                extra={"cv_id": stored_file.file_id},
+            )
         profile = profile.model_copy(
             update={
                 "provenance": verified_provenance,
                 "needs_review": (
                     profile.needs_review
+                    or lossy_ocr
                     or any(
                         evidence.confidence < 0.7 for evidence in verified_provenance
                     )

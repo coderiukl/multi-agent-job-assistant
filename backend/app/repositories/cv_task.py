@@ -2,8 +2,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundException, StorageException
 from app.database.auth_models import CVOwnershipModel, CVProcessingTaskModel
@@ -27,6 +28,20 @@ class CVTaskRecord:
     completed_at: datetime | None
     error_code: str | None
     error_message: str | None
+
+
+async def _database_now(session: AsyncSession) -> datetime:
+    """The database clock (transaction timestamp).
+
+    ``available_at`` defaults to the database's ``now()``, so every comparison
+    and timestamp of the queue uses that same clock. Mixing it with the
+    worker's clock made fresh tasks invisible to a worker whose clock lags
+    the database (BUG-021).
+    """
+    value = await session.scalar(select(func.now()))
+    if value is None:  # pragma: no cover - now() never returns NULL
+        return datetime.now(UTC)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 class CVTaskRepository:
@@ -101,31 +116,34 @@ class CVTaskRepository:
         lease_seconds: int,
         max_attempts: int,
     ) -> CVTaskRecord | None:
-        now = datetime.now(UTC)
-        claimable = or_(
-            CVProcessingTaskModel.status == CVTaskStatus.PENDING.value,
-            (
-                (CVProcessingTaskModel.status == CVTaskStatus.PROCESSING.value)
-                & (CVProcessingTaskModel.lease_expires_at < now)
-            ),
-        )
-        statement = (
-            select(CVProcessingTaskModel)
-            .where(
-                claimable,
-                CVProcessingTaskModel.available_at <= now,
-                CVProcessingTaskModel.attempt_count < max_attempts,
-            )
-            .order_by(
-                CVProcessingTaskModel.available_at,
-                CVProcessingTaskModel.created_at,
-            )
-            .with_for_update(skip_locked=True)
-            .limit(1)
-        )
         try:
             async with self._session_factory() as session:
                 async with session.begin():
+                    now = await _database_now(session)
+                    claimable = or_(
+                        CVProcessingTaskModel.status == CVTaskStatus.PENDING.value,
+                        (
+                            (
+                                CVProcessingTaskModel.status
+                                == CVTaskStatus.PROCESSING.value
+                            )
+                            & (CVProcessingTaskModel.lease_expires_at < now)
+                        ),
+                    )
+                    statement = (
+                        select(CVProcessingTaskModel)
+                        .where(
+                            claimable,
+                            CVProcessingTaskModel.available_at <= now,
+                            CVProcessingTaskModel.attempt_count < max_attempts,
+                        )
+                        .order_by(
+                            CVProcessingTaskModel.available_at,
+                            CVProcessingTaskModel.created_at,
+                        )
+                        .with_for_update(skip_locked=True)
+                        .limit(1)
+                    )
                     await session.execute(
                         update(CVProcessingTaskModel)
                         .where(
@@ -178,10 +196,10 @@ class CVTaskRepository:
         worker_id: str,
         lease_seconds: int,
     ) -> bool:
-        now = datetime.now(UTC)
         try:
             async with self._session_factory() as session:
                 async with session.begin():
+                    now = await _database_now(session)
                     result = await session.execute(
                         update(CVProcessingTaskModel)
                         .where(
@@ -212,10 +230,10 @@ class CVTaskRepository:
         retry: bool,
         retry_delay_seconds: int,
     ) -> None:
-        now = datetime.now(UTC)
         try:
             async with self._session_factory() as session:
                 async with session.begin():
+                    now = await _database_now(session)
                     task = await session.scalar(
                         select(CVProcessingTaskModel)
                         .where(
@@ -251,10 +269,10 @@ class CVTaskRepository:
         worker_id: str,
         status: CVTaskStatus,
     ) -> None:
-        now = datetime.now(UTC)
         try:
             async with self._session_factory() as session:
                 async with session.begin():
+                    now = await _database_now(session)
                     task = await session.scalar(
                         select(CVProcessingTaskModel)
                         .where(

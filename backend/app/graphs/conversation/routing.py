@@ -34,6 +34,8 @@ class HumanReviewRoute(StrEnum):
     WORKFLOW_COVER_LETTER = "workflow_cover_letter"
     SINGLE_COVER_LETTER = "single_cover_letter"
     REJECTED = "rejected"
+    # No job to write for: the review node already produced a clarification.
+    NO_TARGET = "no_target"
 
 
 class DraftReviewRoute(StrEnum):
@@ -61,7 +63,12 @@ def route_workflow_start(state: ConversationState) -> str:
     workflow = state.get("workflow")
 
     if workflow is None or workflow.workflow_type == WorkflowType.SINGLE_AGENT:
-        return route_after_intent(state).value
+        route = route_after_intent(state)
+        if route != ConversationRoute.JOB_SEARCH:
+            return route.value
+        # Unreachable today (a job-search intent always yields a workflow);
+        # never route to a node that does not exist.
+        return "workflow_response" if workflow is None else "workflow_job_search"
 
     workflow_node_by_step = {
         WorkflowStep.JOB_SEARCH: "workflow_job_search",
@@ -80,6 +87,11 @@ def route_next_workflow_step(state: ConversationState) -> WorkflowRoute:
     workflow = state.get("workflow")
 
     if workflow is None:
+        return WorkflowRoute.END
+
+    # Never re-enter a step that already ran: a node that failed to advance
+    # the plan would otherwise loop on its own self-edge (BUG-030).
+    if workflow.current_step in workflow.completed_steps:
         return WorkflowRoute.END
 
     if workflow.current_step == WorkflowStep.JOB_SEARCH:
@@ -101,6 +113,9 @@ def route_next_workflow_step(state: ConversationState) -> WorkflowRoute:
 
 def route_after_human_review(state: ConversationState) -> HumanReviewRoute:
     decision = state.get("human_review_decision")
+
+    if decision is None and state.get("human_review_request") is None:
+        return HumanReviewRoute.NO_TARGET
 
     if decision is None:
         return HumanReviewRoute.REJECTED

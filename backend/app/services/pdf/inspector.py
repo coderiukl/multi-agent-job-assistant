@@ -11,6 +11,7 @@ from app.core.exceptions import (
     ResourceNotFoundException,
     StorageException
 )
+from app.services.pdf.errors import PYMUPDF_INPUT_ERRORS
 from app.services.pdf.models import (
     PdfInspectionResult,
     PdfMetadata
@@ -109,12 +110,7 @@ class PdfInspector:
                 identifier=path.name
             ) from exc
 
-        except (
-            pymupdf.EmptyFileError,
-            pymupdf.FileDataError,
-            RuntimeError,
-            ValueError,
-        ) as exc:
+        except PYMUPDF_INPUT_ERRORS as exc:
             logger.warning(
                 "Invalid PDF structure detected",
                 extra={"stored_filename": path.name},

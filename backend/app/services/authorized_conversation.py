@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import UUID
 
 from app.core.exceptions import ResourceNotFoundException
-from app.repositories.conversation_turn import ConversationTurnRepository
+from app.repositories.conversation_turn import (
+    TURN_HEARTBEAT_SECONDS,
+    ConversationTurnRepository,
+)
 from app.repositories.ownership import OwnershipRepository
 from app.schemas.conversation import (
     ConversationHistoryData,
@@ -28,6 +34,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 
 class AuthorizedConversationService:
     def __init__(
@@ -44,6 +52,31 @@ class AuthorizedConversationService:
         self._graph = graph
         self._ownership = ownership
         self._turns = turns
+        self._heartbeat_seconds = TURN_HEARTBEAT_SECONDS
+
+    async def _with_turn_lease(self, turn_id: UUID, operation: Awaitable[T]) -> T:
+        """Run ``operation`` while renewing the turn lease (BUG-029)."""
+        heartbeat = asyncio.create_task(
+            self._renew_lease_periodically(turn_id),
+            name=f"conversation-turn-heartbeat-{turn_id}",
+        )
+        try:
+            return await operation
+        finally:
+            heartbeat.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat
+
+    async def _renew_lease_periodically(self, turn_id: UUID) -> None:
+        while True:
+            await asyncio.sleep(self._heartbeat_seconds)
+            try:
+                await self._turns.renew_lease(turn_id=turn_id)
+            except Exception as exc:  # a missed renewal must not abort the turn
+                logger.warning(
+                    "Conversation turn lease renewal failed",
+                    extra={"turn_id": str(turn_id), "error_type": type(exc).__name__},
+                )
 
     async def process(
         self,
@@ -63,7 +96,9 @@ class AuthorizedConversationService:
             )
 
         try:
-            result = await self._service.process(request)
+            result = await self._with_turn_lease(
+                request.turn_id, self._service.process(request)
+            )
             await self._turns.complete(
                 turn_id=request.turn_id,
                 response_data=result.model_dump(mode="json"),
@@ -91,7 +126,9 @@ class AuthorizedConversationService:
             )
 
         try:
-            result = await self._service.analyze_intent(request)
+            result = await self._with_turn_lease(
+                request.turn_id, self._service.analyze_intent(request)
+            )
             await self._turns.complete(
                 turn_id=request.turn_id,
                 response_data=result.model_dump(mode="json"),
@@ -143,7 +180,9 @@ class AuthorizedConversationService:
             )
 
         try:
-            result = await self._service.resume(request)
+            result = await self._with_turn_lease(
+                request.turn_id, self._service.resume(request)
+            )
             await self._turns.complete(
                 turn_id=request.turn_id,
                 response_data=result.model_dump(mode="json"),

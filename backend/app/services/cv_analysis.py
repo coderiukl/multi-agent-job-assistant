@@ -9,7 +9,7 @@ from app.schemas.cv_analysis import (
     CVAnalysisResult,
     CVQualityLevel,
 )
-
+from app.utils.cv_grounding import CVGroundingChecker
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class CVAnalysisService:
 
     async def analyze(self, analysis_input: CVAnalysisInput) -> CVAnalysisResult:
         assessment = await self._agent.analyze(analysis_input)
+        assessment = self._ground_evidence(assessment, analysis_input)
         overall_score = self._calculate_overall_score(assessment)
         quality_level = self._determine_quality_level(overall_score)
 
@@ -67,6 +68,29 @@ class CVAnalysisService:
         )
 
         return result
+
+    @staticmethod
+    def _ground_evidence(
+        assessment: CVAnalysisAssessment, analysis_input: CVAnalysisInput
+    ) -> CVAnalysisAssessment:
+        """Keep only finding evidence that is really present in the CV (BUG-015)."""
+        checker = CVGroundingChecker(analysis_input.cv_profile)
+        dropped = 0
+        updates: dict[str, list] = {}
+        for field in ("strengths", "weaknesses"):
+            findings = []
+            for finding in getattr(assessment, field):
+                grounded, ungrounded = checker.split(finding.cv_evidence)
+                dropped += len(ungrounded)
+                findings.append(finding.model_copy(update={"cv_evidence": grounded}))
+            updates[field] = findings
+        if not dropped:
+            return assessment
+        logger.warning(
+            "Ungrounded CV evidence removed from CV analysis",
+            extra={"dropped_evidence_count": dropped},
+        )
+        return assessment.model_copy(update=updates)
 
     def _calculate_overall_score(self, assessment: CVAnalysisAssessment) -> float:
         weighted_score = 0.0

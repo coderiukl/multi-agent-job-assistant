@@ -14,6 +14,7 @@ from app.core.exceptions import (
     FileValidationException,
     StorageException,
 )
+from app.services.pdf.errors import PYMUPDF_INPUT_ERRORS
 from app.services.storage.models import StoredFile
 
 logger = logging.getLogger(__name__)
@@ -360,7 +361,7 @@ class LocalStorageService:
                 pdf_bytes = image_document.convert_to_pdf()
         except FileValidationException:
             raise
-        except (RuntimeError, ValueError, pymupdf.FileDataError) as exc:
+        except PYMUPDF_INPUT_ERRORS as exc:
             raise FileValidationException(
                 message="The uploaded CV image is invalid or corrupted.",
                 code="INVALID_CV_IMAGE",
@@ -403,7 +404,7 @@ class LocalStorageService:
                 output_document.save(destination_path)
         except FileValidationException:
             raise
-        except (RuntimeError, ValueError, pymupdf.FileDataError) as exc:
+        except PYMUPDF_INPUT_ERRORS as exc:
             raise FileValidationException(
                 message="An uploaded CV image is invalid or corrupted.",
                 code="INVALID_CV_IMAGE",

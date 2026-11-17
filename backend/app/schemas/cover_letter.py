@@ -110,3 +110,5 @@ class CoverLetterResult(CoverLetterDraft):
     full_text: str = Field(min_length=1, max_length=10_000)
     word_count: int = Field(ge=1, le=2000)
     is_personalized: bool = True
+    # Claims that could not be verified against the CV (shown at HITL review).
+    grounding_warnings: list[str] = Field(default_factory=list, max_length=10)

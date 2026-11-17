@@ -54,6 +54,8 @@ async def run_cv_worker(*, once: bool = False) -> None:
         lease_seconds=settings.cv_task_lease_seconds,
         heartbeat_seconds=settings.cv_task_heartbeat_seconds,
         timeout_seconds=settings.cv_task_timeout_seconds,
+        timeout_seconds_per_page=settings.cv_task_timeout_seconds_per_page,
+        max_timeout_seconds=settings.cv_task_max_timeout_seconds,
         max_attempts=settings.cv_task_max_attempts,
         poll_seconds=settings.cv_worker_poll_seconds,
     )

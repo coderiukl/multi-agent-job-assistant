@@ -1,11 +1,15 @@
+import unicodedata
 from collections.abc import Sequence
 from decimal import Decimal
 
 from sqlalchemy import (
+    Integer,
     Select,
     Text,
+    case,
     cast,
     func,
+    literal,
     or_,
     select,
 )
@@ -25,9 +29,48 @@ from app.schemas.job_search import (
     JobSearchPlan,
     JobSearchSort,
 )
-from app.utils.job_deduplication import build_job_location_search_terms
+from app.utils.job_deduplication import (
+    build_job_location_search_terms,
+    normalize_deduplication_text,
+)
 
 MAX_CANDIDATE_LIMIT = 500
+
+
+def _build_accent_translation() -> tuple[str, str]:
+    """Accented Latin letters -> base letter, as normalize_deduplication_text does.
+
+    Lets SQL compute the same normalized skill keys as Qdrant's ``skill_keys``
+    without requiring the ``unaccent`` extension.
+    """
+    source, target = [], []
+    for codepoint in list(range(0xC0, 0x250)) + list(range(0x1E00, 0x1F00)):
+        char = chr(codepoint)
+        decomposed = unicodedata.normalize("NFKD", char)
+        base = "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
+        if len(base) == 1 and "a" <= base <= "z" and base != char:
+            source.append(char)
+            target.append(base)
+    source.append("đ")
+    target.append("d")
+    source.append("Đ")
+    target.append("d")
+    return "".join(source), "".join(target)
+
+
+_ACCENT_SOURCE, _ACCENT_TARGET = _build_accent_translation()
+
+
+def normalized_skill_sql(value: ColumnElement[str]) -> ColumnElement[str]:
+    """SQL twin of ``normalize_deduplication_text`` for skill values."""
+    return func.btrim(
+        func.regexp_replace(
+            func.lower(func.translate(value, _ACCENT_SOURCE, _ACCENT_TARGET)),
+            "[^a-z0-9]+",
+            " ",
+            "g",
+        )
+    )
 
 
 class PostgresJobSearchRepository:
@@ -211,20 +254,25 @@ class PostgresJobSearchRepository:
             conditions.append(JobModel.seniority_level.in_(sorted(seniority_values)))
 
         if filters.skills:
-            serialized_skills = cast(
-                JobModel.skills,
-                Text,
-            )
-
-            skill_conditions = [
-                serialized_skills.ilike(
-                    self._contains_pattern(skill),
-                    escape="\\",
+            # Exact match on normalized skill keys – the same rule as the
+            # Qdrant ``skill_keys`` filter, so "Java" no longer matches
+            # "JavaScript" here while Qdrant excludes it (BUG-020).
+            skill_keys = [
+                key
+                for key in dict.fromkeys(
+                    normalize_deduplication_text(skill) for skill in filters.skills
                 )
-                for skill in filters.skills
+                if key
             ]
-
-            conditions.append(or_(*skill_conditions))
+            job_skill = func.jsonb_array_elements_text(JobModel.skills).table_valued(
+                "value"
+            )
+            conditions.append(
+                select(literal(1))
+                .select_from(job_skill)
+                .where(normalized_skill_sql(job_skill.c.value).in_(skill_keys))
+                .exists()
+            )
 
         if filters.salary_min is not None:
             salary_min = self._to_decimal(filters.salary_min)
@@ -300,22 +348,58 @@ class PostgresJobSearchRepository:
 
         return or_(*keyword_conditions)
 
-    @staticmethod
+    @classmethod
     def _apply_sorting(
-        *, statement: Select[tuple[JobModel]], plan: JobSearchPlan
+        cls, *, statement: Select[tuple[JobModel]], plan: JobSearchPlan
     ) -> Select[tuple[JobModel]]:
-        if plan.sort == JobSearchSort.NEWEST:
-            return statement.order_by(
-                JobModel.posted_at.desc().nullslast(),
-                JobModel.crawled_at.desc(),
-                JobModel.job_id.asc(),
-            )
-
-        return statement.order_by(
+        newest_first = (
             JobModel.posted_at.desc().nullslast(),
             JobModel.crawled_at.desc(),
             JobModel.job_id.asc(),
         )
+
+        relevance = cls._keyword_relevance(plan.keywords)
+        if plan.sort == JobSearchSort.NEWEST or relevance is None:
+            return statement.order_by(*newest_first)
+
+        # sort=relevance: the candidate window (LIMIT) must hold the best
+        # keyword matches, not merely the newest rows (BUG-031).
+        return statement.order_by(relevance.desc(), *newest_first)
+
+    @classmethod
+    def _keyword_relevance(cls, keywords: Sequence[str]) -> ColumnElement[int] | None:
+        """Mirror of the service's keyword score: title/skills 2, other text 1."""
+        if not keywords:
+            return None
+
+        serialized_skills = cast(JobModel.skills, Text)
+        points: list[ColumnElement[int]] = []
+        for keyword in keywords:
+            pattern = cls._contains_pattern(keyword)
+            points.append(
+                case(
+                    (
+                        or_(
+                            JobModel.title.ilike(pattern, escape="\\"),
+                            serialized_skills.ilike(pattern, escape="\\"),
+                        ),
+                        2,
+                    ),
+                    (
+                        or_(
+                            JobModel.description.ilike(pattern, escape="\\"),
+                            JobModel.company.ilike(pattern, escape="\\"),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            )
+
+        total = points[0]
+        for point in points[1:]:
+            total = total + point
+        return cast(total, Integer)
 
     @staticmethod
     def _contains_pattern(value: str) -> str:

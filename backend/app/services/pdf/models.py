@@ -67,6 +67,8 @@ class OcrPageText:
     character_count: int
     word_count: int
     average_confidence: float
+    # e.g. "vietnamese_diacritics_unsupported" (see services/pdf/ocr_quality.py)
+    quality_issues: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

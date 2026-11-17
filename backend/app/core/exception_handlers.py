@@ -77,6 +77,7 @@ async def app_exception_handler(
         code=exc.code,
         message=exc.message,
         details=exc.details,
+        headers=getattr(exc, "headers", None),
     )
 
 

@@ -8,6 +8,7 @@ from app.schemas.career_advice import (
     CareerAdviceResult,
     CareerSkillGap,
 )
+from app.utils.cv_grounding import CVGroundingChecker
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class CareerAdviceService:
 
     async def advise(self, advice_input: CareerAdviceInput) -> CareerAdviceResult:
         assessment = await self._agent.advise(advice_input)
+        assessment, dropped_evidence = self._ground_evidence(assessment, advice_input)
         normalized_assessment = self._normalize_assessment(assessment)
         top_priority_skills = self._collect_top_priority_skills(
             normalized_assessment.skill_gaps
@@ -44,7 +46,9 @@ class CareerAdviceService:
                 if advice_input.matching_execution is not None
                 else None
             ),
-            data_quality_warnings=self._quality_warnings(advice_input),
+            data_quality_warnings=self._quality_warnings(
+                advice_input, dropped_evidence=dropped_evidence
+            ),
         )
 
         logger.info(
@@ -58,6 +62,49 @@ class CareerAdviceService:
         )
 
         return result
+
+    @staticmethod
+    def _ground_evidence(
+        assessment: CareerAdviceAssessment,
+        advice_input: CareerAdviceInput,
+    ) -> tuple[CareerAdviceAssessment, int]:
+        """Drop "CV evidence" that does not come from the CV (BUG-015).
+
+        Without a CV there is nothing the advice may cite as CV evidence.
+        """
+        profile = advice_input.cv_profile
+        checker = CVGroundingChecker(profile) if profile is not None else None
+        dropped = 0
+
+        def keep(values: list[str]) -> list[str]:
+            nonlocal dropped
+            if checker is None:
+                dropped += len(values)
+                return []
+            grounded, ungrounded = checker.split(values)
+            dropped += len(ungrounded)
+            return grounded
+
+        roles = [
+            role.model_copy(update={"cv_evidence": keep(role.cv_evidence)})
+            for role in assessment.recommended_roles
+        ]
+        gaps = [
+            gap.model_copy(update={"current_evidence": keep(gap.current_evidence)})
+            for gap in assessment.skill_gaps
+        ]
+        if not dropped:
+            return assessment, 0
+        logger.warning(
+            "Ungrounded CV evidence removed from career advice",
+            extra={"dropped_evidence_count": dropped},
+        )
+        return (
+            assessment.model_copy(
+                update={"recommended_roles": roles, "skill_gaps": gaps}
+            ),
+            dropped,
+        )
 
     @staticmethod
     def _normalize_assessment(
@@ -124,8 +171,15 @@ class CareerAdviceService:
         return round(min(model_confidence, cap), 3)
 
     @staticmethod
-    def _quality_warnings(advice_input: CareerAdviceInput) -> list[str]:
+    def _quality_warnings(
+        advice_input: CareerAdviceInput, *, dropped_evidence: int = 0
+    ) -> list[str]:
         warnings: list[str] = []
+        if dropped_evidence:
+            warnings.append(
+                f"{dropped_evidence} cited CV evidence item(s) were not found "
+                "in the CV and were removed."
+            )
         if advice_input.cv_profile is None:
             warnings.append("CV data was not available for personalized advice.")
         elif advice_input.cv_profile.needs_review:

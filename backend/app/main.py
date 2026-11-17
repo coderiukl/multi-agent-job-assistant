@@ -13,6 +13,7 @@ from app.api.router import create_api_router
 from app.core.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging
+from app.middleware.error_boundary import UnhandledErrorMiddleware
 from app.middleware.request_context import RequestContextMiddleware
 
 settings = get_settings()
@@ -47,6 +48,10 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+# Registered first so it sits inside CORSMiddleware: unexpected 500s keep
+# their CORS headers and the browser can read the JSON error.
+app.add_middleware(UnhandledErrorMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

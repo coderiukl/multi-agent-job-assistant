@@ -121,7 +121,9 @@ class ConversationNodes:
                 )
 
         has_cv = cv_profile is not None
-        has_jd = bool(job_description)
+        # Jobs remembered from an earlier search are a usable job target too
+        # ("so khớp với công việc vừa tìm", BUG-005).
+        has_jd = bool(job_description) or bool(state.get("recent_jobs"))
 
         logger.info(
             "Conversation context resolved",
@@ -129,6 +131,7 @@ class ConversationNodes:
                 "cv_id": cv_id,
                 "has_cv": has_cv,
                 "has_jd": has_jd,
+                "recent_job_count": len(state.get("recent_jobs") or []),
             },
         )
 
@@ -205,9 +208,12 @@ class ConversationNodes:
         }
 
     async def execute_career_advice(self, state: ConversationState) -> dict[str, Any]:
+        # Ground "what should I learn for this job?" on the gaps found by the
+        # previous match of the same CV (BUG-006).
         advice_input = CareerAdviceInput(
             user_request=self._get_contextual_message(state),
             cv_profile=state.get("cv_profile"),
+            matching_results=self._previous_matching_results(state),
         )
 
         result = await self._career_advice_service.advise(advice_input)
@@ -231,43 +237,18 @@ class ConversationNodes:
             "career_advice_result": result,
         }
 
-    async def execute_job_search(self, state: ConversationState) -> dict[str, Any]:
-        request = self._build_job_search_request(state)
-        search_context = build_job_search_context(state.get("cv_profile"))
-
-        result = await self._job_search_service.search(request, context=search_context)
-
-        assistant_message = self._build_job_search_message(
-            result, used_cv=search_context is not None
-        )
-
-        logger.info(
-            "Conversation job search completed",
-            extra={
-                "query": request.query,
-                "strategy": result.strategy.value,
-                "total": result.total,
-                "returned_items": len(result.items),
-            },
-        )
-
-        return {
-            "route": ConversationRoute.JOB_SEARCH,
-            "status": ConversationStatus.COMPLETED,
-            "missing_inputs": [],
-            "assistant_message": assistant_message,
-            "job_search_result": result,
-        }
-
     async def execute_cover_letter(self, state: ConversationState) -> dict[str, Any]:
         cv_profile = state.get("cv_profile")
         job_description = state.get("job_description")
+        selected_job = state.get("cover_letter_job")
         missing_inputs: list[RequiredInput] = []
 
         if cv_profile is None:
             missing_inputs.append(RequiredInput.CV)
 
-        if not job_description:
+        # The job confirmed at the human review (possibly a remembered search
+        # result) is a valid target even without a pasted JD.
+        if selected_job is None and not job_description:
             missing_inputs.append(RequiredInput.JOB_DESCRIPTION)
 
         if missing_inputs:
@@ -283,7 +264,6 @@ class ConversationNodes:
                 ),
             }
 
-        selected_job = state.get("cover_letter_job")
         job = (
             JobMatchTarget.model_validate(selected_job)
             if selected_job is not None
@@ -317,13 +297,14 @@ class ConversationNodes:
 
     async def execute_job_matching(self, state: ConversationState) -> dict[str, Any]:
         cv_profile = state.get("cv_profile")
-        job_description = state.get("job_description")
+        job_description = self._direct_job_description(state)
+        recent_jobs = [] if job_description else list(state.get("recent_jobs") or [])
         missing_inputs: list[RequiredInput] = []
 
         if cv_profile is None:
             missing_inputs.append(RequiredInput.CV)
 
-        if not job_description:
+        if not job_description and not recent_jobs:
             missing_inputs.append(RequiredInput.JOB_DESCRIPTION)
 
         if missing_inputs:
@@ -335,6 +316,11 @@ class ConversationNodes:
                     missing_inputs=missing_inputs, generated_question=None
                 ),
             }
+
+        if not job_description:
+            # "So khớp CV của tôi với công việc vừa tìm": match the jobs
+            # remembered from the previous search (BUG-005).
+            return await self._match_recent_jobs(state, cv_profile, recent_jobs)
 
         matching_input = JobMatchingInput(
             cv_profile=cv_profile, job=JobMatchTarget(description=job_description)
@@ -360,6 +346,43 @@ class ConversationNodes:
             "missing_inputs": [],
             "assistant_message": assistant_message,
             "job_matching_result": result,
+            **self._remember_matches(state, [result]),
+        }
+
+    async def _match_recent_jobs(
+        self,
+        state: ConversationState,
+        cv_profile: Any,
+        recent_jobs: list[Any],
+    ) -> dict[str, Any]:
+        ranked_matches, outcomes, execution = await self._match_jobs(
+            cv_profile=cv_profile, jobs=recent_jobs
+        )
+        best = ranked_matches[0].match if ranked_matches else None
+
+        if ranked_matches:
+            assistant_message = self._build_workflow_matches_message(
+                ranked_matches,
+                heading="Tôi đã đánh giá CV của bạn với các công việc vừa tìm:",
+            )
+        else:
+            assistant_message = (
+                "Tôi chưa thể đánh giá mức độ phù hợp với các công việc vừa tìm. "
+                "Bạn có thể thử lại hoặc dán mô tả công việc (JD) cụ thể."
+            )
+
+        return {
+            "route": ConversationRoute.JOB_MATCHING,
+            "status": self._status_for_execution(execution),
+            "missing_inputs": [],
+            "assistant_message": assistant_message,
+            "job_matching_result": best,
+            "workflow_job_matches": ranked_matches,
+            "workflow_job_match_outcomes": outcomes,
+            "matching_execution": execution,
+            **self._remember_matches(
+                state, [item.match for item in ranked_matches[:3]]
+            ),
         }
 
     async def respond_clarification(self, state: ConversationState) -> dict[str, Any]:
@@ -466,60 +489,104 @@ class ConversationNodes:
         workflow = state.get("workflow")
         cv_profile = state.get("cv_profile")
         search_result = state.get("job_search_result")
-        job_description = state.get("job_description")
 
         if workflow is None:
-            raise ValueError("Workflow plan is required for workflow job matching. ")
+            raise ValueError("Workflow plan is required for workflow job matching.")
 
         if cv_profile is None:
-            raise ValueError("CV profile is required for workflow CV analysis.")
+            raise ValueError("CV profile is required for workflow job matching.")
 
         if search_result is None:
-            if not job_description:
+            job_description = self._direct_job_description(state)
+            recent_jobs = list(state.get("recent_jobs") or [])
+
+            if job_description:
+                matching_input = JobMatchingInput(
+                    cv_profile=cv_profile,
+                    job=JobMatchTarget(description=job_description),
+                )
+
+                result = await self._job_matching_service.match(matching_input)
+
+                updated_workflow = advance_workflow(
+                    workflow, WorkflowStep.JOB_MATCHING
+                )
+
+                return {
+                    "job_matching_result": result,
+                    "workflow": updated_workflow,
+                    **self._remember_matches(state, [result]),
+                }
+
+            if not recent_jobs:
                 raise ValueError(
                     "A job search result or job description is required "
                     "for workflow matching."
                 )
+            jobs = recent_jobs
+        else:
+            jobs = [hit.job for hit in search_result.items[:WORKFLOW_MATCH_LIMIT]]
 
-            matching_input = JobMatchingInput(
-                cv_profile=cv_profile, job=JobMatchTarget(description=job_description)
-            )
+        ranked_matches, outcomes, matching_execution = await self._match_jobs(
+            cv_profile=cv_profile, jobs=jobs
+        )
 
-            result = await self._job_matching_service.match(matching_input)
+        updated_workflow = advance_workflow(
+            workflow,
+            WorkflowStep.JOB_MATCHING,
+        )
 
-            updated_workflow = advance_workflow(workflow, WorkflowStep.JOB_MATCHING)
+        logger.info(
+            "Workflow job matching completed",
+            extra={
+                "candidate_count": matching_execution.total,
+                "matched_count": len(ranked_matches),
+                "failed_count": matching_execution.failed,
+                "skipped_count": matching_execution.skipped,
+                "best_score": (
+                    ranked_matches[0].match.overall_score if ranked_matches else None
+                ),
+                "next_step": updated_workflow.current_step.value,
+            },
+        )
 
-            return {
-                "job_matching_result": result,
-                "workflow": updated_workflow,
-            }
+        return {
+            "workflow_job_matches": ranked_matches,
+            "workflow_job_match_outcomes": outcomes,
+            "matching_execution": matching_execution,
+            "workflow": updated_workflow,
+            **(
+                self._remember_matches(
+                    state, [item.match for item in ranked_matches[:3]]
+                )
+                if ranked_matches
+                else {}
+            ),
+        }
 
-        candidates = search_result.items[:WORKFLOW_MATCH_LIMIT]
+    async def _match_jobs(
+        self, *, cv_profile: Any, jobs: list[Any]
+    ) -> tuple[
+        list[WorkflowJobMatch], list[WorkflowJobMatchOutcome], MatchingExecutionSummary
+    ]:
+        """Match up to WORKFLOW_MATCH_LIMIT jobs concurrently under one timeout."""
+        candidates = jobs[:WORKFLOW_MATCH_LIMIT]
 
         if not candidates:
-            updated_workflow = advance_workflow(
-                workflow,
-                WorkflowStep.JOB_MATCHING,
+            # No job to evaluate is not a failure (BUG-017).
+            return [], [], MatchingExecutionSummary(
+                status=WorkflowExecutionStatus.NO_RESULTS,
+                total=0,
+                succeeded=0,
+                failed=0,
+                skipped=0,
             )
-
-            return {
-                "workflow": updated_workflow,
-                "workflow_job_matches": [],
-                "workflow_job_match_outcomes": [],
-                "matching_execution": MatchingExecutionSummary(
-                    status=WorkflowExecutionStatus.FAILED,
-                    total=0,
-                    succeeded=0,
-                    failed=0,
-                    skipped=0,
-                ),
-            }
 
         tasks = {
             asyncio.create_task(
-                self._match_workflow_job(cv_profile=cv_profile, job=hit.job)
-            ): hit.job
-            for hit in candidates
+                self._match_workflow_job(cv_profile=cv_profile, job=job)
+            ): job
+            for job in candidates
         }
         done, pending = await asyncio.wait(
             tasks,
@@ -588,31 +655,7 @@ class ConversationNodes:
             skipped=skipped,
         )
 
-        updated_workflow = advance_workflow(
-            workflow,
-            WorkflowStep.JOB_MATCHING,
-        )
-
-        logger.info(
-            "Workflow job matching completed",
-            extra={
-                "candidate_count": len(candidates),
-                "matched_count": len(ranked_matches),
-                "failed_count": failed,
-                "skipped_count": skipped,
-                "best_score": (
-                    ranked_matches[0].match.overall_score if ranked_matches else None
-                ),
-                "next_step": updated_workflow.current_step.value,
-            },
-        )
-
-        return {
-            "workflow_job_matches": ranked_matches,
-            "workflow_job_match_outcomes": outcomes,
-            "matching_execution": matching_execution,
-            "workflow": updated_workflow,
-        }
+        return ranked_matches, outcomes, matching_execution
 
     async def execute_workflow_job_search(
         self, state: ConversationState
@@ -645,6 +688,9 @@ class ConversationNodes:
         return {
             "job_search_result": result,
             "workflow": updated_workflow,
+            # Remember what was just found for follow-up turns (BUG-005). An
+            # empty search clears it: "the job just found" no longer exists.
+            "recent_jobs": [hit.job for hit in result.items[:WORKFLOW_MATCH_LIMIT]],
         }
 
     async def execute_workflow_career_advice(
@@ -663,6 +709,9 @@ class ConversationNodes:
 
         if direct_result is not None and not matching_results:
             matching_results = [direct_result]
+
+        if not matching_results:
+            matching_results = self._previous_matching_results(state)
 
         advice_input = CareerAdviceInput(
             user_request=self._get_contextual_message(state),
@@ -699,10 +748,10 @@ class ConversationNodes:
         cv_profile = state.get("cv_profile")
 
         if workflow is None:
-            raise ValueError("Workflow plan is required for workflow CV analysis")
+            raise ValueError("Workflow plan is required for workflow CV analysis.")
 
         if cv_profile is None:
-            raise ValueError("CV profile is required for workflow job matching.")
+            raise ValueError("CV profile is required for workflow CV analysis.")
 
         analysis_input = CVAnalysisInput(
             cv_profile=cv_profile,
@@ -756,10 +805,14 @@ class ConversationNodes:
         elif search_result is not None and search_result.items:
             job = JobMatchTarget.from_normalized_job(search_result.items[0].job)
 
-        elif job_description:
+        elif self._direct_job_description(state):
             job = JobMatchTarget(
-                description=job_description,
+                description=self._direct_job_description(state),
             )
+        elif state.get("recent_jobs"):
+            job = JobMatchTarget.from_normalized_job(state["recent_jobs"][0])
+        elif job_description:
+            job = JobMatchTarget(description=job_description)
         else:
             raise ValueError(
                 "A matched job, job search result, or job description is "
@@ -807,6 +860,7 @@ class ConversationNodes:
         )
         career_advice = state.get("career_advice_result")
         cover_letter = state.get("cover_letter_result")
+        direct_match = state.get("job_matching_result")
 
         response_sections: list[str] = []
 
@@ -814,20 +868,19 @@ class ConversationNodes:
             response_sections.append(self._build_cv_analysis_message(cv_analysis))
 
         if matches:
-            match_lines = [
-                "Tôi đã tìm và đánh giá các công việc phù hợp nhất với CV của bạn:"
-            ]
-
-            for index, item in enumerate(matches, start=1):
-                job = item.job
-                match = item.match
-                company = job.company or "Không rõ công ty"
-
-                match_lines.append(
-                    f"{index}. {job.title} - {company}: {match.overall_score:.1f}/100"
+            response_sections.append(
+                self._build_workflow_matches_message(
+                    matches,
+                    heading=(
+                        "Tôi đã tìm và đánh giá các công việc phù hợp nhất "
+                        "với CV của bạn:"
+                    ),
                 )
+            )
 
-            response_sections.append("\n".join(match_lines))
+        elif direct_match is not None:
+            # [CV_ANALYSIS, JOB_MATCHING] with a pasted JD (BUG-008).
+            response_sections.append(self._build_job_matching_message(direct_match))
 
         elif search_result is not None:
             response_sections.append(
@@ -859,16 +912,9 @@ class ConversationNodes:
             },
         )
 
-        response_status = ConversationStatus.COMPLETED
-        if matching_execution is not None:
-            if matching_execution.status == WorkflowExecutionStatus.PARTIAL_SUCCESS:
-                response_status = ConversationStatus.PARTIAL_SUCCESS
-            elif matching_execution.status == WorkflowExecutionStatus.FAILED:
-                response_status = ConversationStatus.FAILED
-
         return {
             "route": route_after_intent(state),
-            "status": response_status,
+            "status": self._status_for_execution(matching_execution),
             "missing_inputs": [],
             "assistant_message": assistant_message,
         }
@@ -878,7 +924,26 @@ class ConversationNodes:
     ) -> dict[str, object]:
         candidates = self._cover_letter_candidates(state)
         if not candidates:
-            raise ValueError("A cover-letter target is required for review.")
+            # e.g. [JOB_SEARCH, COVER_LETTER] whose search found nothing: ask
+            # for a JD instead of crashing the turn with a 500 (BUG-007).
+            missing_inputs = [RequiredInput.JOB_DESCRIPTION]
+            search_result = state.get("job_search_result")
+            prefix = (
+                "Tôi chưa tìm thấy công việc phù hợp với tiêu chí hiện tại. "
+                if search_result is not None
+                else ""
+            )
+            return {
+                "route": ConversationRoute.CLARIFICATION,
+                "status": ConversationStatus.NEEDS_CLARIFICATION,
+                "missing_inputs": missing_inputs,
+                "assistant_message": (
+                    f"{prefix}Vui lòng cung cấp mô tả công việc (JD) hoặc mở "
+                    "rộng tiêu chí tìm kiếm để tôi có thể viết Cover Letter."
+                ),
+                "human_review_request": None,
+                "human_review_decision": None,
+            }
         review_id = self._review_id("cover_letter_input", state, candidates)
         cv_profile = state.get("cv_profile")
         cv_version = self._content_version(
@@ -960,6 +1025,7 @@ class ConversationNodes:
                 "word_count": result.word_count,
                 "job": state.get("cover_letter_job"),
                 "cv_id": state.get("cv_id"),
+                "grounding_warnings": result.grounding_warnings,
             },
         )
         payload = interrupt(review_request.model_dump(mode="json"))
@@ -1039,18 +1105,33 @@ class ConversationNodes:
                 for item in matches[:5]
             ]
         search_result = state.get("job_search_result")
-        if search_result is not None and search_result.items:
+        if search_result is not None:
+            jobs = [hit.job for hit in search_result.items[:5]]
+            # A search ran in this turn: only its results (or a JD pasted in
+            # this very request) are what the user means.
+            description = (
+                state.get("job_description")
+                if state.get("job_description_provided")
+                else None
+            )
+        else:
+            description = self._direct_job_description(state)
+            jobs = [] if description else list(state.get("recent_jobs") or [])[:5]
+
+        if jobs:
+            previous_scores = {
+                result.job_id: result.overall_score
+                for result in self._previous_matching_results(state)
+                if result.job_id
+            }
             return [
                 {
-                    **hit.job.model_dump(mode="json"),
-                    "match_score": None,
-                    "jd_version": self._content_version(
-                        hit.job.model_dump(mode="json")
-                    ),
+                    **job.model_dump(mode="json"),
+                    "match_score": previous_scores.get(job.job_id),
+                    "jd_version": self._content_version(job.model_dump(mode="json")),
                 }
-                for hit in search_result.items[:5]
+                for job in jobs
             ]
-        description = state.get("job_description")
         if description:
             return [
                 {
@@ -1064,6 +1145,66 @@ class ConversationNodes:
                 }
             ]
         return []
+
+    @staticmethod
+    def _direct_job_description(state: ConversationState) -> str | None:
+        """The JD to use, unless remembered search results are more recent.
+
+        A JD sent in this request always wins. A JD kept from an earlier turn
+        only wins when no job was found since then.
+        """
+        description = state.get("job_description")
+        if not description:
+            return None
+        if state.get("job_description_provided") or not state.get("recent_jobs"):
+            return description
+        return None
+
+    @staticmethod
+    def _previous_matching_results(
+        state: ConversationState,
+    ) -> list[JobMatchingResult]:
+        """Matches from earlier turns, only if they belong to the current CV."""
+        results = state.get("last_matching_results") or []
+        cv_id = state.get("cv_id")
+        if not results or cv_id is None or state.get("last_matching_cv_id") != cv_id:
+            return []
+        return [JobMatchingResult.model_validate(item) for item in results[:3]]
+
+    @staticmethod
+    def _remember_matches(
+        state: ConversationState, results: list[JobMatchingResult]
+    ) -> dict[str, Any]:
+        return {
+            "last_matching_results": results[:3],
+            "last_matching_cv_id": state.get("cv_id"),
+        }
+
+    @staticmethod
+    def _status_for_execution(
+        execution: MatchingExecutionSummary | None,
+    ) -> ConversationStatus:
+        if execution is None:
+            return ConversationStatus.COMPLETED
+        if execution.status == WorkflowExecutionStatus.PARTIAL_SUCCESS:
+            return ConversationStatus.PARTIAL_SUCCESS
+        if execution.status == WorkflowExecutionStatus.FAILED:
+            return ConversationStatus.FAILED
+        return ConversationStatus.COMPLETED
+
+    @staticmethod
+    def _build_workflow_matches_message(
+        matches: list[WorkflowJobMatch], *, heading: str
+    ) -> str:
+        match_lines = [heading]
+        for index, item in enumerate(matches, start=1):
+            company = item.job.company or "Không rõ công ty"
+            match_lines.append(
+                f"{index}. {item.job.title} - {company}: "
+                f"{item.match.overall_score:.1f}/100 "
+                f"({MATCH_RECOMMENDATION_LABELS[item.match.recommendation]})"
+            )
+        return "\n".join(match_lines)
 
     @staticmethod
     def _content_version(value: Any) -> str:

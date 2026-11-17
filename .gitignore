@@ -70,3 +70,6 @@ airflow/logs/
 airflow/config/airflow.cfg
 
 docs/system*
+
+backend/evals/datasets/cv_img
+backend/evals/datasets/*.xlsx

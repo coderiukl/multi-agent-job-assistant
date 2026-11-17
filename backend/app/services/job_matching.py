@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 from collections import OrderedDict
 from collections.abc import Mapping
 
@@ -15,8 +16,10 @@ from app.schemas.job_matching import (
     MatchStatus,
 )
 from app.services.job_matching_context import (
+    TOTAL_YEARS_FIELD_PATH,
     build_cv_evidence_catalog,
     build_job_requirements,
+    calculate_total_experience_years,
 )
 from app.utils.cv_privacy import cv_profile_for_llm
 
@@ -39,8 +42,56 @@ BREAKDOWN_FIELD_BY_DIMENSION: dict[MatchDimension, str] = {
     MatchDimension.LANGUAGES_AND_CERTIFICATIONS: ("language_and_certifications"),
 }
 
-MATCHING_PROMPT_VERSION = "job-matching-v2"
-MATCHING_SCORING_VERSION = "weighted-rubric-v2"
+MANDATORY_PATTERN = re.compile(
+    r"bắt buộc|bat buoc|mandatory|\bmust\b|\brequired\b",
+    re.IGNORECASE,
+)
+# Negated or optional wording overrides a mandatory marker: "không bắt buộc",
+# "not required", "non-mandatory", "optional", "là lợi thế"... (BUG-012).
+OPTIONAL_PATTERN = re.compile(
+    r"không\s+bắt\s+buộc|khong\s+bat\s+buoc|chưa\s+bắt\s+buộc"
+    r"|\bnot\s+(?:strictly\s+)?(?:required|mandatory|a\s+must)\b"
+    r"|\bnon[\s-]?(?:mandatory|required)\b|\bnot\s+necessary\b"
+    r"|\boptional\b|\bpreferred\b|\bpreferably\b|\bnice[\s-]+to[\s-]+have\b"
+    r"|\b(?:is\s+)?a\s+plus\b|\bbonus\b|\badvantage\b"
+    r"|lợi\s+thế|loi\s+the|điểm\s+cộng|diem\s+cong|ưu\s+tiên|uu\s+tien",
+    re.IGNORECASE,
+)
+_YEARS_UNIT = r"(?:năm|nam|years?|yrs?)"
+_YEARS_NUMBER = r"(\d+(?:[.,]\d+)?)"
+# "2-3", "2 – 3", "2 đến 3", "2 to 3": the lower bound is the minimum (BUG-011).
+_YEARS_RANGE_TAIL = r"(?:\s*(?:-|–|—|~|đến|den|to)\s*\d+(?:[.,]\d+)?)?"
+YEARS_REQUIREMENT_PATTERN = re.compile(
+    # "tối thiểu 3 năm", "at least 3 years"
+    r"(?:tối thiểu|ít nhất|toi thieu|it nhat|at least|minimum(?: of)?)"
+    rf"\s*{_YEARS_NUMBER}{_YEARS_RANGE_TAIL}\s*\+?\s*{_YEARS_UNIT}"
+    # "2 năm kinh nghiệm", "2-3 năm kinh nghiệm", "3+ years of experience"
+    rf"|{_YEARS_NUMBER}{_YEARS_RANGE_TAIL}\s*\+?\s*"
+    rf"{_YEARS_UNIT}\s*(?:kinh nghiệm|kinh nghiem|of experience|experience)"
+    # "kinh nghiệm 2-3 năm", "experience: 3+ years"
+    r"|(?:kinh nghiệm|kinh nghiem|experience)\s*(?:làm việc|lam viec)?\s*[:\-]?\s*"
+    rf"(?:từ|tu|from)?\s*{_YEARS_NUMBER}{_YEARS_RANGE_TAIL}\s*\+?\s*{_YEARS_UNIT}",
+    re.IGNORECASE,
+)
+
+
+def is_mandatory_requirement(text: str) -> bool:
+    return bool(MANDATORY_PATTERN.search(text)) and not OPTIONAL_PATTERN.search(text)
+
+
+def required_years(text: str) -> float | None:
+    """Minimum years of experience stated by a requirement, if any."""
+    match = YEARS_REQUIREMENT_PATTERN.search(text)
+    if match is None:
+        return None
+    value = next(group for group in match.groups() if group is not None)
+    return float(value.replace(",", "."))
+
+MANDATORY_MISSING_SCORE_CAP = 49.99
+MANDATORY_PARTIAL_SCORE_CAP = 69.99
+
+MATCHING_PROMPT_VERSION = "job-matching-v3"
+MATCHING_SCORING_VERSION = "weighted-rubric-v5-requirement-extraction-v2"
 
 
 class JobMatchingService:
@@ -110,6 +161,7 @@ class JobMatchingService:
     ) -> JobMatchingResult:
         assessment = await self._agent.assess(matching_input)
         assessment = self._resolve_evidence(assessment, matching_input)
+        assessment = self._apply_years_check(assessment, matching_input)
 
         applicable_dimensions = self._collect_applicable_dimensions(matching_input)
 
@@ -117,6 +169,8 @@ class JobMatchingService:
             assessment=assessment,
             applicable_dimensions=applicable_dimensions,
         )
+
+        overall_score = self._apply_mandatory_gate(overall_score, assessment)
 
         recommendation = self._recommend(overall_score)
 
@@ -192,6 +246,74 @@ class JobMatchingService:
         return assessment.model_copy(update={"evidence": resolved})
 
     @staticmethod
+    def _apply_years_check(
+        assessment: JobMatchingAssessment,
+        matching_input: JobMatchingInput,
+    ) -> JobMatchingAssessment:
+        """Decide "at least N years" requirements in code, not with the LLM.
+
+        Comparing a number is deterministic, and LLM flips between partial and
+        missing here changed the final recommendation between runs.
+        """
+        total_years = calculate_total_experience_years(matching_input.cv_profile)
+        years_item = next(
+            (
+                item
+                for item in matching_input.cv_evidence_catalog
+                if item.field_path == TOTAL_YEARS_FIELD_PATH
+            ),
+            None,
+        )
+        if total_years is None or years_item is None:
+            return assessment
+
+        updated = []
+        for item in assessment.evidence:
+            required = required_years(item.requirement)
+            if required is None:
+                updated.append(item)
+                continue
+
+            if total_years >= required:
+                status = MatchStatus.MATCHED
+            elif total_years >= required / 2:
+                status = MatchStatus.PARTIAL
+            else:
+                status = MatchStatus.MISSING
+
+            has_evidence = status != MatchStatus.MISSING
+            note = (
+                f" [Kiểm tra số năm: CV {total_years:g} năm, "
+                f"yêu cầu tối thiểu {required:g} năm.]"
+            )
+            updated.append(
+                item.model_copy(
+                    update={
+                        "status": status,
+                        "cv_evidence_ids": (
+                            [years_item.cv_evidence_id] if has_evidence else []
+                        ),
+                        "cv_evidence": [years_item.text] if has_evidence else [],
+                        "explanation": item.explanation + note,
+                    }
+                )
+            )
+
+        breakdown = assessment.breakdown
+        for dimension, field in BREAKDOWN_FIELD_BY_DIMENSION.items():
+            supported = any(
+                item.dimension == dimension
+                and item.status in {MatchStatus.MATCHED, MatchStatus.PARTIAL}
+                for item in updated
+            )
+            if not supported and getattr(breakdown, field) > 0:
+                breakdown = breakdown.model_copy(update={field: 0.0})
+
+        return assessment.model_copy(
+            update={"evidence": updated, "breakdown": breakdown}
+        )
+
+    @staticmethod
     def _calibrate_confidence(
         *,
         model_confidence: float,
@@ -257,6 +379,28 @@ class JobMatchingService:
         normalized_score = weighted_score / applicable_weight
 
         return round(normalized_score, 2)
+
+    @staticmethod
+    def _apply_mandatory_gate(
+        overall_score: float,
+        assessment: JobMatchingAssessment,
+    ) -> float:
+        """Cap the score when an explicitly mandatory requirement is unmet.
+
+        A weighted average lets strong skills hide an unmet hard requirement
+        (e.g. "7 years required"). A missing one caps at low_match; a partly
+        met one caps at partial_match so it never reaches good_match.
+        """
+        statuses = {
+            item.status
+            for item in assessment.evidence
+            if is_mandatory_requirement(item.requirement)
+        }
+        if MatchStatus.MISSING in statuses:
+            return min(overall_score, MANDATORY_MISSING_SCORE_CAP)
+        if MatchStatus.PARTIAL in statuses:
+            return min(overall_score, MANDATORY_PARTIAL_SCORE_CAP)
+        return overall_score
 
     @staticmethod
     def _recommend(overall_score: float) -> MatchRecommendation:

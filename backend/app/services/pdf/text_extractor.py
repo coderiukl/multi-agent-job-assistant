@@ -8,6 +8,7 @@ import pymupdf
 
 from app.core.config import Settings
 from app.core.exceptions import FileValidationException
+from app.services.pdf.errors import PYMUPDF_INPUT_ERRORS
 from app.services.pdf.models import (
     NativeTextExtractionResult,
     PdfPageText,
@@ -48,12 +49,7 @@ class NativePdfTextExtractor:
 
         except FileValidationException:
             raise
-        except (
-            pymupdf.EmptyFileError,
-            pymupdf.FileDataError,
-            RuntimeError,
-            ValueError,
-        ) as exc:
+        except PYMUPDF_INPUT_ERRORS as exc:
             logger.warning(
                 "Native PDF text extraction failed",
                 extra={

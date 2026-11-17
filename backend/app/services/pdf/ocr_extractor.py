@@ -15,7 +15,9 @@ import pymupdf
 
 from app.core.config import Settings
 from app.core.exceptions import FileValidationException, OcrProcessingException
+from app.services.pdf.errors import PYMUPDF_INPUT_ERRORS
 from app.services.pdf.models import OcrPageText, OcrTextExtractionResult, OcrTextLine
+from app.services.pdf.ocr_quality import LOSSY_OCR_CONFIDENCE_CAP, ocr_quality_issues
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +106,7 @@ class PdfOcrExtractor:
         except OcrProcessingException:
             raise
 
-        except (
-            pymupdf.EmptyFileError,
-            pymupdf.FileDataError,
-            OSError,
-            RuntimeError,
-            ValueError,
-        ) as exc:
+        except (*PYMUPDF_INPUT_ERRORS, OSError) as exc:
             logger.exception(
                 "PDF OCR extraction failed",
                 extra={
@@ -209,6 +205,16 @@ class PdfOcrExtractor:
             sum(line.confidence for line in lines) / len(lines) if lines else 0.0
         )
 
+        quality_issues = ocr_quality_issues(page_text)
+        if quality_issues:
+            # The recognizer cannot emit most Vietnamese tone-marked letters, so
+            # its confidence overstates the quality of this page (BUG-026).
+            average_confidence = min(average_confidence, LOSSY_OCR_CONFIDENCE_CAP)
+            logger.warning(
+                "OCR page looks Vietnamese; tone-marked letters may be missing",
+                extra={"page_number": page_number, "quality_issues": quality_issues},
+            )
+
         logger.info(
             "OCR page completed",
             extra={
@@ -230,6 +236,7 @@ class PdfOcrExtractor:
             character_count=character_count,
             word_count=word_count,
             average_confidence=average_confidence,
+            quality_issues=quality_issues,
         )
 
     @staticmethod

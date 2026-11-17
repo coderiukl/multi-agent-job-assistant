@@ -20,6 +20,13 @@ from app.services.storage import StorageService, StoredFile
 logger = logging.getLogger(__name__)
 
 
+def _pdf_page_count(path: Path) -> int:
+    import pymupdf
+
+    with pymupdf.open(str(path)) as document:
+        return document.page_count
+
+
 class AuthorizedCVTaskService:
     def __init__(
         self,
@@ -85,9 +92,30 @@ class CVTaskWorker:
     upload_dir: Path
     lease_seconds: int
     heartbeat_seconds: int
-    timeout_seconds: int
+    timeout_seconds: float
     max_attempts: int
     poll_seconds: float
+    timeout_seconds_per_page: float = 0
+    max_timeout_seconds: float | None = None
+
+    async def _timeout_for(self, stored_file: StoredFile) -> float:
+        """Processing budget for one CV: base + per-page OCR allowance.
+
+        A fixed 120 s budget could not hold OCR of a multi-page image CV plus
+        the LLM parser, so such CVs always timed out, recycled the worker and
+        ended in MAX_ATTEMPTS_EXCEEDED (BUG-028). Unreadable files get the base
+        budget; processing then rejects them with a validation error.
+        """
+        if not self.timeout_seconds_per_page:
+            return self.timeout_seconds
+        try:
+            page_count = await asyncio.to_thread(_pdf_page_count, stored_file.path)
+        except Exception:
+            page_count = 0
+        budget = self.timeout_seconds + page_count * self.timeout_seconds_per_page
+        if self.max_timeout_seconds is not None:
+            budget = min(budget, self.max_timeout_seconds)
+        return max(budget, self.timeout_seconds)
 
     async def run_forever(self) -> None:
         logger.info("CV task worker started", extra={"worker_id": self.worker_id})
@@ -117,8 +145,9 @@ class CVTaskWorker:
             content_type=task.content_type,
             size_bytes=task.size_bytes,
         )
+        timeout_seconds = await self._timeout_for(stored_file)
         try:
-            async with asyncio.timeout(self.timeout_seconds):
+            async with asyncio.timeout(timeout_seconds):
                 await self.processing.process_stored(stored_file)
             await self.tasks.mark_completed(
                 task_id=task.task_id,
@@ -131,7 +160,7 @@ class CVTaskWorker:
                 worker_id=self.worker_id,
                 error_code="PROCESSING_TIMEOUT",
                 error_message=(
-                    f"CV processing exceeded {self.timeout_seconds} seconds."
+                    f"CV processing exceeded {timeout_seconds:g} seconds."
                 ),
                 retry=retry,
                 retry_delay_seconds=min(2**task.attempt_count, 60),
@@ -141,7 +170,7 @@ class CVTaskWorker:
                 extra={
                     "task_id": str(task.task_id),
                     "cv_id": task.cv_id,
-                    "duration_ms": self.timeout_seconds * 1000,
+                    "duration_ms": timeout_seconds * 1000,
                     "will_retry": retry,
                 },
             )

@@ -313,7 +313,7 @@ async def start_conversation_memory_resources() -> None:
 
 @lru_cache
 def get_conversation_graph() -> CompiledStateGraph:
-    analyzer = ConversationIntentAnalyzer(llm=get_chat_model())
+    analyzer = ConversationIntentAnalyzer(llm=get_chat_model(), settings=get_settings())
     nodes = ConversationNodes(
         analyzer=analyzer,
         cv_repository=get_cv_repository(),
