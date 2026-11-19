@@ -5,6 +5,23 @@ import {
   normalizeHumanReview,
   resumeConversation,
 } from "../../api/conversation-api.js";
+import { createIcon } from "../../shared/icons.js";
+import { summarizeTurnForMessage } from "./chat-renderer.js";
+
+const REVIEW_COPY = {
+  cover_letter_confirmation: {
+    title: "Xác nhận thông tin trước khi viết thư",
+    description:
+      "Kiểm tra công việc mục tiêu và nội dung JD. Bạn có thể chỉnh sửa trước khi tạo bản nháp.",
+    approve: "Tạo bản nháp",
+  },
+  cover_letter_draft: {
+    title: "Duyệt bản nháp thư ứng tuyển",
+    description:
+      "Đọc và chỉnh sửa trực tiếp nội dung. Bản đã duyệt sẽ được dùng làm thư hoàn chỉnh.",
+    approve: "Duyệt bản nháp",
+  },
+};
 
 export function createChatController({
   addMessage,
@@ -93,6 +110,10 @@ export function createChatController({
         conversation.jobSearchResult,
         conversation.workflowJobMatches,
         conversation.careerAdviceResult,
+        {
+          matchingExecution: conversation.matchingExecution,
+          outcomes: conversation.workflowJobMatchOutcomes,
+        },
       );
       return;
     }
@@ -135,17 +156,31 @@ export function createChatController({
       return;
     }
 
+    const restored = restoreComposerText(rejectedMessage);
+
     showError(
-      error?.message ||
-        "Đã xảy ra lỗi khi xử lý yêu cầu.",
+      (error?.message || "Đã xảy ra lỗi khi xử lý yêu cầu.") +
+        (restored
+          ? " Nội dung đã được đặt lại trong ô nhập để bạn gửi lại."
+          : ""),
     );
 
     addMessage({
       role: "assistant",
       text:
-        "Mình chưa thể xử lý yêu cầu này. " +
-        "Bạn hãy kiểm tra backend và thử lại.",
+        "Mình chưa thể xử lý yêu cầu này lúc này. " +
+        "Bạn có thể thử gửi lại sau ít phút.",
     });
+  }
+
+  function restoreComposerText(text) {
+    if (!text || elements.messageInput.value.trim()) {
+      return false;
+    }
+
+    elements.messageInput.value = text;
+    resizeMessageInput();
+    return true;
   }
 
   function renderHumanReviewActions() {
@@ -161,33 +196,78 @@ export function createChatController({
       return;
     }
 
-    const container = document.createElement("div");
-
-    container.className = "human-review-actions";
     const review = state.pendingHumanReview;
+    const copy = REVIEW_COPY[review.reviewType] ?? {
+      title: "Cần bạn xác nhận",
+      description: review.message,
+      approve: "Tiếp tục",
+    };
+    const titleId = `review-title-${review.reviewId ?? "pending"}`;
+
+    const container = document.createElement("section");
+    container.className = "human-review-actions";
+    container.setAttribute("aria-labelledby", titleId);
+
+    const header = document.createElement("header");
+    const iconWrap = document.createElement("span");
+    const heading = document.createElement("div");
+    const eyebrow = document.createElement("p");
+    const title = document.createElement("h3");
+    const description = document.createElement("p");
+
+    header.className = "review-card-header";
+    iconWrap.className = "review-card-icon";
+    iconWrap.append(createIcon("flag"));
+    eyebrow.className = "eyebrow";
+    eyebrow.textContent = "Cần bạn xác nhận";
+    title.id = titleId;
+    title.textContent = copy.title;
+    description.textContent = copy.description;
+    heading.append(eyebrow, title, description);
+    header.append(iconWrap, heading);
+    container.append(header);
+
+    const body = document.createElement("div");
+    body.className = "human-review-body";
 
     if (review.reviewType === "cover_letter_confirmation") {
-      renderCoverLetterInputReview(container, review);
+      renderCoverLetterInputReview(body, review);
     } else if (review.reviewType === "cover_letter_draft") {
-      renderCoverLetterDraftReview(container, review);
+      renderCoverLetterDraftReview(body, review);
     }
 
-    const buttonRow = document.createElement("div");
+    // `feedback` is only read by the backend when the review is rejected.
+    const feedback = document.createElement("details");
+    const feedbackSummary = document.createElement("summary");
+    feedback.className = "human-review-feedback";
+    feedbackSummary.textContent = "Dừng kèm lý do (tùy chọn)";
+    feedback.append(feedbackSummary);
+    appendReviewField(feedback, {
+      label: "Lý do được gửi kèm khi bạn chọn “Dừng tạo thư”",
+      name: "feedback",
+      multiline: true,
+    });
+    body.append(feedback);
+    container.append(body);
+
+    const buttonRow = document.createElement("footer");
     buttonRow.className = "human-review-buttons";
 
-    const approveButton = document.createElement("button");
-    approveButton.type = "button";
-    approveButton.className = "human-review-approve";
-    approveButton.textContent = review.reviewType === "cover_letter_draft"
-      ? "Duyệt bản nháp"
-      : "Tạo bản nháp";
+    const status = document.createElement("span");
+    status.className = "human-review-status";
+    status.setAttribute("role", "status");
 
     const rejectButton = document.createElement("button");
     rejectButton.type = "button";
-    rejectButton.className = "human-review-reject";
-    rejectButton.textContent = "Bỏ qua";
+    rejectButton.className = "btn btn-ghost human-review-reject";
+    rejectButton.textContent = "Dừng tạo thư";
 
-    buttonRow.append(approveButton, rejectButton);
+    const approveButton = document.createElement("button");
+    approveButton.type = "button";
+    approveButton.className = "btn btn-primary human-review-approve";
+    approveButton.textContent = copy.approve;
+
+    buttonRow.append(status, rejectButton, approveButton);
     container.append(buttonRow);
 
     approveButton.addEventListener("click", () => {
@@ -215,6 +295,7 @@ export function createChatController({
     const caption = document.createElement("span");
     caption.textContent = label;
     const control = document.createElement(multiline ? "textarea" : "input");
+    if (!multiline) control.type = "text";
     control.dataset.reviewField = name;
     control.value = value ?? "";
     if (multiline) control.rows = name === "editedDraft" ? 14 : 5;
@@ -229,12 +310,13 @@ export function createChatController({
     cvMeta.className = "human-review-meta";
     cvMeta.textContent = [
       `CV: ${review.data?.cv_name || review.data?.cv_id || "không xác định"}`,
-      review.data?.cv_version ? `version ${review.data.cv_version}` : null,
+      review.data?.cv_version ? `phiên bản ${review.data.cv_version}` : null,
     ].filter(Boolean).join(" · ");
     container.append(cvMeta);
 
     const selectLabel = document.createElement("label");
     selectLabel.className = "human-review-field";
+    selectLabel.hidden = jobs.length === 0;
     const caption = document.createElement("span");
     caption.textContent = "Công việc mục tiêu";
     const select = document.createElement("select");
@@ -266,15 +348,19 @@ export function createChatController({
       const job = selectedJob();
       jobMeta.textContent = [
         `Job ID: ${job.job_id || "không xác định"}`,
-        job.jd_version ? `JD version ${job.jd_version}` : null,
+        job.jd_version ? `JD phiên bản ${job.jd_version}` : null,
       ].filter(Boolean).join(" · ");
     };
-    const title = appendReviewField(container, {
+    const identityGrid = document.createElement("div");
+    identityGrid.className = "human-review-grid";
+    container.append(identityGrid);
+
+    const title = appendReviewField(identityGrid, {
       label: "Chức danh",
       name: "jobTitle",
       value: selectedJob().title,
     });
-    const company = appendReviewField(container, {
+    const company = appendReviewField(identityGrid, {
       label: "Công ty",
       name: "company",
       value: selectedJob().company,
@@ -285,11 +371,13 @@ export function createChatController({
       value: selectedJob().description,
       multiline: true,
     });
-    appendReviewField(container, {
-      label: "Yêu cầu thêm cho thư",
+    const instructions = appendReviewField(container, {
+      label: "Yêu cầu thêm cho thư (tùy chọn)",
       name: "instructions",
       multiline: true,
     });
+    instructions.placeholder =
+      "Ví dụ: nhấn mạnh kinh nghiệm dự án dữ liệu, giọng văn ngắn gọn…";
 
     select.addEventListener("change", () => {
       const job = selectedJob();
@@ -303,7 +391,7 @@ export function createChatController({
 
   function renderCoverLetterDraftReview(container, review) {
     appendReviewField(container, {
-      label: "Nội dung bản nháp (có thể chỉnh sửa)",
+      label: "Nội dung bản nháp",
       name: "editedDraft",
       value: review.data?.draft,
       multiline: true,
@@ -379,10 +467,46 @@ export function createChatController({
     }
 
     const buttons = container.querySelectorAll("button");
+    const status = container.querySelector(".human-review-status");
+    const actionButton = container.querySelector(
+      action === "approve" ? ".human-review-approve" : ".human-review-reject",
+    );
 
-    buttons.forEach((button) => {
-      button.disabled = true;
-    });
+    const setBusy = (busy) => {
+      buttons.forEach((button) => {
+        button.disabled = busy;
+      });
+      container.setAttribute("aria-busy", String(busy));
+
+      if (busy) {
+        actionButton?.setAttribute("aria-busy", "true");
+      } else {
+        actionButton?.removeAttribute("aria-busy");
+      }
+
+      if (!status) {
+        return;
+      }
+
+      status.replaceChildren();
+      status.classList.toggle("is-busy", busy);
+
+      if (busy) {
+        const spinner = document.createElement("span");
+        spinner.className = "spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        status.append(
+          spinner,
+          document.createTextNode(
+            action === "approve"
+              ? "Đang tiếp tục quy trình…"
+              : "Đang dừng quy trình…",
+          ),
+        );
+      }
+    };
+
+    setBusy(true);
 
     try {
       const review = state.pendingHumanReview;
@@ -406,6 +530,7 @@ export function createChatController({
         threadId: state.threadId,
         reviewId: review.reviewId,
         action,
+        feedback: action === "reject" ? fieldValue("feedback") : null,
         selectedJobId: fieldValue("selectedJobId"),
         inputOverrides,
         editedDraft: fieldValue("editedDraft"),
@@ -424,6 +549,7 @@ export function createChatController({
         addMessage({
           role: "assistant",
           text: result.humanReview.message,
+          result: summarizeTurnForMessage(result),
         });
         renderHumanReviewActions();
         return;
@@ -432,6 +558,7 @@ export function createChatController({
       addMessage({
         role: "assistant",
         text: result.answer,
+        result: summarizeTurnForMessage(result),
       });
 
       await handleConversationResult(result, "");
@@ -447,9 +574,7 @@ export function createChatController({
         cacheConversation();
       }
 
-      buttons.forEach((button) => {
-        button.disabled = false;
-      });
+      setBusy(false);
 
       showError(
         error.message || "Không thể tiếp tục xử lý yêu cầu."
@@ -533,6 +658,7 @@ export function createChatController({
         addMessage({
           role: "assistant",
           text: conversation.humanReview.message,
+          result: summarizeTurnForMessage(conversation),
         });
 
         renderHumanReviewActions();
@@ -543,6 +669,7 @@ export function createChatController({
       addMessage({
         role: "assistant",
         text: conversation.answer,
+        result: summarizeTurnForMessage(conversation),
       });
 
       await handleConversationResult(conversation, input.message);
@@ -641,6 +768,7 @@ export function createChatController({
         addMessage({
           role: "assistant",
           text: conversation.humanReview.message,
+          result: summarizeTurnForMessage(conversation),
         });
 
         renderHumanReviewActions();
@@ -653,6 +781,7 @@ export function createChatController({
       addMessage({
         role: "assistant",
         text: conversation.answer,
+        result: summarizeTurnForMessage(conversation),
       });
 
       const result = getResult(conversation);

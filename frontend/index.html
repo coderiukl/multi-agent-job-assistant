@@ -2,776 +2,542 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0"
-    />
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
-      content="Job Search AI - Trợ lý AI hỗ trợ tìm kiếm việc làm, phân tích CV và tư vấn nghề nghiệp."
+      content="Job Search AI – không gian làm việc nghề nghiệp với các AI Agent: phân tích CV, tìm việc, so khớp JD, tư vấn lộ trình và viết thư ứng tuyển."
     />
-
-    <title>Job Search AI - AI Job Assistant</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
+    <title>Job Search AI</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Apply the stored theme before first paint to avoid a flash.
+      try {
+        const theme = localStorage.getItem("job-search-ai-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch {}
+    </script>
   </head>
 
   <body>
+    <!-- Icon sprite: 24px grid, 1.75 stroke, currentColor. -->
+    <svg class="icon-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></symbol>
+        <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9.5 4v16" /></symbol>
+        <symbol id="i-panel-right" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M14.5 4v16" /></symbol>
+        <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10" /></symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3" /><path d="m16 16 4-4-4-4" /><path d="M20 12H9" /></symbol>
+        <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m20.5 11.5-8.3 8.3a5 5 0 0 1-7.1-7.1l8.3-8.3a3.3 3.3 0 0 1 4.7 4.7l-8.3 8.3a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6" /></symbol>
+        <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></symbol>
+        <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5" /><circle cx="9" cy="9" r="1.8" /><path d="m21 15-5-5L5 21" /></symbol>
+        <symbol id="i-briefcase" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5" /><path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7M3 12.5h18" /></symbol>
+        <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" /></symbol>
+        <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6" /></symbol>
+        <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+        <symbol id="i-more" viewBox="0 0 24 24"><path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="3" /></symbol>
+        <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+        <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+        <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M10 14 20 4M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" /></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12" /></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16.2h.01" /></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.8h.01" /></symbol>
+        <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></symbol>
+        <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" /></symbol>
+        <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h8" /><path d="M16.4 3.6a2 2 0 0 1 2.9 2.9L7.5 18.3 4 19.5l1.2-3.5z" /></symbol>
+        <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="m4 7 8 6 8-6" /></symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" /></symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z" /></symbol>
+        <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 16.5V21M8.5 4h7M9.5 4v5.5L6.5 13v2h11v-2l-3-3.5V4" /></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6 7l.9 12.1A1 1 0 0 0 7.9 20h8.2a1 1 0 0 0 1-.9L18 7M10 11v5M14 11v5" /></symbol>
+        <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3.5 9 4.5-9 4.5L3 8z" /><path d="m3 12.5 9 4.5 9-4.5" /><path d="m3 16.5 9 4.5 9-4.5" /></symbol>
+        <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h12l-2.2 4L17 12H5" /></symbol>
+        <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18.5" r="2.2" /><circle cx="18" cy="5.5" r="2.2" /><path d="M8.2 18.5H16a3.25 3.25 0 0 0 0-6.5H8a3.25 3.25 0 0 1 0-6.5h7.8" /></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" /></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 0 1-12.4 7.5L3.5 20.5l1-4.4A8.5 8.5 0 1 1 20.5 12z" /></symbol>
+        <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 10h8M8 14h5" /></symbol>
+        <symbol id="i-trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8" /><path d="M15 7h6v6" /></symbol>
+        <symbol id="i-list-check" viewBox="0 0 24 24"><path d="M11 6h9M11 12h9M11 18h9M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5" /></symbol>
+        <!-- Brand mark: a career route from origin to destination. -->
+        <symbol id="brand-mark" viewBox="0 0 32 32">
+          <rect width="32" height="32" rx="9" fill="var(--brand-mark-bg)" stroke="none" />
+          <path d="M10.5 22.5h9.25a3.5 3.5 0 0 0 0-7h-7.5a3.5 3.5 0 0 1 0-7H21" fill="none" stroke="var(--brand-mark-line)" stroke-width="2.1" stroke-linecap="round" />
+          <circle cx="9.5" cy="22.5" r="2.4" fill="var(--brand-mark-line)" stroke="none" />
+          <circle cx="22.5" cy="8.5" r="2.4" fill="var(--brand-mark-accent)" stroke="none" />
+        </symbol>
+      </defs>
+    </svg>
+
     <div id="app-loading" class="app-loading" aria-live="polite">
-      <span class="app-loading-mark">Job AI</span>
-      <span>Đang khởi tạo phiên làm việc...</span>
+      <svg class="app-loading-mark" aria-hidden="true"><use href="#brand-mark" /></svg>
+      <span class="app-loading-text">Đang khởi tạo phiên làm việc…</span>
+      <span class="app-loading-bar" aria-hidden="true"></span>
     </div>
 
+    <!-- ============================== AUTH ============================== -->
     <main id="auth-screen" class="auth-screen" hidden>
       <section class="auth-intro" aria-labelledby="auth-intro-title">
-        <a class="auth-brand" href="/" aria-label="Job Search AI">
-          <span class="brand-logo">Job AI</span>
-          <span>
-            <strong>Job Search AI</strong>
-            <small>Multi-Agent Job Assistant</small>
-          </span>
+        <a class="brand" href="/" aria-label="Job Search AI – trang chủ">
+          <svg class="brand-mark" aria-hidden="true"><use href="#brand-mark" /></svg>
+          <span class="brand-name">Job Search AI</span>
         </a>
 
         <div class="auth-intro-content">
-          <span class="auth-kicker">AI CAREER WORKSPACE</span>
+          <p class="eyebrow">Career workspace · Multi-Agent</p>
           <h1 id="auth-intro-title">
-            Tìm việc thông minh hơn,<br />
-            chủ động hơn.
+            Từ CV đến công việc phù hợp, <em>có lộ trình rõ ràng.</em>
           </h1>
-          <p>
-            Một không gian riêng tư để phân tích CV, so khớp công việc
-            và hoàn thiện hồ sơ ứng tuyển cùng các AI Agent chuyên biệt.
+          <p class="auth-lede">
+            Năm AI Agent chuyên biệt cùng làm việc trên hồ sơ của bạn. Bạn luôn là người
+            xác nhận trước khi một bước quan trọng được thực hiện.
           </p>
 
-          <ul class="auth-benefits">
-            <li><span>01</span> Lưu và tiếp tục hội thoại trên cùng tài khoản</li>
-            <li><span>02</span> Bảo vệ CV và lịch sử ứng tuyển của riêng bạn</li>
-            <li><span>03</span> Kiểm soát các bước AI cần bạn xác nhận</li>
-          </ul>
+          <ol class="auth-agents" aria-label="Các agent trong hệ thống">
+            <li><span class="auth-agent-index">01</span><span><strong>Phân tích CV</strong> Điểm mạnh, khoảng trống và đề xuất ưu tiên</span></li>
+            <li><span class="auth-agent-index">02</span><span><strong>Tìm việc</strong> Lọc theo vai trò, địa điểm và cấp độ</span></li>
+            <li><span class="auth-agent-index">03</span><span><strong>So khớp JD</strong> Bằng chứng từ CV cho từng yêu cầu</span></li>
+            <li><span class="auth-agent-index">04</span><span><strong>Tư vấn lộ trình</strong> Kỹ năng cần học theo từng giai đoạn</span></li>
+            <li><span class="auth-agent-index">05</span><span><strong>Thư ứng tuyển</strong> Bản nháp để bạn duyệt và chỉnh sửa</span></li>
+          </ol>
         </div>
 
         <p class="auth-intro-footnote">
-          CV và dữ liệu nghề nghiệp chỉ được sử dụng để xử lý yêu cầu của bạn.
+          CV và dữ liệu nghề nghiệp chỉ được dùng để xử lý yêu cầu của bạn và có thể xóa bất cứ lúc nào.
         </p>
       </section>
 
       <section class="auth-panel" aria-label="Tài khoản Job Search AI">
         <div class="auth-card">
-          <div class="auth-card-heading">
-            <span class="auth-mobile-logo">Job AI</span>
+          <a class="brand auth-mobile-brand" href="/" aria-label="Job Search AI – trang chủ">
+            <svg class="brand-mark" aria-hidden="true"><use href="#brand-mark" /></svg>
+            <span class="brand-name">Job Search AI</span>
+          </a>
+
+          <header class="auth-card-heading">
             <h2 id="auth-form-title">Chào mừng trở lại</h2>
-            <p id="auth-form-description">
-              Đăng nhập để tiếp tục không gian nghề nghiệp của bạn.
-            </p>
+            <p id="auth-form-description">Đăng nhập để tiếp tục không gian nghề nghiệp của bạn.</p>
+          </header>
+
+          <div class="segmented auth-tabs" role="tablist" aria-label="Chọn hình thức xác thực">
+            <button id="auth-login-tab" class="segmented-item auth-tab is-active" type="button" role="tab"
+              aria-selected="true" aria-controls="login-form" data-auth-view="login">Đăng nhập</button>
+            <button id="auth-register-tab" class="segmented-item auth-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="register-form" data-auth-view="register">Tạo tài khoản</button>
           </div>
 
-          <div class="auth-tabs" role="tablist" aria-label="Chọn hình thức xác thực">
-            <button
-              id="auth-login-tab"
-              class="auth-tab is-active"
-              type="button"
-              role="tab"
-              aria-selected="true"
-              aria-controls="login-form"
-              data-auth-view="login"
-            >
-              Đăng nhập
-            </button>
-            <button
-              id="auth-register-tab"
-              class="auth-tab"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="register-form"
-              data-auth-view="register"
-            >
-              Tạo tài khoản
-            </button>
-          </div>
-
-          <div id="auth-error" class="auth-error" role="alert" hidden></div>
+          <div id="auth-error" class="alert alert-danger auth-error" role="alert" hidden></div>
 
           <form id="login-form" class="auth-form" novalidate>
-            <label>
-              <span>Email</span>
-              <input
-                id="login-email"
-                name="email"
-                type="email"
-                autocomplete="email"
-                placeholder="ban@example.com"
-                maxlength="254"
-                required
-              />
+            <label class="field">
+              <span class="field-label">Email</span>
+              <input id="login-email" class="input" name="email" type="email" autocomplete="email"
+                placeholder="ban@example.com" maxlength="254" required />
             </label>
 
-            <label>
-              <span>Mật khẩu</span>
-              <input
-                id="login-password"
-                name="password"
-                type="password"
-                autocomplete="current-password"
-                placeholder="Nhập mật khẩu"
-                maxlength="128"
-                required
-              />
+            <label class="field">
+              <span class="field-label">Mật khẩu</span>
+              <input id="login-password" class="input" name="password" type="password"
+                autocomplete="current-password" placeholder="Nhập mật khẩu" maxlength="128" required />
             </label>
 
-            <button class="auth-submit" type="submit">
+            <button class="btn btn-primary btn-lg btn-block auth-submit" type="submit">
               <span>Đăng nhập</span>
-              <span aria-hidden="true">→</span>
+              <svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
             </button>
           </form>
 
           <form id="register-form" class="auth-form" novalidate hidden>
-            <label>
-              <span>Email</span>
-              <input
-                id="register-email"
-                name="email"
-                type="email"
-                autocomplete="email"
-                placeholder="ban@example.com"
-                maxlength="254"
-                required
-              />
+            <label class="field">
+              <span class="field-label">Email</span>
+              <input id="register-email" class="input" name="email" type="email" autocomplete="email"
+                placeholder="ban@example.com" maxlength="254" required />
             </label>
 
-            <label>
-              <span>Mật khẩu</span>
-              <input
-                id="register-password"
-                name="password"
-                type="password"
-                autocomplete="new-password"
-                placeholder="Tối thiểu 12 ký tự"
-                minlength="12"
-                maxlength="128"
-                required
-              />
+            <label class="field">
+              <span class="field-label">Mật khẩu</span>
+              <input id="register-password" class="input" name="password" type="password"
+                autocomplete="new-password" placeholder="Tối thiểu 12 ký tự" minlength="12" maxlength="128"
+                aria-describedby="register-password-hint" required />
             </label>
 
-            <label>
-              <span>Xác nhận mật khẩu</span>
-              <input
-                id="register-password-confirmation"
-                name="password_confirmation"
-                type="password"
-                autocomplete="new-password"
-                placeholder="Nhập lại mật khẩu"
-                minlength="12"
-                maxlength="128"
-                required
-              />
+            <label class="field">
+              <span class="field-label">Xác nhận mật khẩu</span>
+              <input id="register-password-confirmation" class="input" name="password_confirmation"
+                type="password" autocomplete="new-password" placeholder="Nhập lại mật khẩu" minlength="12"
+                maxlength="128" required />
             </label>
 
-            <p class="auth-password-hint">
-              Dùng ít nhất 12 ký tự. Không sử dụng lại mật khẩu quan trọng.
+            <p id="register-password-hint" class="field-hint">
+              Dùng ít nhất 12 ký tự. Không dùng lại mật khẩu của tài khoản quan trọng.
             </p>
 
-            <button class="auth-submit" type="submit">
+            <button class="btn btn-primary btn-lg btn-block auth-submit" type="submit">
               <span>Tạo tài khoản</span>
-              <span aria-hidden="true">→</span>
+              <svg class="icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
             </button>
           </form>
 
-          <p class="auth-terms">
-            Bằng cách tiếp tục, bạn đồng ý sử dụng hệ thống cho mục đích hỗ trợ nghề nghiệp.
-          </p>
+          <p class="auth-terms">Bằng cách tiếp tục, bạn đồng ý sử dụng hệ thống cho mục đích hỗ trợ nghề nghiệp.</p>
         </div>
       </section>
     </main>
 
+    <!-- ============================ WORKSPACE ============================ -->
     <div id="app-shell" class="app-shell" hidden>
       <header class="app-header">
-        <a class="brand" href="/" aria-label="Job Search AI">
-          <span class="brand-logo">Job AI</span>
+        <div class="app-header-start">
+          <button id="history-drawer-button" class="icon-button app-header-history" type="button"
+            aria-label="Mở lịch sử trò chuyện" aria-controls="conversation-sidebar" aria-expanded="false">
+            <svg class="icon" aria-hidden="true"><use href="#i-menu" /></svg>
+          </button>
 
-          <span class="brand-content">
-            <strong>Job Search AI</strong>
-            <small>Multi-Agent Job Assistant</small>
-          </span>
-        </a>
+          <a class="brand" href="/" aria-label="Job Search AI – trang chủ">
+            <svg class="brand-mark" aria-hidden="true"><use href="#brand-mark" /></svg>
+            <span class="brand-name">Job Search AI</span>
+          </a>
+        </div>
 
         <div class="header-actions">
-          <span class="system-status">
-            <span class="status-dot"></span>
-            Hệ thống hoạt động
-          </span>
-
-          <button
-            id="toggle-results-button"
-            class="results-toggle-button"
-            type="button"
-            aria-expanded="false"
-            aria-controls="results-panel"
-            hidden
-          >
-            <span aria-hidden="true">▣</span>
+          <button id="toggle-results-button" class="btn btn-ghost btn-sm results-toggle-button" type="button"
+            aria-expanded="false" aria-controls="results-panel" hidden>
+            <svg class="icon" aria-hidden="true"><use href="#i-panel-right" /></svg>
             <span class="results-toggle-label">Xem kết quả</span>
           </button>
 
-          <button
-            id="new-chat-button"
-            class="secondary-button"
-            type="button"
-          >
-            Cuộc trò chuyện mới
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Chuyển giao diện sáng/tối"
+            title="Chuyển giao diện sáng/tối">
+            <svg class="icon theme-icon-light" aria-hidden="true"><use href="#i-moon" /></svg>
+            <svg class="icon theme-icon-dark" aria-hidden="true"><use href="#i-sun" /></svg>
           </button>
 
-          <button
-            id="mobile-logout-button"
-            class="mobile-logout-button"
-            type="button"
-            aria-label="Đăng xuất"
-            title="Đăng xuất"
-          >
-            ↪
+          <button id="new-chat-button" class="btn btn-secondary btn-sm new-chat-button" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+            <span class="new-chat-label">Cuộc trò chuyện mới</span>
+          </button>
+
+          <button id="mobile-logout-button" class="icon-button mobile-logout-button" type="button"
+            aria-label="Đăng xuất" title="Đăng xuất">
+            <svg class="icon" aria-hidden="true"><use href="#i-logout" /></svg>
           </button>
         </div>
       </header>
 
-      <nav
-        class="mobile-workspace-tabs"
-        aria-label="Chọn khu vực làm việc"
-        role="tablist"
-      >
-        <button
-          type="button"
-          class="mobile-tab is-active"
-          data-panel="chat"
-          aria-controls="chat-panel"
-          aria-selected="true"
-          role="tab"
-        >
-          Chat
+      <nav class="mobile-workspace-tabs segmented" aria-label="Chọn khu vực làm việc" role="tablist">
+        <button type="button" class="segmented-item mobile-tab is-active" data-panel="chat"
+          aria-controls="chat-panel" aria-selected="true" role="tab">
+          <svg class="icon" aria-hidden="true"><use href="#i-chat" /></svg>
+          Trò chuyện
         </button>
-
-        <button
-          id="mobile-results-tab"
-          type="button"
-          class="mobile-tab"
-          data-panel="results"
-          aria-controls="results-panel"
-          aria-selected="false"
-          role="tab"
-          hidden
-        >
+        <button id="mobile-results-tab" type="button" class="segmented-item mobile-tab" data-panel="results"
+          aria-controls="results-panel" aria-selected="false" role="tab" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg>
           Kết quả
-          <span id="mobile-results-badge" class="mobile-tab-badge" hidden>
-            0
-          </span>
+          <span id="mobile-results-badge" class="count-badge mobile-tab-badge" hidden>0</span>
         </button>
       </nav>
 
-      <main
-        class="workspace"
-        data-active-panel="chat"
-        data-history-open="true"
-        data-results-open="false"
-      >
-        <aside class="conversation-sidebar" aria-label="Lịch sử trò chuyện">
+      <main class="workspace" data-active-panel="chat" data-history-open="true" data-results-open="false">
+        <div id="sidebar-scrim" class="scrim sidebar-scrim" hidden></div>
+
+        <aside id="conversation-sidebar" class="conversation-sidebar" aria-label="Lịch sử trò chuyện">
           <header class="conversation-sidebar-header">
-            <div class="conversation-sidebar-heading">
-              <span class="eyebrow">HISTORY</span>
-              <h2>Cuộc trò chuyện</h2>
-            </div>
+            <h2 class="conversation-sidebar-heading">Cuộc trò chuyện</h2>
 
             <div class="conversation-sidebar-actions">
-              <button
-                id="sidebar-new-chat-button"
-                class="icon-button"
-                type="button"
-                aria-label="Tạo cuộc trò chuyện mới"
-                title="Cuộc trò chuyện mới"
-              >
-                +
+              <button id="sidebar-new-chat-button" class="icon-button" type="button"
+                aria-label="Tạo cuộc trò chuyện mới" title="Cuộc trò chuyện mới">
+                <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
               </button>
-
-              <button
-                id="toggle-history-button"
-                class="icon-button history-toggle-button"
-                type="button"
-                aria-label="Thu gọn lịch sử"
-                aria-expanded="true"
-                title="Thu gọn lịch sử"
-              >
-                <span aria-hidden="true">‹</span>
+              <button id="toggle-history-button" class="icon-button history-toggle-button" type="button"
+                aria-label="Thu gọn lịch sử" aria-expanded="true" title="Thu gọn lịch sử">
+                <svg class="icon" aria-hidden="true"><use href="#i-sidebar" /></svg>
               </button>
             </div>
           </header>
 
           <div class="conversation-history-search-wrap">
-            <span aria-hidden="true">⌕</span>
-            <input
-              id="conversation-history-search"
-              class="conversation-history-search"
-              type="search"
-              placeholder="Tìm cuộc trò chuyện..."
-              autocomplete="off"
-              aria-label="Tìm trong lịch sử trò chuyện"
-            />
+            <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+            <input id="conversation-history-search" class="conversation-history-search" type="search"
+              placeholder="Tìm cuộc trò chuyện" autocomplete="off" aria-label="Tìm trong lịch sử trò chuyện" />
           </div>
 
-          <div
-            id="conversation-history-empty"
-            class="conversation-history-empty"
-          >
+          <div id="conversation-history-empty" class="conversation-history-empty">
             <strong>Chưa có cuộc trò chuyện</strong>
             <span>Bắt đầu một cuộc trò chuyện để lưu lại nội dung và kết quả.</span>
-            <button id="history-empty-new-chat" type="button">
+            <button id="history-empty-new-chat" class="btn btn-secondary btn-sm" type="button">
               Bắt đầu trò chuyện
             </button>
           </div>
 
-          <div
-            id="conversation-history-list"
-            class="conversation-history-list"
-          ></div>
+          <div id="conversation-history-list" class="conversation-history-list"></div>
 
           <footer class="account-menu sidebar-account-menu">
-            <span id="current-user-avatar" class="current-user-avatar" aria-hidden="true">U</span>
+            <span id="current-user-avatar" class="avatar current-user-avatar" aria-hidden="true">U</span>
             <span class="current-user-details">
               <strong>Tài khoản</strong>
               <span id="current-user-email" class="current-user-email"></span>
             </span>
-            <button
-              id="logout-button"
-              class="logout-button"
-              type="button"
-              title="Đăng xuất và xóa dữ liệu phiên trên thiết bị này"
-            >
-              Đăng xuất
+            <button id="logout-button" class="icon-button logout-button" type="button"
+              aria-label="Đăng xuất" title="Đăng xuất và xóa dữ liệu phiên trên thiết bị này">
+              <svg class="icon" aria-hidden="true"><use href="#i-logout" /></svg>
             </button>
           </footer>
         </aside>
-        
-        <section id="chat-panel" class="chat-panel" aria-label="Trợ lý hội thoại" role="tabpanel">
-          <header class="panel-header">
-            <div>
-              <span class="eyebrow">AI CAREER ASSISTANT</span>
-              <h1>Trợ lý nghề nghiệp</h1>
-              <p>Đồng hành cùng bạn từ CV đến công việc phù hợp</p>
-            </div>
 
-            <span id="cv-status-badge" class="cv-status-badge">
-              Chưa có CV
-            </span>
+        <!-- ---------------------------- CHAT ---------------------------- -->
+        <section id="chat-panel" class="chat-panel" aria-label="Trợ lý hội thoại" role="tabpanel">
+          <header class="panel-header chat-panel-header">
+            <div class="panel-heading">
+              <h1>Trợ lý nghề nghiệp</h1>
+              <p>Từ CV đến công việc phù hợp</p>
+            </div>
+            <span id="cv-status-badge" class="cv-status-badge" role="status">Chưa có CV</span>
           </header>
 
-          <div
-            id="message-list"
-            class="message-list"
-            aria-live="polite"
-          ></div>
+          <div class="conversation-scroll">
+            <div id="message-list" class="message-list" aria-live="polite" aria-relevant="additions"></div>
 
-          <div id="suggestion-list" class="suggestion-list">
-            <div class="suggestion-heading">
-              <span class="suggestion-heading-icon" aria-hidden="true">✦</span>
-              <span>
-                <strong>Bạn muốn bắt đầu từ đâu?</strong>
-                <small>Chọn một tác vụ hoặc nhập câu hỏi của riêng bạn</small>
-              </span>
+            <div id="suggestion-list" class="suggestion-list">
+              <div class="suggestion-heading">
+                <p class="eyebrow">Bắt đầu</p>
+                <h2>Hôm nay bạn muốn tiến thêm bước nào?</h2>
+                <p>Chọn một tác vụ, hoặc mô tả mục tiêu của bạn bằng lời.</p>
+              </div>
+
+              <div class="suggestion-grid">
+                <button type="button" class="suggestion-card" data-action="open-matching">
+                  <span class="suggestion-icon"><svg class="icon" aria-hidden="true"><use href="#i-target" /></svg></span>
+                  <span class="suggestion-copy">
+                    <strong>So khớp CV với JD</strong>
+                    <small>Điểm phù hợp, bằng chứng và kỹ năng còn thiếu</small>
+                  </span>
+                </button>
+
+                <button type="button" class="suggestion-card" data-message="Tìm công việc AI tại Hồ Chí Minh phù hợp với sinh viên mới ra trường, không yêu cầu nhiều kinh nghiệm">
+                  <span class="suggestion-icon"><svg class="icon" aria-hidden="true"><use href="#i-search" /></svg></span>
+                  <span class="suggestion-copy">
+                    <strong>Tìm việc AI cho Fresher</strong>
+                    <small>Tại TP.HCM, không yêu cầu nhiều kinh nghiệm</small>
+                  </span>
+                </button>
+
+                <button type="button" class="suggestion-card" data-message="Phân tích điểm mạnh và điểm cần cải thiện trong CV của tôi">
+                  <span class="suggestion-icon"><svg class="icon" aria-hidden="true"><use href="#i-scan" /></svg></span>
+                  <span class="suggestion-copy">
+                    <strong>Phân tích CV</strong>
+                    <small>Đánh giá nội dung, kỹ năng và đề xuất ưu tiên</small>
+                  </span>
+                </button>
+
+                <button type="button" class="suggestion-card" data-message="Tôi cần học thêm gì để trở thành Data Engineer?">
+                  <span class="suggestion-icon"><svg class="icon" aria-hidden="true"><use href="#i-compass" /></svg></span>
+                  <span class="suggestion-copy">
+                    <strong>Lộ trình kỹ năng</strong>
+                    <small>Ví dụ: trở thành Data Engineer</small>
+                  </span>
+                </button>
+
+                <button type="button" class="suggestion-card" data-action="open-cover-letter">
+                  <span class="suggestion-icon"><svg class="icon" aria-hidden="true"><use href="#i-mail" /></svg></span>
+                  <span class="suggestion-copy">
+                    <strong>Viết thư ứng tuyển</strong>
+                    <small>Bản nháp theo CV và JD, bạn duyệt trước khi hoàn tất</small>
+                  </span>
+                </button>
+              </div>
             </div>
-
-            <button
-              type="button"
-              class="suggestion-card"
-              data-action="open-matching"
-            >
-              <span class="suggestion-icon">%</span>
-
-              <span class="suggestion-copy">
-                <strong>So khớp CV với JD</strong>
-                <small>Xem điểm phù hợp và kỹ năng còn thiếu</small>
-              </span>
-              <span class="suggestion-arrow" aria-hidden="true">→</span>
-            </button>
-
-            <button
-              type="button"
-              class="suggestion-card"
-              data-action="open-cover-letter"
-            >
-              <span class="suggestion-icon">✉</span>
-
-              <span class="suggestion-copy">
-                <strong>Viết thư ứng tuyển</strong>
-                <small>Tạo Cover Letter theo CV và JD</small>
-              </span>
-              <span class="suggestion-arrow" aria-hidden="true">→</span>
-            </button>
-
-            <button
-              type="button"
-              class="suggestion-card"
-              data-message="Tìm công việc AI tại Hồ Chí Minh phù hợp với sinh viên mới ra trường, không yêu cầu nhiều kinh nghiệm"
-            >
-              <span class="suggestion-icon">⌕</span>
-
-              <span class="suggestion-copy">
-                <strong>Tìm việc AI</strong>
-                <small>Dành cho Fresher tại TP.HCM</small>
-              </span>
-              <span class="suggestion-arrow" aria-hidden="true">→</span>
-            </button>
-
-            <button
-              type="button"
-              class="suggestion-card"
-              data-message="Phân tích điểm mạnh và điểm cần cải thiện trong CV của tôi"
-            >
-              <span class="suggestion-icon">CV</span>
-
-              <span class="suggestion-copy">
-                <strong>Phân tích CV</strong>
-                <small>Đánh giá nội dung và kỹ năng</small>
-              </span>
-              <span class="suggestion-arrow" aria-hidden="true">→</span>
-            </button>
-
-            <button
-              type="button"
-              class="suggestion-card"
-              data-message="Tôi cần học thêm gì để trở thành Data Engineer?"
-            >
-              <span class="suggestion-icon">↗</span>
-
-              <span class="suggestion-copy">
-                <strong>Lộ trình kỹ năng</strong>
-                <small>Nhận đề xuất học tập</small>
-              </span>
-              <span class="suggestion-arrow" aria-hidden="true">→</span>
-            </button>
           </div>
 
           <footer class="composer-container">
-            <div
-              id="global-error"
-              class="error-message"
-              role="alert"
-              hidden
-            ></div>
+            <div id="global-error" class="alert alert-danger composer-error" role="alert" hidden></div>
 
-            <dialog id="cv-profile-dialog" class="cv-profile-dialog">
-              <form method="dialog" class="cv-profile-dialog-content">
-                <h2>Kiểm tra thông tin trích xuất</h2>
-                <p>
-                  Kiểm tra và chỉnh sửa thông tin được đọc từ CV.
-                  Các mục để trống là thông tin hệ thống chưa nhận diện được.
-                </p>
-                <div
-                  id="cv-profile-editor"
-                  class="cv-profile-editor"
-                  aria-label="Thông tin trích xuất từ CV"
-                ></div>
-                <div class="cv-profile-dialog-actions">
-                  <button value="cancel" type="submit">Hủy</button>
-                  <button id="save-cv-profile-button" value="default" type="button">
-                    Lưu thông tin
+            <dialog id="cv-profile-dialog" class="dialog dialog-lg cv-profile-dialog" aria-labelledby="cv-profile-dialog-title">
+              <form method="dialog" class="dialog-content cv-profile-dialog-content">
+                <header class="dialog-header">
+                  <div>
+                    <h2 id="cv-profile-dialog-title">Kiểm tra thông tin trích xuất</h2>
+                    <p>Kiểm tra và chỉnh sửa thông tin đọc được từ CV. Mục để trống là thông tin hệ thống chưa nhận diện được.</p>
+                  </div>
+                  <button class="icon-button" value="cancel" type="submit" aria-label="Đóng">
+                    <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
                   </button>
-                </div>
+                </header>
+                <div id="cv-profile-editor" class="dialog-body cv-profile-editor" aria-label="Thông tin trích xuất từ CV"></div>
+                <footer class="dialog-actions cv-profile-dialog-actions">
+                  <button class="btn btn-ghost" value="cancel" type="submit">Hủy</button>
+                  <button id="save-cv-profile-button" class="btn btn-primary" value="default" type="button">Lưu thông tin</button>
+                </footer>
               </form>
             </dialog>
 
-            <section
-              id="job-description-panel"
-              class="job-description-panel"
-              aria-labelledby="job-description-label"
-              hidden
-            >
-              <div class="job-description-header">
-                <label id="job-description-label" for="job-description-input">
-                  Job Description
-                </label>
-
-                <div class="job-description-actions">
-                  <span id="job-description-count">0/20.000</span>
-                  <button id="edit-jd-button" type="button" hidden>Chỉnh JD</button>
-                  <button id="clear-jd-button" type="button">Xóa JD</button>
+            <div class="composer">
+              <section id="job-description-panel" class="job-description-panel" aria-labelledby="job-description-label" hidden>
+                <div class="job-description-header">
+                  <label id="job-description-label" for="job-description-input">
+                    <svg class="icon" aria-hidden="true"><use href="#i-briefcase" /></svg>
+                    Job Description
+                  </label>
+                  <div class="job-description-actions">
+                    <span id="job-description-count" class="job-description-count">0/20.000</span>
+                    <button id="edit-jd-button" class="btn btn-ghost btn-xs" type="button" hidden>Chỉnh JD</button>
+                    <button id="clear-jd-button" class="btn btn-ghost btn-xs" type="button">Xóa JD</button>
+                  </div>
                 </div>
-              </div>
 
-              <div
-                id="job-description-summary"
-                class="job-description-summary"
-                hidden
-              ></div>
+                <div id="job-description-summary" class="job-description-summary" hidden></div>
 
-              <textarea
-                id="job-description-input"
-                rows="7"
-                maxlength="20000"
-                placeholder="Dán mô tả công việc cần so khớp với CV vào đây..."
-                aria-describedby="job-description-help"
-              ></textarea>
+                <textarea id="job-description-input" class="job-description-input" rows="6" maxlength="20000"
+                  placeholder="Dán mô tả công việc cần so khớp với CV vào đây…" aria-describedby="job-description-help"></textarea>
 
-              <p id="job-description-help">
-                CV phải được tải lên thành công trước khi xử lý JD.
-              </p>
-            </section>
+                <p id="job-description-help" class="field-hint">CV phải được tải lên thành công trước khi xử lý JD.</p>
+              </section>
 
-            <div id="composer-actions" class="composer-actions" aria-label="Tác vụ nhanh">
-              <button
-                type="button"
-                data-action="open-matching"
-              >
-                So khớp JD
-              </button>
+              <form id="chat-form" class="chat-form">
+                <input id="cv-input" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" multiple hidden />
 
-              <button
-                type="button"
-                data-action="open-cover-letter"
-              >
-                Viết thư ứng tuyển
-              </button>
+                <div id="selected-cv" class="selected-cv" aria-live="polite" hidden>
+                  <span id="cv-file-type-badge" class="file-type-badge">PDF</span>
 
-              <button
-                type="button"
-                data-message="Tìm công việc phù hợp với CV của tôi"
-              >
-                Tìm theo CV
-              </button>
+                  <div class="selected-cv-content">
+                    <strong id="selected-cv-name"></strong>
+                    <small id="selected-cv-status"></small>
+                    <div id="cv-preview-list" class="cv-preview-list" role="list" aria-label="Các trang CV đã chọn" hidden></div>
+                  </div>
 
-              <button
-                type="button"
-                data-message="Tạo kế hoạch cải thiện CV trong 7 ngày"
-              >
-                Cải thiện CV
-              </button>
+                  <div class="selected-cv-actions">
+                    <button id="add-cv-pages-button" class="btn btn-ghost btn-xs" type="button" aria-label="Thêm ảnh vào CV" hidden>+ Thêm ảnh</button>
+                    <button id="review-cv-button" class="btn btn-ghost btn-xs" type="button" aria-label="Xem và sửa thông tin CV" hidden>Xem &amp; sửa</button>
+                    <button id="remove-cv-button" class="icon-button icon-button-sm" type="button" aria-label="Xóa CV" title="Xóa CV">
+                      <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <textarea id="message-input" class="message-input" rows="1" maxlength="2000"
+                  placeholder="Nhập yêu cầu tìm việc hoặc câu hỏi nghề nghiệp…" aria-label="Nội dung tin nhắn"></textarea>
+
+                <div class="composer-toolbar">
+                  <div class="composer-tools">
+                    <button id="attach-cv-button" class="tool-button" type="button"
+                      aria-label="Đính kèm CV dạng PDF hoặc ảnh" title="Đính kèm CV (PDF, PNG, JPG · tối đa 10MB)">
+                      <svg class="icon" aria-hidden="true"><use href="#i-paperclip" /></svg>
+                      <span>CV</span>
+                    </button>
+                    <button id="toggle-jd-button" class="tool-button jd-button" type="button"
+                      aria-label="Mở phần nhập Job Description" aria-pressed="false" title="So khớp CV với JD">
+                      <svg class="icon" aria-hidden="true"><use href="#i-briefcase" /></svg>
+                      <span>JD</span>
+                    </button>
+
+                    <div id="composer-actions" class="composer-actions" aria-label="Tác vụ nhanh">
+                      <button type="button" class="chip chip-action" data-message="Tìm công việc phù hợp với CV của tôi">Tìm theo CV</button>
+                      <button type="button" class="chip chip-action" data-message="Tạo kế hoạch cải thiện CV trong 7 ngày">Cải thiện CV</button>
+                      <button type="button" class="chip chip-action" data-action="open-cover-letter">Viết thư</button>
+                    </div>
+                  </div>
+
+                  <button id="send-button" class="send-button" type="submit" aria-label="Gửi tin nhắn" disabled>
+                    <svg class="icon" aria-hidden="true"><use href="#i-arrow-up" /></svg>
+                  </button>
+                </div>
+              </form>
             </div>
 
-            <form id="chat-form" class="chat-form">
-              <input
-                id="cv-input"
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                multiple
-                hidden
-              />
-
-              <div
-                id="selected-cv"
-                class="selected-cv"
-                aria-live="polite"
-                hidden
-              >
-                <span id="cv-file-type-badge" class="file-type-badge">PDF</span>
-
-                <div class="selected-cv-content">
-                  <strong id="selected-cv-name"></strong>
-                  <small id="selected-cv-status"></small>
-                  <div
-                    id="cv-preview-list"
-                    class="cv-preview-list"
-                    role="list"
-                    aria-label="Các trang CV đã chọn"
-                    hidden
-                  ></div>
-                </div>
-
-                <button
-                  id="add-cv-pages-button"
-                  type="button"
-                  aria-label="Thêm ảnh vào CV"
-                  hidden
-                >
-                  + Thêm ảnh
-                </button>
-
-                <button
-                  id="review-cv-button"
-                  type="button"
-                  aria-label="Xem và sửa thông tin CV"
-                  hidden
-                >
-                  Xem &amp; sửa
-                </button>
-
-                <button
-                  id="remove-cv-button"
-                  type="button"
-                  aria-label="Xóa CV"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div class="composer-input-row">
-                <button
-                  id="toggle-jd-button"
-                  class="icon-button jd-button"
-                  type="button"
-                  aria-label="Mở phần nhập Job Description"
-                  aria-pressed="false"
-                  title="So khớp CV với JD"
-                >
-                  JD
-                </button>
-
-                <button
-                  id="attach-cv-button"
-                  class="icon-button"
-                  type="button"
-                  aria-label="Đính kèm CV dạng PDF hoặc ảnh"
-                  title="Đính kèm CV (PDF, PNG, JPG)"
-                >
-                  CV
-                </button>
-
-                <textarea
-                  id="message-input"
-                  rows="1"
-                  maxlength="2000"
-                  placeholder="Nhập yêu cầu tìm việc hoặc câu hỏi nghề nghiệp..."
-                  aria-label="Nội dung tin nhắn"
-                ></textarea>
-
-                <button
-                  id="send-button"
-                  class="send-button"
-                  type="submit"
-                  aria-label="Gửi tin nhắn"
-                  disabled
-                >
-                  Gửi
-                </button>
-              </div>
-            </form>
-
-            <p class="ai-warning">
-              Job Search AI có thể mắc lỗi. Hãy kiểm tra lại thông tin
-              quan trọng trước khi ứng tuyển.
-            </p>
+            <p class="ai-warning">Job Search AI có thể mắc lỗi. Hãy kiểm tra lại thông tin quan trọng trước khi ứng tuyển.</p>
           </footer>
         </section>
 
-        <section
-          id="results-panel"
-          class="results-panel"
-          aria-label="Kết quả công việc"
-          aria-hidden="true"
-          role="tabpanel"
-        >
+        <!-- --------------------------- RESULTS --------------------------- -->
+        <section id="results-panel" class="results-panel" aria-label="Kết quả" aria-hidden="true" role="tabpanel">
           <header class="results-header">
             <div class="results-heading">
-              <button
-                id="back-to-jobs-button"
-                class="back-to-jobs-button"
-                type="button"
-                hidden
-              >
-                ← Danh sách job
+              <button id="back-to-jobs-button" class="btn btn-ghost btn-xs back-to-jobs-button" type="button" hidden>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left" /></svg>
+                Danh sách công việc
               </button>
-
-              <div>
-                <span id="results-eyebrow" class="eyebrow">JOB DISCOVERY</span>
-                <h2 id="results-title">Công việc phù hợp</h2>
-              </div>
+              <p id="results-eyebrow" class="eyebrow">JOB DISCOVERY</p>
+              <h2 id="results-title">Công việc phù hợp</h2>
             </div>
 
             <div class="results-header-actions">
-              <select
-                id="job-sort"
-                class="sort-select"
-                aria-label="Sắp xếp công việc"
-                disabled
-              >
-                <option value="relevance">Phù hợp nhất</option>
-                <option value="newest">Mới nhất</option>
-              </select>
+              <label class="select-wrap">
+                <span class="visually-hidden">Sắp xếp công việc</span>
+                <select id="job-sort" class="select select-sm sort-select" aria-label="Sắp xếp công việc" disabled>
+                  <option value="relevance">Phù hợp nhất</option>
+                  <option value="newest">Mới nhất</option>
+                </select>
+              </label>
 
-              <button
-                id="close-results-button"
-                class="panel-close-button"
-                type="button"
-                aria-label="Đóng khu vực kết quả"
-                title="Đóng kết quả"
-              >
-                ×
+              <button id="close-results-button" class="icon-button panel-close-button" type="button"
+                aria-label="Đóng khu vực kết quả" title="Đóng kết quả">
+                <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
               </button>
             </div>
           </header>
 
-          <nav
-            id="result-history-tabs"
-            class="result-history-tabs"
-            aria-label="Các kết quả đã lưu"
-            hidden
-          ></nav>
+          <nav id="result-history-tabs" class="result-history-tabs" aria-label="Các kết quả trong cuộc trò chuyện" hidden></nav>
 
-          <section
-            id="results-summary"
-            class="results-summary"
-            hidden
-          >
-            <div>
+          <section id="results-summary" class="results-summary" hidden>
+            <div class="results-summary-text">
               <strong id="result-count">0 công việc</strong>
               <span id="search-strategy"></span>
             </div>
-
-            <div id="active-filters" class="filter-list"></div>
+            <div id="active-filters" class="filter-list" aria-label="Từ khóa khớp"></div>
           </section>
 
-          <div id="job-results" class="job-results">
+          <div id="job-results" class="job-results" tabindex="-1">
             <section id="results-empty" class="empty-state">
-              <div class="empty-illustration">⌕</div>
-
+              <span class="empty-state-icon"><svg class="icon" aria-hidden="true"><use href="#i-search" /></svg></span>
               <h3>Bắt đầu tìm công việc</h3>
-
-              <p>
-                Hãy mô tả vị trí, địa điểm, kỹ năng hoặc cấp độ
-                kinh nghiệm bạn mong muốn.
-              </p>
-
-              <div class="example-query">
-                “Tìm công việc AI tại Hồ Chí Minh phù hợp với
-                sinh viên mới ra trường.”
-              </div>
+              <p>Mô tả vị trí, địa điểm, kỹ năng hoặc cấp độ kinh nghiệm bạn mong muốn.</p>
             </section>
           </div>
 
-          <nav
-            id="job-pagination"
-            class="job-pagination"
-            aria-label="Phân trang kết quả việc làm"
-            hidden
-          ></nav>
+          <nav id="job-pagination" class="job-pagination" aria-label="Phân trang kết quả việc làm" hidden></nav>
         </section>
       </main>
     </div>
 
-    <div
-      id="job-detail-overlay"
-      class="job-detail-overlay"
-      hidden
-    ></div>
+    <!-- ============================ OVERLAYS ============================ -->
+    <div id="job-detail-overlay" class="scrim job-detail-overlay" hidden></div>
 
-    <aside
-      id="job-detail-drawer"
-      class="job-detail-drawer"
-      aria-label="Chi tiết công việc"
-      aria-hidden="true"
-      aria-modal="true"
-      role="dialog"
-      tabindex="-1"
-    >
+    <aside id="job-detail-drawer" class="job-detail-drawer" aria-labelledby="job-detail-drawer-title"
+      aria-hidden="true" aria-modal="true" role="dialog" tabindex="-1">
       <header class="drawer-header">
-        <span>Chi tiết công việc</span>
-
-        <button
-          id="close-job-detail"
-          type="button"
-          aria-label="Đóng chi tiết công việc"
-        >
-          ×
+        <span id="job-detail-drawer-title" class="eyebrow">Chi tiết công việc</span>
+        <button id="close-job-detail" class="icon-button" type="button" aria-label="Đóng chi tiết công việc">
+          <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
         </button>
       </header>
-
       <div id="job-detail-content" class="drawer-content"></div>
     </aside>
+
+    <dialog id="confirm-dialog" class="dialog dialog-sm" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message">
+      <form method="dialog" class="dialog-content">
+        <div class="dialog-body confirm-body">
+          <span class="confirm-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert" /></svg></span>
+          <div>
+            <h2 id="confirm-dialog-title">Xác nhận</h2>
+            <p id="confirm-dialog-message"></p>
+          </div>
+        </div>
+        <footer class="dialog-actions">
+          <button class="btn btn-ghost" value="cancel" type="submit" data-confirm-cancel>Hủy</button>
+          <button class="btn btn-danger" value="confirm" type="submit" data-confirm-accept>Xác nhận</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

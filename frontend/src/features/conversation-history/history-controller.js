@@ -21,6 +21,8 @@ import {
 } from "../../core/conversation-cache.js";
 import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
+import { confirmAction } from "../../shared/confirm-dialog.js";
+import { createIcon } from "../../shared/icons.js";
 
 const RESULT_FIELDS = {
   job_search: "jobSearchResult",
@@ -276,7 +278,7 @@ export function createHistoryController({
     );
     menuButton.title = "Tùy chọn";
     menuButton.setAttribute("aria-expanded", "false");
-    menuButton.textContent = "⋯";
+    menuButton.append(createIcon("more"));
 
     menu.className = "conversation-history-menu";
     menu.dataset.historyMenu = thread.threadId;
@@ -428,7 +430,15 @@ export function createHistoryController({
     const thread = state.conversationThreads.find(
       (item) => item.threadId === threadId,
     );
-    if (!window.confirm(`Xóa cuộc trò chuyện “${thread?.title ?? "này"}”?`)) {
+    const confirmed = await confirmAction({
+      title: "Xóa cuộc trò chuyện?",
+      message:
+        `“${thread?.title ?? "Cuộc trò chuyện này"}” cùng các kết quả liên quan ` +
+        "sẽ bị xóa vĩnh viễn khỏi tài khoản của bạn.",
+      confirmLabel: "Xóa cuộc trò chuyện",
+    });
+
+    if (!confirmed) {
       return;
     }
 

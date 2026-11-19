@@ -6,6 +6,7 @@ import {
 } from "../../api.js";
 import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
+import { confirmAction } from "../../shared/confirm-dialog.js";
 import {
   getClipboardImageFiles,
   validateCvFiles,
@@ -438,6 +439,18 @@ export function createCvController({
     const cvId = state.uploadedCvId;
 
     if (cvId) {
+      const confirmed = await confirmAction({
+        title: "Xóa CV khỏi hệ thống?",
+        message:
+          `“${state.uploadedCvName || "CV hiện tại"}” và dữ liệu trích xuất sẽ bị xóa ` +
+          "khỏi máy chủ. Các cuộc trò chuyện dùng CV này cũng có thể bị xóa theo chính sách bảo mật.",
+        confirmLabel: "Xóa CV",
+      });
+
+      if (!confirmed || state.uploadedCvId !== cvId) {
+        return;
+      }
+
       try {
         const deletion = await deleteCv(cvId);
         await purgeCvConversations?.(deletion.purgedConversationIds);

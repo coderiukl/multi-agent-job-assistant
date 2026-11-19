@@ -3,15 +3,26 @@ import { state } from "../../core/state.js";
 import { clampMatchingScore } from "../../shared/formatters.js";
 import { escapeHtml } from "../../shared/html.js";
 import {
-  getCvQualityBadgeClass,
   getCvQualityLabel,
   getCvSectionLabel,
   getImprovementPriorityLabel,
 } from "../../shared/labels.js";
+import {
+  renderBreakdownSection,
+  renderFindingSection,
+  renderScoreOverview,
+} from "../matching/insight-components.js";
+import { sortByPriority } from "../matching/score-tones.js";
+
+const QUALITY_TONES = {
+  excellent: "tone-strong",
+  good: "tone-good",
+  needs_improvement: "tone-partial",
+  weak: "tone-low",
+};
 
 export function createCvAnalysisRenderer({
   openResultsPanel,
-  renderBreakdownItem,
   updateMobileResultsBadge,
 }) {
   function renderCvAnalysisResult(result) {
@@ -22,7 +33,7 @@ export function createCvAnalysisRenderer({
     const breakdown = result?.breakdown ?? {};
     const strengths = toArray(result?.strengths);
     const weaknesses = toArray(result?.weaknesses);
-    const improvements = toArray(result?.improvements);
+    const improvements = sortByPriority(result?.improvements);
     const qualityLevel =
       result?.qualityLevel ?? "needs_improvement";
 
@@ -30,6 +41,7 @@ export function createCvAnalysisRenderer({
     elements.resultsTitle.textContent = "Phân tích CV";
     elements.resultsSummary.hidden = true;
     elements.jobSort.disabled = true;
+    if (elements.jobPagination) elements.jobPagination.hidden = true;
     elements.backToJobsButton.hidden =
       !state.currentSearchResult || !state.jobs.length;
 
@@ -37,162 +49,100 @@ export function createCvAnalysisRenderer({
     openResultsPanel();
 
     elements.jobResults.innerHTML = `
-      <section
-        class="matching-result cv-analysis-result"
-        aria-label="Kết quả phân tích CV"
-      >
-        <header class="matching-overview">
-          <div
-            class="matching-score-ring"
-            style="--matching-score: ${score}"
-            aria-label="Điểm chất lượng CV ${score.toFixed(2)} trên 100"
-          >
-            <strong>${score.toFixed(2)}</strong>
-            <span>/100</span>
+      <section class="insight cv-analysis-result" aria-label="Kết quả phân tích CV">
+        ${renderScoreOverview({
+          score,
+          scoreLabel: "Điểm chất lượng CV",
+          badgeLabel: getCvQualityLabel(qualityLevel),
+          badgeTone: QUALITY_TONES[qualityLevel] ?? "tone-partial",
+          title: "Chất lượng nội dung CV",
+          summary: result?.summary,
+          confidence: result?.confidence,
+        })}
+
+        <section class="insight-section" aria-labelledby="cv-improvements-title">
+          <div class="insight-section-header">
+            <h3 id="cv-improvements-title">Đề xuất cải thiện</h3>
+            <p>Sắp xếp theo mức ưu tiên</p>
           </div>
-
-          <div class="matching-summary">
-            <span
-              class="recommendation-badge ${getCvQualityBadgeClass(
-                qualityLevel,
-              )}"
-            >
-              ${escapeHtml(getCvQualityLabel(qualityLevel))}
-            </span>
-
-            <h3>Chất lượng nội dung CV</h3>
-            <p>
-              ${escapeHtml(
-                result?.summary || "Chưa có nhận xét tổng quan.",
-              )}
-            </p>
-            ${renderConfidence(result?.confidence)}
-          </div>
-        </header>
-
-        <section class="matching-section">
-          <h3>Điểm thành phần</h3>
-          <div class="breakdown-grid">
-            ${renderBreakdownItem("Độ đầy đủ", breakdown.completeness)}
-            ${renderBreakdownItem(
-              "Giới thiệu bản thân",
-              breakdown.professionalSummary,
-            )}
-            ${renderBreakdownItem("Kỹ năng", breakdown.skills)}
-            ${renderBreakdownItem("Kinh nghiệm", breakdown.workExperience)}
-            ${renderBreakdownItem("Dự án", breakdown.projects)}
-            ${renderBreakdownItem(
-              "Học vấn & chứng chỉ",
-              breakdown.educationAndCredentials,
-            )}
-          </div>
-        </section>
-
-        <div class="matching-columns">
-          ${renderFindingList(
-            "Điểm mạnh",
-            strengths,
-            "strength",
-            "Chưa xác định được điểm mạnh nổi bật.",
-          )}
-          ${renderFindingList(
-            "Điểm cần cải thiện",
-            weaknesses,
-            "gap",
-            "Chưa ghi nhận điểm yếu quan trọng.",
-          )}
-        </div>
-
-        <section class="matching-section cv-improvements">
-          <h3>Đề xuất cải thiện</h3>
           ${
             improvements.length
-              ? `<div class="cv-improvement-list">
+              ? `<div class="improvement-list">
                   ${improvements.map(renderImprovement).join("")}
                 </div>`
-              : `<p class="matching-empty-text">
-                  Chưa có đề xuất cải thiện.
-                </p>`
+              : `<p class="insight-empty">Chưa có đề xuất cải thiện.</p>`
           }
         </section>
+
+        <div class="insight-columns">
+          ${renderFindingSection({
+            title: "Điểm mạnh",
+            items: strengths,
+            variant: "is-strength",
+            emptyMessage: "Chưa xác định được điểm mạnh nổi bật.",
+            renderItem: renderFinding,
+          })}
+          ${renderFindingSection({
+            title: "Điểm cần cải thiện",
+            items: weaknesses,
+            variant: "is-gap",
+            emptyMessage: "Chưa ghi nhận điểm yếu quan trọng.",
+            renderItem: renderFinding,
+          })}
+        </div>
+
+        ${renderBreakdownSection("Điểm thành phần", [
+          ["Độ đầy đủ", breakdown.completeness],
+          ["Giới thiệu bản thân", breakdown.professionalSummary],
+          ["Kỹ năng", breakdown.skills],
+          ["Kinh nghiệm", breakdown.workExperience],
+          ["Dự án", breakdown.projects],
+          ["Học vấn & chứng chỉ", breakdown.educationAndCredentials],
+        ])}
       </section>
     `;
+    elements.jobResults.scrollTop = 0;
   }
 
   return { renderCvAnalysisResult };
-}
-
-function renderConfidence(confidence) {
-  if (confidence === null || confidence === undefined) {
-    return "";
-  }
-
-  return `
-    <small>
-      Độ tin cậy đánh giá: ${Math.round(confidence * 100)}%
-    </small>
-  `;
-}
-
-function renderFindingList(title, items, variant, emptyMessage) {
-  return `
-    <section class="matching-list-card ${escapeHtml(variant)}">
-      <h3>${escapeHtml(title)}</h3>
-      ${
-        items.length
-          ? `<ul class="cv-finding-list">
-              ${items.map(renderFinding).join("")}
-            </ul>`
-          : `<p>${escapeHtml(emptyMessage)}</p>`
-      }
-    </section>
-  `;
 }
 
 function renderFinding(item) {
   const evidence = toArray(item?.cvEvidence);
 
   return `
-    <li>
-      <strong>
-        ${escapeHtml(item?.finding || "Chưa có nhận xét.")}
-      </strong>
-      <span class="cv-section-label">
-        ${escapeHtml(getCvSectionLabel(item?.section))}
-      </span>
-      ${
-        evidence.length
-          ? `<ul class="cv-finding-evidence">
-              ${evidence
-                .map((value) => `<li>${escapeHtml(value)}</li>`)
-                .join("")}
-            </ul>`
-          : ""
-      }
-    </li>
+    <strong>${escapeHtml(item?.finding || "Chưa có nhận xét.")}</strong>
+    <span class="finding-meta">${escapeHtml(getCvSectionLabel(item?.section))}</span>
+    ${
+      evidence.length
+        ? `<ul class="finding-evidence" aria-label="Bằng chứng từ CV">
+            ${evidence
+              .map((value) => `<li>${escapeHtml(value)}</li>`)
+              .join("")}
+          </ul>`
+        : ""
+    }
   `;
 }
 
 function renderImprovement(item) {
-  const priority = item?.priority ?? "medium";
+  const priority = ["high", "medium", "low"].includes(item?.priority)
+    ? item.priority
+    : "medium";
 
   return `
-    <article class="cv-improvement-item priority-${escapeHtml(priority)}">
+    <article class="cv-improvement-item priority-${priority}">
       <header>
-        <span class="cv-priority-badge ${escapeHtml(priority)}">
+        <span class="priority-badge ${priority}">
           ${escapeHtml(getImprovementPriorityLabel(priority))}
         </span>
-        <span class="cv-section-label">
+        <span class="section-label">
           ${escapeHtml(getCvSectionLabel(item?.section))}
         </span>
       </header>
 
       <h4>${escapeHtml(item?.issue || "Nội dung cần cải thiện")}</h4>
-      <p>
-        ${escapeHtml(
-          item?.suggestion || "Chưa có hướng dẫn cụ thể.",
-        )}
-      </p>
+      <p>${escapeHtml(item?.suggestion || "Chưa có hướng dẫn cụ thể.")}</p>
       ${
         item?.example
           ? `<div class="cv-improvement-example">

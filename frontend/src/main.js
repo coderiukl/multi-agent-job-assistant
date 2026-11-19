@@ -38,8 +38,15 @@ import {
   scrollMessagesToBottom as scrollToBottom,
   showTypingIndicator as showTyping,
 } from "./features/chat/chat-renderer.js";
+import { bindThemeToggle } from "./shared/theme.js";
+import { showToast } from "./shared/toast.js";
 
 import "./css/index.css";
+
+// Results open as a sheet over the conversation between these widths.
+const resultsSheetQuery = window.matchMedia(
+  "(min-width: 641px) and (max-width: 1279px)",
+);
 
 const RESULT_TYPES = [
   {
@@ -70,9 +77,11 @@ const RESULT_TYPES = [
 ];
 
 const {
+  closeHistoryDrawer,
   closeJobDetail,
   closeResultsPanel,
   handleMobileTabClick,
+  initializeWorkspaceLayout,
   isJobDetailOpen,
   openResultsPanel,
   setActiveWorkspacePanel,
@@ -250,6 +259,7 @@ async function clearPrivateData(userId = getStoredUserId()) {
 
 async function initializeApplication() {
   bindEvents();
+  initializeWorkspaceLayout();
   resizeMessageInput();
   setActiveWorkspacePanel("chat");
   updateComposerContext();
@@ -409,11 +419,15 @@ async function showConversationResult(type) {
   const conversation = entry.conversation;
 
   if (entry.type === "job_search") {
-    if (conversation.workflowJobMatches.length) {
+    if (conversation.workflowJobMatches?.length) {
       workflowRecommendationsRenderer.renderWorkflowJobRecommendations(
         conversation.jobSearchResult,
         conversation.workflowJobMatches,
         conversation.careerAdviceResult,
+        {
+          matchingExecution: conversation.matchingExecution,
+          outcomes: conversation.workflowJobMatchOutcomes,
+        },
       );
       return;
     }
@@ -474,6 +488,40 @@ function addWelcomeMessage() {
 }
 
 function bindEvents() {
+  bindThemeToggle(elements.themeToggle);
+
+  elements.historyDrawerButton?.addEventListener(
+    "click",
+    toggleConversationHistory,
+  );
+
+  elements.sidebarScrim?.addEventListener("click", () => {
+    closeHistoryDrawer();
+  });
+
+  elements.messageList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-open-result]");
+
+    if (!button) {
+      return;
+    }
+
+    const type = button.dataset.openResult;
+    const isAvailable = state.conversationResults.some(
+      (entry) => entry.type === type,
+    );
+
+    if (!isAvailable) {
+      showToast("Kết quả này không còn trong phiên làm việc hiện tại.", {
+        tone: "info",
+      });
+      return;
+    }
+
+    showConversationResult(type);
+    openResultsPanel();
+  });
+
   elements.messageInput.addEventListener(
     "input",
     () => {
@@ -581,14 +629,20 @@ function bindEvents() {
     toggleResultsPanel,
   );
   
+  const startConversationFromSidebar = () => {
+    resetConversation();
+    closeHistoryDrawer({ restoreFocus: false });
+    elements.messageInput.focus();
+  };
+
   elements.sidebarNewChatButton?.addEventListener(
     "click",
-    resetConversation,
+    startConversationFromSidebar,
   );
 
   elements.historyEmptyNewChatButton?.addEventListener(
     "click",
-    resetConversation,
+    startConversationFromSidebar,
   );
 
   elements.conversationHistorySearch?.addEventListener(
@@ -605,7 +659,17 @@ function bindEvents() {
 
   elements.conversationHistoryList?.addEventListener(
     "click",
-    historyController.handleHistoryClick,
+    (event) => {
+      const item = event.target.closest(".conversation-history-item");
+
+      // Selecting the conversation that is already open just dismisses the
+      // drawer; other threads reload the workspace.
+      if (item?.dataset.threadId === state.threadId) {
+        closeHistoryDrawer();
+      }
+
+      historyController.handleHistoryClick(event);
+    },
   );
 
   document.addEventListener(
@@ -668,7 +732,23 @@ function bindEvents() {
     historyController.handleDocumentKeydown(event);
 
     if (event.key === "Escape") {
-      closeJobDetail();
+      if (document.querySelector("dialog[open]")) {
+        return;
+      }
+
+      if (isJobDetailOpen()) {
+        closeJobDetail();
+        return;
+      }
+
+      if (closeHistoryDrawer()) {
+        return;
+      }
+
+      if (resultsSheetQuery.matches && state.resultsOpen) {
+        closeResultsPanel();
+        elements.toggleResultsButton?.focus();
+      }
       return;
     }
 

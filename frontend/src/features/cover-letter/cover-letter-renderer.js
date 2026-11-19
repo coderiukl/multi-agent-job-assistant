@@ -1,6 +1,8 @@
 import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
 import { escapeHtml } from "../../shared/html.js";
+import { icon } from "../../shared/icons.js";
+import { showToast } from "../../shared/toast.js";
 
 export function createCoverLetterRenderer({
   openResultsPanel,
@@ -17,67 +19,52 @@ export function createCoverLetterRenderer({
     elements.resultsTitle.textContent = "Thư ứng tuyển";
     elements.resultsSummary.hidden = true;
     elements.jobSort.disabled = true;
+    if (elements.jobPagination) elements.jobPagination.hidden = true;
     elements.backToJobsButton.hidden =
       !state.currentSearchResult || !state.jobs.length;
 
     const confidence =
-      result.confidence === null
-        ? "Chưa xác định"
-        : `${Math.round(result.confidence * 100)}%`;
+      typeof result.confidence === "number"
+        ? `${Math.round(result.confidence * 100)}%`
+        : null;
 
     elements.jobResults.innerHTML = `
-      <section
-        class="cover-letter-result"
-        aria-label="Thư ứng tuyển"
-      >
+      <section class="cover-letter-result" aria-label="Thư ứng tuyển">
         <header class="cover-letter-header">
-          <div>
-            <span class="cover-letter-badge">
-              ${escapeHtml(getLanguageLabel(result.language))}
-            </span>
-
-            <span class="cover-letter-badge secondary">
-              ${escapeHtml(getToneLabel(result.tone))}
+          <div class="cover-letter-tags">
+            <span class="badge">${escapeHtml(getLanguageLabel(result.language))}</span>
+            <span class="badge">${escapeHtml(getToneLabel(result.tone))}</span>
+            <span class="badge ${result.isPersonalized ? "badge-accent" : ""}">
+              ${result.isPersonalized ? "Cá nhân hóa theo CV" : "Bản tổng quát"}
             </span>
           </div>
 
-          <button
-            type="button"
-            class="primary-button"
-            data-action="copy-cover-letter"
-          >
-            Sao chép thư
+          <button type="button" class="btn btn-primary btn-sm" data-action="copy-cover-letter">
+            ${icon("copy")} <span>Sao chép thư</span>
           </button>
         </header>
 
-        <article class="cover-letter-paper">
-          <pre>${escapeHtml(result.fullText)}</pre>
+        <article class="cover-letter-paper" aria-label="Nội dung thư">
+          ${
+            result.subject
+              ? `<p class="cover-letter-subject">Tiêu đề: <strong>${escapeHtml(result.subject)}</strong></p>`
+              : ""
+          }
+          <pre class="cover-letter-text">${escapeHtml(result.fullText)}</pre>
         </article>
 
         <div class="cover-letter-meta">
-          <span>${escapeHtml(result.wordCount)} từ</span>
-          <span>Độ tin cậy: ${escapeHtml(confidence)}</span>
-          <span>
-            ${
-              result.isPersonalized
-                ? "Cá nhân hóa theo CV"
-                : "Bản tổng quát"
-            }
-          </span>
+          ${Number.isFinite(Number(result.wordCount)) ? `<span>${escapeHtml(result.wordCount)} từ</span>` : ""}
+          ${confidence ? `<span>Độ tin cậy: ${escapeHtml(confidence)}</span>` : ""}
         </div>
 
         <div class="cover-letter-evidence-grid">
-          ${renderEvidence(
-            "Bằng chứng CV đã sử dụng",
-            result.cvEvidenceUsed,
-          )}
-          ${renderEvidence(
-            "Yêu cầu công việc đã đề cập",
-            result.jobRequirementsAddressed,
-          )}
+          ${renderEvidence("Bằng chứng từ CV đã sử dụng", result.cvEvidenceUsed)}
+          ${renderEvidence("Yêu cầu công việc đã đề cập", result.jobRequirementsAddressed)}
         </div>
       </section>
     `;
+    elements.jobResults.scrollTop = 0;
 
     updateMobileResultsBadge(1);
     openResultsPanel();
@@ -94,15 +81,18 @@ export function createCoverLetterRenderer({
     try {
       await navigator.clipboard.writeText(fullText);
 
-      const originalText = button.textContent;
-      button.textContent = "Đã sao chép";
+      const label = button.querySelector("span");
+      const originalText = label?.textContent;
+
+      if (label) label.textContent = "Đã sao chép";
+      showToast("Đã sao chép thư ứng tuyển vào clipboard");
 
       setTimeout(() => {
-        button.textContent = originalText;
+        if (label) label.textContent = originalText;
       }, 1800);
     } catch {
       showError(
-        "Trình duyệt không cho phép sao chép tự động.",
+        "Trình duyệt không cho phép sao chép tự động. Hãy chọn nội dung thư và sao chép thủ công.",
       );
     }
   }
@@ -119,16 +109,13 @@ function renderEvidence(title, items) {
   return `
     <section class="cover-letter-evidence">
       <h3>${escapeHtml(title)}</h3>
-
       ${
         evidenceItems.length
-          ? `
-            <ul>
+          ? `<ul>
               ${evidenceItems
                 .map((item) => `<li>${escapeHtml(item)}</li>`)
                 .join("")}
-            </ul>
-          `
+            </ul>`
           : "<p>Chưa có dữ liệu.</p>"
       }
     </section>

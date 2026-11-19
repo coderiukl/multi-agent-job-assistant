@@ -1,7 +1,49 @@
 const STRATEGY_LABELS = {
-  hybrid: "Tìm kiếm kết hợp PostgreSQL và Qdrant",
-  semantic: "Tìm kiếm ngữ nghĩa bằng Qdrant",
-  postgres: "Tìm kiếm bằng PostgreSQL",
+  hybrid: "Kết hợp từ khóa và ngữ nghĩa",
+  semantic: "Tìm kiếm theo ngữ nghĩa",
+  postgres: "Tìm kiếm theo từ khóa",
+};
+
+const ROUTE_LABELS = {
+  clarification: "Cần làm rõ",
+  small_talk: "Trò chuyện",
+  general_question: "Hỏi đáp",
+  out_of_scope: "Ngoài phạm vi",
+  cv_analysis: "Phân tích CV",
+  job_search: "Tìm việc",
+  job_matching: "So khớp JD",
+  career_advice: "Tư vấn nghề nghiệp",
+  cover_letter: "Thư ứng tuyển",
+};
+
+const WORKFLOW_STEP_LABELS = {
+  resolve_context: "Ngữ cảnh",
+  intent_analysis: "Phân tích ý định",
+  cv_analysis: "Phân tích CV",
+  job_search: "Tìm việc",
+  job_matching: "So khớp",
+  career_advice: "Tư vấn",
+  cover_letter: "Thư ứng tuyển",
+  completed: "Hoàn tất",
+};
+
+const WORKFLOW_TYPE_LABELS = {
+  single_agent: "Một agent",
+  job_discovery: "Khám phá việc làm",
+  job_recommendation: "Gợi ý việc làm",
+  full_career: "Quy trình nghề nghiệp đầy đủ",
+};
+
+const EXECUTION_STATUS_LABELS = {
+  success: "Hoàn tất",
+  partial_success: "Hoàn tất một phần",
+  failed: "Thất bại",
+  no_results: "Không có công việc để so khớp",
+};
+
+const REQUIRED_INPUT_LABELS = {
+  cv: "CV",
+  job_description: "Job Description",
 };
 
 const CV_QUALITY_LABELS = {
@@ -90,6 +132,26 @@ const SALARY_PERIOD_LABELS = {
 export function getStrategyLabel(value) {
   return STRATEGY_LABELS[value] ??
     "Tìm kiếm công việc";
+}
+
+export function getRouteLabel(value) {
+  return ROUTE_LABELS[value] ?? null;
+}
+
+export function getWorkflowStepLabel(value) {
+  return WORKFLOW_STEP_LABELS[value] ?? value;
+}
+
+export function getWorkflowTypeLabel(value) {
+  return WORKFLOW_TYPE_LABELS[value] ?? null;
+}
+
+export function getExecutionStatusLabel(value) {
+  return EXECUTION_STATUS_LABELS[value] ?? "Chưa xác định";
+}
+
+export function getRequiredInputLabel(value) {
+  return REQUIRED_INPUT_LABELS[value] ?? value;
 }
 
 export function getCvQualityLabel(value) {

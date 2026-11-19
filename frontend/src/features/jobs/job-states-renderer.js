@@ -1,19 +1,20 @@
 import { elements } from "../../core/elements.js";
+import { icon } from "../../shared/icons.js";
 
 export function renderJobLoading() {
   if (elements.jobPagination) elements.jobPagination.hidden = true;
   elements.resultsSummary.hidden = true;
   elements.jobSort.disabled = true;
   elements.jobResults.innerHTML = `
-    <section class="job-loading" aria-label="Đang tìm công việc">
-      <div class="loading-status">
-        <span class="loading-spinner"></span>
+    <section class="job-loading" aria-busy="true" aria-live="polite">
+      <div class="loading-status" role="status">
+        <span class="spinner" aria-hidden="true"></span>
         <div>
           <strong>Đang tìm công việc phù hợp</strong>
-          <small>Phân tích yêu cầu và xếp hạng kết quả...</small>
+          <small>Job Search Agent đang lọc và xếp hạng kết quả</small>
         </div>
       </div>
-      ${createSkeletonCards(3)}
+      ${createSkeletonCards(4)}
     </section>
   `;
 }
@@ -28,16 +29,12 @@ export function renderInitialJobState() {
   elements.activeFilters.innerHTML = "";
   elements.jobResults.innerHTML = `
     <section class="empty-state">
-      <div class="empty-illustration">⌕</div>
+      <span class="empty-state-icon">${icon("search")}</span>
       <h3>Bắt đầu tìm công việc</h3>
       <p>
-        Hãy mô tả vị trí, địa điểm, kỹ năng hoặc
-        cấp độ kinh nghiệm bạn mong muốn.
+        Mô tả vị trí, địa điểm, kỹ năng hoặc cấp độ kinh nghiệm bạn mong muốn
+        trong khung trò chuyện. Kết quả sẽ xuất hiện tại đây.
       </p>
-      <div class="example-query">
-        “Tìm công việc AI tại Hồ Chí Minh phù hợp
-        với sinh viên mới ra trường.”
-      </div>
     </section>
   `;
 }
@@ -46,11 +43,11 @@ export function renderNoJobResults() {
   if (elements.jobPagination) elements.jobPagination.hidden = true;
   elements.jobResults.innerHTML = `
     <section class="empty-state">
-      <div class="empty-illustration">0</div>
+      <span class="empty-state-icon">${icon("search")}</span>
       <h3>Chưa tìm thấy công việc phù hợp</h3>
       <p>
-        Bạn có thể thử mở rộng địa điểm, kỹ năng,
-        cấp độ kinh nghiệm hoặc hình thức làm việc.
+        Thử mở rộng địa điểm, kỹ năng, cấp độ kinh nghiệm
+        hoặc hình thức làm việc trong yêu cầu tiếp theo.
       </p>
     </section>
   `;
@@ -61,12 +58,12 @@ export function renderJobErrorState() {
   elements.resultsSummary.hidden = true;
   elements.jobSort.disabled = true;
   elements.jobResults.innerHTML = `
-    <section class="empty-state">
-      <div class="empty-illustration">!</div>
+    <section class="empty-state" role="alert">
+      <span class="empty-state-icon is-danger">${icon("alert")}</span>
       <h3>Không thể tải kết quả</h3>
       <p>
-        Hãy kiểm tra FastAPI, PostgreSQL và Qdrant,
-        sau đó thử tìm kiếm lại.
+        Dịch vụ tìm kiếm chưa phản hồi. Hãy kiểm tra kết nối
+        và thử tìm kiếm lại sau ít phút.
       </p>
     </section>
   `;
@@ -76,12 +73,12 @@ function createSkeletonCards(count) {
   return Array.from(
     { length: count },
     () => `
-      <article class="job-card skeleton-card">
+      <div class="skeleton-card" aria-hidden="true">
         <div class="skeleton skeleton-title"></div>
         <div class="skeleton skeleton-company"></div>
         <div class="skeleton skeleton-row"></div>
         <div class="skeleton skeleton-row short"></div>
-      </article>
+      </div>
     `,
   ).join("");
 }

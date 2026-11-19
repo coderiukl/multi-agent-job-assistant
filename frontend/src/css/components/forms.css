@@ -1,0 +1,123 @@
+/* Fields ---------------------------------------------------------------- */
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.field-label {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.field-hint {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+/* Text inputs, textareas, selects share one visual language ------------- */
+
+.input,
+.textarea,
+.select,
+.human-review-field input,
+.human-review-field textarea,
+.human-review-field select,
+.cv-profile-field input,
+.cv-profile-field textarea {
+  width: 100%;
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.textarea,
+.human-review-field textarea,
+.cv-profile-field textarea {
+  min-height: 5.5rem;
+  padding: var(--space-2) var(--space-3);
+  line-height: var(--leading-relaxed);
+  resize: vertical;
+}
+
+.input::placeholder,
+.textarea::placeholder,
+textarea::placeholder,
+input::placeholder {
+  color: var(--color-text-disabled);
+  opacity: 1;
+}
+
+.input:hover,
+.textarea:hover,
+.select:hover,
+.human-review-field :is(input, textarea, select):hover,
+.cv-profile-field :is(input, textarea):hover {
+  border-color: var(--color-text-tertiary);
+}
+
+.input:focus-visible,
+.textarea:focus-visible,
+.select:focus-visible,
+.human-review-field :is(input, textarea, select):focus-visible,
+.cv-profile-field :is(input, textarea):focus-visible {
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.input:disabled,
+.textarea:disabled,
+.select:disabled {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-disabled);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.select,
+.human-review-field select {
+  padding-right: var(--space-8);
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 52%,
+    calc(100% - 11px) 52%;
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.select-sm {
+  min-height: var(--control-sm);
+  font-size: var(--text-sm);
+}
+
+.select-wrap {
+  display: inline-flex;
+}
+
+/* Checkbox -------------------------------------------------------------- */
+
+input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--color-accent);
+}

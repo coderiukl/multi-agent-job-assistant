@@ -1,7 +1,10 @@
 import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
 import { escapeHtml } from "../../shared/html.js";
+import { icon } from "../../shared/icons.js";
 import { getImprovementPriorityLabel } from "../../shared/labels.js";
+import { renderConfidence } from "../matching/insight-components.js";
+import { sortByPriority } from "../matching/score-tones.js";
 
 export function createCareerAdviceRenderer({
   openResultsPanel,
@@ -15,45 +18,32 @@ export function createCareerAdviceRenderer({
     elements.resultsEyebrow.textContent = "CAREER ADVICE";
     elements.resultsTitle.textContent = "Định hướng nghề nghiệp";
     elements.resultsSummary.hidden = true;
-
-    const confidence =
-      result.confidence === null
-        ? "Chưa xác định"
-        : `${Math.round(result.confidence * 100)}%`;
+    elements.jobSort.disabled = true;
+    if (elements.jobPagination) elements.jobPagination.hidden = true;
+    elements.backToJobsButton.hidden =
+      !state.currentSearchResult || !state.jobs.length;
 
     elements.jobResults.innerHTML = `
-      <section
-        class="career-advice-result"
-        aria-label="Kết quả tư vấn nghề nghiệp"
-      >
-        <header class="career-advice-overview">
-          <span class="career-personalization-badge ${
-            result.isPersonalized ? "personalized" : "general"
-          }">
-            ${
-              result.isPersonalized
-                ? "Cá nhân hóa theo CV"
-                : "Tư vấn tổng quát"
-            }
+      <section class="insight career-advice-result" aria-label="Kết quả tư vấn nghề nghiệp">
+        <header class="career-overview">
+          <span class="badge ${result.isPersonalized ? "badge-accent" : ""}">
+            ${result.isPersonalized ? "Cá nhân hóa theo CV" : "Tư vấn tổng quát"}
           </span>
-
-          <h3>${escapeHtml(
-            result.careerGoal || "Định hướng nghề nghiệp",
-          )}</h3>
-          <p>${escapeHtml(result.summary)}</p>
-          <span class="career-confidence">
-            Độ tin cậy: ${escapeHtml(confidence)}
-          </span>
+          <h3>${escapeHtml(result.careerGoal || "Định hướng nghề nghiệp")}</h3>
+          <p>${escapeHtml(result.summary || "Chưa có nhận xét tổng quan.")}</p>
+          ${renderConfidence(result.confidence)}
+          ${renderTopPrioritySkills(result.topPrioritySkills)}
+          ${renderDataQualityWarnings(result.dataQualityWarnings)}
         </header>
 
-        ${renderTopPrioritySkills(result.topPrioritySkills)}
-        ${renderCareerRoles(result.recommendedRoles)}
-        ${renderCareerSkillGaps(result.skillGaps)}
-        ${renderCareerRoadmap(result.roadmap)}
-        ${renderPortfolioProjects(result.portfolioProjects)}
         ${renderCareerNextActions(result.nextActions)}
+        ${renderCareerRoadmap(result.roadmap)}
+        ${renderCareerSkillGaps(result.skillGaps)}
+        ${renderCareerRoles(result.recommendedRoles)}
+        ${renderPortfolioProjects(result.portfolioProjects)}
       </section>
     `;
+    elements.jobResults.scrollTop = 0;
 
     updateMobileResultsBadge(1);
     openResultsPanel();
@@ -62,17 +52,55 @@ export function createCareerAdviceRenderer({
   return { renderCareerAdviceResult };
 }
 
+function renderSection(title, note, content) {
+  return `
+    <section class="insight-section">
+      <div class="insight-section-header">
+        <h3>${escapeHtml(title)}</h3>
+        ${note ? `<p>${escapeHtml(note)}</p>` : ""}
+      </div>
+      ${content}
+    </section>
+  `;
+}
+
+function renderPriority(priority) {
+  const value = ["high", "medium", "low"].includes(priority) ? priority : "medium";
+
+  return `
+    <span class="priority-badge ${value}">
+      ${escapeHtml(getImprovementPriorityLabel(value))}
+    </span>
+  `;
+}
+
 function renderTopPrioritySkills(skills) {
   const items = toArray(skills);
   if (!items.length) return "";
 
   return `
-    <section class="career-section">
-      <h3>Kỹ năng cần ưu tiên</h3>
-      <div class="career-skill-chips">
-        ${items.map((skill) => `<span>${escapeHtml(skill)}</span>`).join("")}
+    <div class="career-skill-chips" aria-label="Kỹ năng cần ưu tiên">
+      ${items
+        .map((skill, index) => `<span><b>${index + 1}</b>${escapeHtml(skill)}</span>`)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderDataQualityWarnings(warnings) {
+  const items = toArray(warnings);
+  if (!items.length) return "";
+
+  return `
+    <div class="alert alert-info" role="note">
+      ${icon("info")}
+      <div>
+        <strong>Lưu ý về dữ liệu đầu vào</strong>
+        <ul class="career-warning-list">
+          ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
       </div>
-    </section>
+    </div>
   `;
 }
 
@@ -80,175 +108,59 @@ function renderCareerRoles(roles) {
   const items = toArray(roles);
   if (!items.length) return "";
 
-  return `
-    <section class="career-section">
-      <h3>Vị trí nghề nghiệp phù hợp</h3>
-      <div class="career-role-grid">
+  return renderSection(
+    "Vị trí nghề nghiệp phù hợp",
+    `${items.length} vị trí`,
+    `
+      <div class="career-card-grid">
         ${items
           .map(
             (role) => `
-              <article class="career-role-card">
+              <article class="career-card">
                 <div class="career-card-header">
                   <h4>${escapeHtml(role.roleTitle)}</h4>
-                  <span class="readiness-badge ${escapeHtml(
-                    role.readinessLevel,
-                  )}">
-                    ${escapeHtml(
-                      getCareerReadinessLabel(role.readinessLevel),
-                    )}
+                  <span class="readiness-badge ${escapeHtml(role.readinessLevel)}">
+                    ${escapeHtml(getCareerReadinessLabel(role.readinessLevel))}
                   </span>
                 </div>
                 <p>${escapeHtml(role.rationale)}</p>
                 ${renderCareerList("Bằng chứng từ CV", role.cvEvidence)}
-                ${renderCareerList(
-                  "Điểm cần phát triển",
-                  role.developmentNeeds,
-                )}
+                ${renderCareerList("Điểm cần phát triển", role.developmentNeeds)}
               </article>
             `,
           )
           .join("")}
       </div>
-    </section>
-  `;
+    `,
+  );
 }
 
 function renderCareerSkillGaps(skillGaps) {
-  const items = toArray(skillGaps);
+  const items = sortByPriority(skillGaps);
   if (!items.length) return "";
 
-  return `
-    <section class="career-section">
-      <h3>Khoảng trống kỹ năng</h3>
+  return renderSection(
+    "Khoảng trống kỹ năng",
+    "Sắp xếp theo mức ưu tiên",
+    `
       <div class="career-gap-list">
         ${items
           .map(
             (gap) => `
-              <article class="career-gap-card">
-                <div class="career-card-header">
+              <article class="career-gap">
+                <div class="career-gap-title">
                   <h4>${escapeHtml(gap.skill)}</h4>
-                  <span class="career-priority priority-${escapeHtml(
-                    gap.priority,
-                  )}">
-                    ${escapeHtml(
-                      getImprovementPriorityLabel(gap.priority),
-                    )}
-                  </span>
+                  ${renderPriority(gap.priority)}
                 </div>
-                <p>${escapeHtml(gap.reason)}</p>
-                ${renderCareerList(
-                  "Nền tảng hiện tại",
-                  gap.currentEvidence,
-                )}
-                <div class="career-action-box">
-                  <strong>Hành động đề xuất</strong>
-                  <p>${escapeHtml(gap.recommendedAction)}</p>
-                </div>
-              </article>
-            `,
-          )
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderCareerRoadmap(roadmap) {
-  const items = toArray(roadmap);
-  if (!items.length) return "";
-
-  return `
-    <section class="career-section">
-      <h3>Lộ trình phát triển</h3>
-      <div class="career-roadmap">
-        ${items
-          .map(
-            (step) => `
-              <article class="career-roadmap-step">
-                <div class="career-phase">${escapeHtml(step.phase)}</div>
-                <div class="career-roadmap-content">
-                  <div class="career-card-header">
-                    <h4>${escapeHtml(step.title)}</h4>
-                    <span>${escapeHtml(step.timeframe)}</span>
-                  </div>
-                  <p>${escapeHtml(step.objective)}</p>
-                  ${renderCareerList("Hành động", step.actions)}
-                  ${renderCareerList(
-                    "Tiêu chí hoàn thành",
-                    step.successCriteria,
-                  )}
-                </div>
-              </article>
-            `,
-          )
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderPortfolioProjects(projects) {
-  const items = toArray(projects);
-  if (!items.length) return "";
-
-  return `
-    <section class="career-section">
-      <h3>Dự án portfolio đề xuất</h3>
-      <div class="career-project-grid">
-        ${items
-          .map(
-            (project) => `
-              <article class="career-project-card">
-                <h4>${escapeHtml(project.title)}</h4>
-                <p>${escapeHtml(project.purpose)}</p>
-                ${renderCareerList(
-                  "Kỹ năng thực hành",
-                  project.skillsPracticed,
-                )}
-                ${renderCareerList(
-                  "Tính năng gợi ý",
-                  project.suggestedFeatures,
-                )}
-                <div class="career-action-box">
-                  <strong>Kết quả đầu ra</strong>
-                  <p>${escapeHtml(project.expectedDeliverable)}</p>
-                </div>
-              </article>
-            `,
-          )
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderCareerNextActions(actions) {
-  const items = toArray(actions);
-  if (!items.length) return "";
-
-  return `
-    <section class="career-section">
-      <h3>Việc nên làm tiếp theo</h3>
-      <div class="career-next-actions">
-        ${items
-          .map(
-            (item) => `
-              <article class="career-next-action">
-                <span class="career-priority priority-${escapeHtml(
-                  item.priority,
-                )}">
-                  ${escapeHtml(
-                    getImprovementPriorityLabel(item.priority),
-                  )}
-                </span>
-                <div>
-                  <h4>${escapeHtml(item.action)}</h4>
-                  <p>${escapeHtml(item.reason)}</p>
+                <div class="career-gap-body">
+                  <p>${escapeHtml(gap.reason)}</p>
+                  ${renderCareerList("Nền tảng hiện tại", gap.currentEvidence)}
                   ${
-                    item.timeframe
-                      ? `<small>Thời gian: ${escapeHtml(
-                          item.timeframe,
-                        )}</small>`
+                    gap.recommendedAction
+                      ? `<div class="career-action-box">
+                          <strong>Hành động đề xuất</strong>
+                          <p>${escapeHtml(gap.recommendedAction)}</p>
+                        </div>`
                       : ""
                   }
                 </div>
@@ -257,8 +169,107 @@ function renderCareerNextActions(actions) {
           )
           .join("")}
       </div>
-    </section>
-  `;
+    `,
+  );
+}
+
+function renderCareerRoadmap(roadmap) {
+  const items = toArray(roadmap);
+  if (!items.length) return "";
+
+  return renderSection(
+    "Lộ trình phát triển",
+    `${items.length} giai đoạn`,
+    `
+      <ol class="career-roadmap">
+        ${items
+          .map(
+            (step, index) => `
+              <li class="career-roadmap-step">
+                <div class="career-phase" aria-hidden="true">${escapeHtml(step.phase || index + 1)}</div>
+                <div class="career-roadmap-content">
+                  <div class="career-card-header">
+                    <h4>
+                      <span class="visually-hidden">Giai đoạn ${escapeHtml(step.phase || index + 1)}: </span>
+                      ${escapeHtml(step.title || `Giai đoạn ${step.phase || index + 1}`)}
+                    </h4>
+                    ${step.timeframe ? `<span class="career-timeframe">${escapeHtml(step.timeframe)}</span>` : ""}
+                  </div>
+                  ${step.objective ? `<p>${escapeHtml(step.objective)}</p>` : ""}
+                  <div class="career-roadmap-lists">
+                    ${renderCareerList("Hành động", step.actions)}
+                    ${renderCareerList("Tiêu chí hoàn thành", step.successCriteria)}
+                  </div>
+                </div>
+              </li>
+            `,
+          )
+          .join("")}
+      </ol>
+    `,
+  );
+}
+
+function renderPortfolioProjects(projects) {
+  const items = toArray(projects);
+  if (!items.length) return "";
+
+  return renderSection(
+    "Dự án portfolio đề xuất",
+    null,
+    `
+      <div class="career-card-grid">
+        ${items
+          .map(
+            (project) => `
+              <article class="career-card">
+                <h4>${escapeHtml(project.title)}</h4>
+                <p>${escapeHtml(project.purpose)}</p>
+                ${renderCareerList("Kỹ năng thực hành", project.skillsPracticed)}
+                ${renderCareerList("Tính năng gợi ý", project.suggestedFeatures)}
+                ${
+                  project.expectedDeliverable
+                    ? `<div class="career-action-box">
+                        <strong>Kết quả đầu ra</strong>
+                        <p>${escapeHtml(project.expectedDeliverable)}</p>
+                      </div>`
+                    : ""
+                }
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    `,
+  );
+}
+
+function renderCareerNextActions(actions) {
+  const items = sortByPriority(actions);
+  if (!items.length) return "";
+
+  return renderSection(
+    "Việc nên làm tiếp theo",
+    null,
+    `
+      <ol class="career-next-actions">
+        ${items
+          .map(
+            (item) => `
+              <li class="career-next-action">
+                ${renderPriority(item.priority)}
+                <div>
+                  <h4>${escapeHtml(item.action)}</h4>
+                  ${item.reason ? `<p>${escapeHtml(item.reason)}</p>` : ""}
+                  ${item.timeframe ? `<small>Thời gian: ${escapeHtml(item.timeframe)}</small>` : ""}
+                </div>
+              </li>
+            `,
+          )
+          .join("")}
+      </ol>
+    `,
+  );
 }
 
 function renderCareerList(title, items) {

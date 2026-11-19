@@ -2,7 +2,12 @@ import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
 import { clampMatchingScore } from "../../shared/formatters.js";
 import { escapeHtml } from "../../shared/html.js";
-import { getRecommendationLabel } from "../../shared/labels.js";
+import { icon } from "../../shared/icons.js";
+import {
+  getExecutionStatusLabel,
+  getRecommendationLabel,
+} from "../../shared/labels.js";
+import { getRecommendationTone, getScoreTone } from "../matching/score-tones.js";
 
 export function createWorkflowRecommendationsRenderer({
   openResultsPanel,
@@ -13,6 +18,7 @@ export function createWorkflowRecommendationsRenderer({
     searchResult,
     matches,
     careerAdvice,
+    { matchingExecution = null, outcomes = [] } = {},
   ) {
     const normalizedMatches = Array.isArray(matches)
       ? matches
@@ -28,14 +34,12 @@ export function createWorkflowRecommendationsRenderer({
     elements.resultsEyebrow.textContent =
       "AI JOB RECOMMENDATION";
     elements.resultsTitle.textContent =
-      "Công việc phù hợp nhất";
-    elements.resultsSummary.hidden = false;
+      "Công việc phù hợp nhất với CV";
+    elements.resultsSummary.hidden = true;
     elements.jobSort.disabled = true;
     elements.backToJobsButton.hidden = true;
-    elements.resultCount.textContent =
-      `${normalizedMatches.length} công việc phù hợp nhất với CV`;
-    elements.searchStrategy.textContent =
-      "Multi-Agent Matching";
+    elements.activeFilters.innerHTML = "";
+    if (elements.jobPagination) elements.jobPagination.hidden = true;
 
     updateMobileResultsBadge(normalizedMatches.length);
     openResultsPanel();
@@ -45,14 +49,20 @@ export function createWorkflowRecommendationsRenderer({
       return;
     }
 
+    const unmatched = (Array.isArray(outcomes) ? outcomes : []).filter(
+      (outcome) => outcome?.status && outcome.status !== "success",
+    );
+
     elements.jobResults.innerHTML = `
       <section
         class="workflow-recommendations"
         aria-label="Danh sách công việc phù hợp"
       >
+        ${renderExecutionSummary(normalizedMatches.length, matchingExecution)}
         ${normalizedMatches
           .map(renderWorkflowJobCard)
           .join("")}
+        ${renderUnmatched(unmatched)}
         ${
           careerAdvice
             ? renderWorkflowCareerSummary(careerAdvice)
@@ -60,9 +70,30 @@ export function createWorkflowRecommendationsRenderer({
         }
       </section>
     `;
+    elements.jobResults.scrollTop = 0;
   }
 
   return { renderWorkflowJobRecommendations };
+}
+
+function renderExecutionSummary(count, execution) {
+  const total = Number(execution?.total);
+
+  return `
+    <div class="execution-summary">
+      <span>
+        <strong>${count}</strong> công việc được xếp hạng theo mức độ phù hợp với CV
+      </span>
+      ${
+        execution && Number.isFinite(total) && total > 0
+          ? `<span class="muted">
+              Job Matching Agent · ${Number(execution.succeeded)}/${total} lượt so khớp ·
+              ${escapeHtml(getExecutionStatusLabel(execution.status))}
+            </span>`
+          : ""
+      }
+    </div>
+  `;
 }
 
 function renderWorkflowJobCard(item, index) {
@@ -71,61 +102,95 @@ function renderWorkflowJobCard(item, index) {
   const score = clampMatchingScore(match.overallScore);
   const strengths = toArray(match.strengths).slice(0, 3);
   const gaps = toArray(match.gaps).slice(0, 3);
+  const jobId = escapeHtml(job.job_id ?? "");
 
   return `
-    <article class="workflow-job-card">
+    <article class="workflow-job-card" style="animation-delay: ${Math.min(index, 6) * 40}ms">
       <header class="workflow-job-header">
-        <div class="workflow-job-rank">#${index + 1}</div>
+        <div class="workflow-job-rank" aria-label="Hạng ${index + 1}">${index + 1}</div>
         <div class="workflow-job-title">
           <h3>${escapeHtml(job.title || "Vị trí chưa xác định")}</h3>
           <p>
-            ${escapeHtml(job.company || "Chưa rõ công ty")}
-            ·
-            ${escapeHtml(job.location || "Chưa rõ địa điểm")}
+            ${escapeHtml(
+              [job.company || "Chưa rõ công ty", job.location].filter(Boolean).join(" · "),
+            )}
           </p>
         </div>
-        <div class="workflow-match-score">
+        <div class="workflow-match-score" aria-label="Điểm phù hợp ${score.toFixed(1)} trên 100">
           <strong>${score.toFixed(1)}</strong>
           <span>/100</span>
         </div>
       </header>
 
-      <div class="workflow-match-meta">
-        <span class="recommendation-badge">
+      <div class="score-meter ${getScoreTone(score)}" aria-hidden="true">
+        <span style="--value: ${score}"></span>
+      </div>
+
+      <div>
+        <span class="badge ${getRecommendationTone(match.recommendation)}">
           ${escapeHtml(getRecommendationLabel(match.recommendation))}
         </span>
       </div>
 
       <div class="workflow-match-columns">
-        <section>
-          <h4>Điểm mạnh</h4>
-          ${renderList(strengths, "Chưa có dữ liệu.")}
+        <section class="insight-section">
+          <h3>Điểm mạnh</h3>
+          ${renderFindings(strengths, "is-strength", "Chưa có dữ liệu.")}
         </section>
-        <section>
-          <h4>Khoảng trống</h4>
-          ${renderList(gaps, "Chưa có khoảng trống đáng kể.")}
+        <section class="insight-section">
+          <h3>Khoảng trống</h3>
+          ${renderFindings(gaps, "is-gap", "Chưa ghi nhận khoảng trống đáng kể.")}
         </section>
       </div>
 
-      <div class="workflow-job-actions">
+      <footer class="workflow-job-actions">
         <button
           type="button"
-          class="secondary-button"
+          class="btn btn-ghost btn-sm"
           data-action="view-job"
-          data-job-id="${escapeHtml(job.job_id ?? "")}"
+          data-job-id="${jobId}"
         >
           Xem công việc
         </button>
         <button
           type="button"
-          class="primary-button"
+          class="btn btn-primary btn-sm"
           data-action="cover-letter-job"
-          data-job-id="${escapeHtml(job.job_id ?? "")}"
+          data-job-id="${jobId}"
         >
-          Viết Cover Letter
+          ${icon("mail")} Viết thư ứng tuyển
         </button>
-      </div>
+      </footer>
     </article>
+  `;
+}
+
+function renderUnmatched(outcomes) {
+  if (!outcomes.length) {
+    return "";
+  }
+
+  const statusLabels = {
+    failed: "Lỗi khi so khớp",
+    skipped: "Bỏ qua",
+  };
+
+  return `
+    <section class="workflow-skipped insight-section">
+      <h3>Chưa so khớp được (${outcomes.length})</h3>
+      <ul>
+        ${outcomes
+          .map(
+            (outcome) => `
+              <li>
+                <span>${escapeHtml(outcome.job?.title || "Công việc")}</span>
+                <span class="muted">${escapeHtml(statusLabels[outcome.status] ?? outcome.status)}</span>
+              </li>
+            `,
+          )
+          .join("")}
+      </ul>
+    </section>
   `;
 }
 
@@ -134,9 +199,7 @@ function renderWorkflowCareerSummary(advice) {
 
   return `
     <section class="workflow-career-summary">
-      <span class="career-personalization-badge personalized">
-        Career Advisor
-      </span>
+      <p class="eyebrow">Career Advice Agent</p>
       <h3>Bạn nên cải thiện gì tiếp theo?</h3>
       <p>${escapeHtml(advice.summary || "Chưa có nhận xét.")}</p>
       ${
@@ -152,14 +215,25 @@ function renderWorkflowCareerSummary(advice) {
   `;
 }
 
-function renderList(items, emptyMessage) {
+function renderFindings(items, variant, emptyMessage) {
   if (!items.length) {
-    return `<p>${escapeHtml(emptyMessage)}</p>`;
+    return `<p class="insight-empty">${escapeHtml(emptyMessage)}</p>`;
   }
 
+  const marker = variant === "is-strength" ? icon("check") : icon("minus");
+
   return `
-    <ul>
-      ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    <ul class="finding-list ${variant}">
+      ${items
+        .map(
+          (item) => `
+            <li>
+              <span class="finding-marker">${marker}</span>
+              <span>${escapeHtml(item)}</span>
+            </li>
+          `,
+        )
+        .join("")}
     </ul>
   `;
 }

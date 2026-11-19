@@ -1,0 +1,279 @@
+/* Badges ---------------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  min-height: 1.375rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: none;
+}
+
+.badge-dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge-accent,
+.tone-strong {
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.badge-success,
+.tone-good {
+  border-color: var(--color-success-border);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.badge-warning,
+.tone-partial {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.badge-danger,
+.tone-low {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.badge-info {
+  border-color: var(--color-info-border);
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+
+.count-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+/* Chips ----------------------------------------------------------------- */
+
+.chip,
+.skill-chip,
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-action {
+  min-height: var(--control-xs);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.chip-action:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.chip-list,
+.skill-list,
+.filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Alerts ---------------------------------------------------------------- */
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  animation: rise-in var(--duration-base) var(--ease-out);
+}
+
+.alert-danger {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.alert-info {
+  border-color: var(--color-info-border);
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+
+/* Spinner & skeleton ---------------------------------------------------- */
+
+.spinner,
+.loading-spinner {
+  flex: 0 0 auto;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid var(--color-border-strong);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+.skeleton {
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-surface-sunken) 0%,
+      var(--color-surface-hover) 50%,
+      var(--color-surface-sunken) 100%
+    );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* Empty states ---------------------------------------------------------- */
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  max-width: 24rem;
+  margin: var(--space-12) auto;
+  padding: 0 var(--space-4);
+  text-align: center;
+  animation: fade-in var(--duration-slow) var(--ease-out);
+}
+
+.empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-tertiary);
+  box-shadow: var(--shadow-sm);
+}
+
+.empty-state-icon.is-danger {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.empty-state h3 {
+  font-size: var(--text-lg);
+}
+
+.empty-state p {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
+.empty-state .btn {
+  margin-top: var(--space-2);
+}
+
+/* Toasts ---------------------------------------------------------------- */
+
+.toast-region {
+  position: fixed;
+  z-index: var(--z-toast);
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+  max-width: min(24rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-ink);
+  color: var(--color-on-ink);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation: rise-in var(--duration-base) var(--ease-out);
+}
+
+.toast .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.toast.is-success .icon {
+  color: var(--brand-mark-accent);
+}
+
+.toast.is-leaving {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+/* Scrim ----------------------------------------------------------------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  animation: fade-in var(--duration-base) var(--ease-out);
+}

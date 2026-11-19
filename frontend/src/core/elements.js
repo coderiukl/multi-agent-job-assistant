@@ -24,6 +24,12 @@ export const elements = {
     logoutButton: document.querySelector("#logout-button"),
     mobileLogoutButton: document.querySelector("#mobile-logout-button"),
 
+    historyDrawerButton: document.querySelector("#history-drawer-button"),
+    conversationSidebar: document.querySelector("#conversation-sidebar"),
+    sidebarScrim: document.querySelector("#sidebar-scrim"),
+    themeToggle: document.querySelector("#theme-toggle"),
+    conversationScroll: document.querySelector(".conversation-scroll"),
+
     sidebarNewChatButton: document.querySelector(
         "#sidebar-new-chat-button",
     ),

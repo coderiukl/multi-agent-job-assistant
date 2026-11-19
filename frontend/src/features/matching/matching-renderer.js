@@ -2,10 +2,21 @@ import { elements } from "../../core/elements.js";
 import { state } from "../../core/state.js";
 import { clampMatchingScore } from "../../shared/formatters.js";
 import { escapeHtml } from "../../shared/html.js";
+import { icon } from "../../shared/icons.js";
 import {
   getEvidenceStatusLabel,
   getRecommendationLabel,
 } from "../../shared/labels.js";
+import {
+  renderBreakdownItem,
+  renderBreakdownSection,
+  renderFindingSection,
+  renderScoreOverview,
+} from "./insight-components.js";
+import {
+  getRecommendationTone,
+  groupEvidenceByStatus,
+} from "./score-tones.js";
 
 export function createMatchingRenderer({
   openResultsPanel,
@@ -30,6 +41,7 @@ export function createMatchingRenderer({
     elements.resultsTitle.textContent = "Kết quả so khớp";
     elements.resultsSummary.hidden = true;
     elements.jobSort.disabled = true;
+    if (elements.jobPagination) elements.jobPagination.hidden = true;
     elements.backToJobsButton.hidden =
       !state.currentSearchResult || !state.jobs.length;
 
@@ -37,94 +49,57 @@ export function createMatchingRenderer({
     openResultsPanel();
 
     elements.jobResults.innerHTML = `
-      <section class="matching-result" aria-label="Kết quả so khớp CV">
-        <header class="matching-overview">
-          <div
-            class="matching-score-ring"
-            style="--matching-score: ${score}"
-            aria-label="Điểm phù hợp ${score.toFixed(2)} trên 100"
-          >
-            <strong>${score.toFixed(2)}</strong>
-            <span>/100</span>
-          </div>
+      <section class="insight matching-result" aria-label="Kết quả so khớp CV">
+        ${renderScoreOverview({
+          score,
+          scoreLabel: "Điểm phù hợp",
+          badgeLabel: getRecommendationLabel(result?.recommendation),
+          badgeTone: getRecommendationTone(result?.recommendation),
+          title: "Mức độ phù hợp tổng thể",
+          summary: result?.summary,
+          confidence: result?.confidence,
+        })}
 
-          <div class="matching-summary">
-            <span class="recommendation-badge ${escapeHtml(
-              result?.recommendation || "low_match",
-            )}">
-              ${escapeHtml(
-                getRecommendationLabel(result?.recommendation),
-              )}
-            </span>
-
-            <h3>Mức độ phù hợp tổng thể</h3>
-            <p>
-              ${escapeHtml(
-                result?.summary || "Chưa có nhận xét tổng quan.",
-              )}
-            </p>
-            ${renderConfidence(result?.confidence)}
-          </div>
-        </header>
-
-        <section class="matching-section action-plan">
-          <div>
-            <span class="section-kicker">Hành động tiếp theo</span>
-            <h3>Ưu tiên trước khi ứng tuyển</h3>
-          </div>
+        <section class="action-plan" aria-labelledby="action-plan-title">
+          <p class="eyebrow">Hành động tiếp theo</p>
+          <h3 id="action-plan-title">Ưu tiên trước khi ứng tuyển</h3>
           <ol>
             ${actionPlan
               .map((item) => `<li>${escapeHtml(item)}</li>`)
               .join("")}
           </ol>
+          <p class="action-plan-note">
+            Tổng hợp từ điểm phù hợp và các yêu cầu còn thiếu trong kết quả so khớp.
+          </p>
         </section>
 
-        <section class="matching-section">
-          <h3>Điểm thành phần</h3>
-          <div class="breakdown-grid">
-            ${renderBreakdownItem(
-              "Kỹ năng chuyên môn",
-              breakdown.technicalSkills,
-            )}
-            ${renderBreakdownItem("Kinh nghiệm", breakdown.experience)}
-            ${renderBreakdownItem("Dự án", breakdown.projects)}
-            ${renderBreakdownItem("Học vấn", breakdown.education)}
-            ${renderBreakdownItem(
-              "Ngoại ngữ & chứng chỉ",
-              breakdown.languagesAndCertifications,
-            )}
-          </div>
-        </section>
+        ${renderRequirementCoverage(evidence)}
 
-        <div class="matching-columns">
-          ${renderMatchingList(
-            "Điểm mạnh",
-            strengths,
-            "strength",
-            "Chưa xác định được điểm mạnh nổi bật.",
-          )}
-          ${renderMatchingList(
-            "Khoảng thiếu",
-            gaps,
-            "gap",
-            "Không có khoảng thiếu quan trọng được ghi nhận.",
-          )}
+        <div class="insight-columns">
+          ${renderFindingSection({
+            title: "Điểm mạnh",
+            items: strengths,
+            variant: "is-strength",
+            emptyMessage: "Chưa xác định được điểm mạnh nổi bật.",
+          })}
+          ${renderFindingSection({
+            title: "Khoảng thiếu",
+            items: gaps,
+            variant: "is-gap",
+            emptyMessage: "Không có khoảng thiếu quan trọng được ghi nhận.",
+          })}
         </div>
 
-        <section class="matching-section evidence-section">
-          <h3>Bằng chứng đánh giá</h3>
-          ${
-            evidence.length
-              ? `<div class="evidence-list">
-                  ${evidence.map(renderEvidenceItem).join("")}
-                </div>`
-              : `<p class="matching-empty-text">
-                  Chưa có bằng chứng chi tiết.
-                </p>`
-          }
-        </section>
+        ${renderBreakdownSection("Điểm thành phần", [
+          ["Kỹ năng chuyên môn", breakdown.technicalSkills],
+          ["Kinh nghiệm", breakdown.experience],
+          ["Dự án", breakdown.projects],
+          ["Học vấn", breakdown.education],
+          ["Ngoại ngữ & chứng chỉ", breakdown.languagesAndCertifications],
+        ])}
       </section>
     `;
+    elements.jobResults.scrollTop = 0;
   }
 
   return {
@@ -133,31 +108,76 @@ export function createMatchingRenderer({
   };
 }
 
-export function renderBreakdownItem(label, value) {
-  const score = clampMatchingScore(value);
+export { renderBreakdownItem };
 
-  return `
-    <article class="breakdown-item">
-      <div>
-        <span>${escapeHtml(label)}</span>
-        <strong>${score.toFixed(0)}</strong>
-      </div>
-      <div class="score-track" aria-hidden="true">
-        <span style="width: ${score}%"></span>
-      </div>
-    </article>
-  `;
-}
-
-function renderConfidence(confidence) {
-  if (confidence === null || confidence === undefined) {
-    return "";
+/**
+ * Requirement coverage: a proportional bar of matched / partial / missing
+ * requirements (counts straight from `evidence[].status`), followed by the
+ * evidence grouped so that missing requirements come first.
+ */
+function renderRequirementCoverage(evidence) {
+  if (!evidence.length) {
+    return `
+      <section class="insight-section">
+        <h3>Yêu cầu công việc</h3>
+        <p class="insight-empty">Chưa có bằng chứng chi tiết cho từng yêu cầu.</p>
+      </section>
+    `;
   }
 
+  const groups = groupEvidenceByStatus(evidence);
+  const total = evidence.length;
+  const legendOrder = ["matched", "partial", "missing", "not_applicable"];
+  const counts = Object.fromEntries(
+    groups.map((group) => [group.status, group.items.length]),
+  );
+
   return `
-    <small>
-      Độ tin cậy đánh giá: ${Math.round(confidence * 100)}%
-    </small>
+    <section class="insight-section" aria-labelledby="coverage-title">
+      <div class="insight-section-header">
+        <h3 id="coverage-title">Yêu cầu công việc</h3>
+        <p>${counts.matched ?? 0}/${total} đáp ứng đầy đủ</p>
+      </div>
+
+      <div class="coverage-bar" aria-hidden="true">
+        ${legendOrder
+          .filter((status) => counts[status])
+          .map(
+            (status) =>
+              `<span class="is-${status}" style="flex: ${counts[status]}"></span>`,
+          )
+          .join("")}
+      </div>
+
+      <ul class="coverage-legend">
+        ${legendOrder
+          .filter((status) => counts[status])
+          .map(
+            (status) => `
+              <li class="is-${status}">
+                ${escapeHtml(getEvidenceStatusLabel(status))}
+                <strong>${counts[status]}</strong>
+              </li>
+            `,
+          )
+          .join("")}
+      </ul>
+
+      ${groups
+        .map(
+          (group) => `
+            <div class="evidence-group">
+              <p class="evidence-group-title">
+                ${escapeHtml(getEvidenceStatusLabel(group.status))} · ${group.items.length}
+              </p>
+              <div class="evidence-list">
+                ${group.items.map(renderEvidenceItem).join("")}
+              </div>
+            </div>
+          `,
+        )
+        .join("")}
+    </section>
   `;
 }
 
@@ -209,38 +229,18 @@ function createActionPlan({
   return plan;
 }
 
-function renderMatchingList(
-  title,
-  items,
-  variant,
-  emptyMessage,
-) {
-  return `
-    <section class="matching-list-card ${escapeHtml(variant)}">
-      <h3>${escapeHtml(title)}</h3>
-      ${
-        items.length
-          ? `<ul>
-              ${items
-                .map((item) => `<li>${escapeHtml(item)}</li>`)
-                .join("")}
-            </ul>`
-          : `<p>${escapeHtml(emptyMessage)}</p>`
-      }
-    </section>
-  `;
-}
-
 function renderEvidenceItem(item) {
   const cvEvidence = toArray(item?.cvEvidence);
+  const status = item?.status || "missing";
 
   return `
     <details class="evidence-item">
       <summary>
-        <span class="evidence-status ${escapeHtml(item?.status || "missing")}">
-          ${escapeHtml(getEvidenceStatusLabel(item?.status))}
+        <span class="evidence-status ${escapeHtml(status)}">
+          ${escapeHtml(getEvidenceStatusLabel(status))}
         </span>
         <span>${escapeHtml(item?.requirement || "Yêu cầu công việc")}</span>
+        ${icon("chevron-down")}
       </summary>
 
       <div class="evidence-content">

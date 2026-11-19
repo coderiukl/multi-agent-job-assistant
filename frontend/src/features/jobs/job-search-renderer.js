@@ -30,8 +30,11 @@ export function createJobSearchRenderer({
     const firstItem = items.length ? (page - 1) * pageSize + 1 : 0;
     const lastItem = items.length ? firstItem + items.length - 1 : 0;
 
-    elements.resultCount.textContent =
-      `Đang hiển thị ${firstItem}–${lastItem}/${total} công việc được đề xuất`;
+    elements.resultsEyebrow.textContent = "JOB DISCOVERY";
+    elements.resultsTitle.textContent = "Công việc phù hợp";
+    elements.resultCount.textContent = items.length
+      ? `${firstItem}–${lastItem} trong ${total.toLocaleString("vi-VN")} công việc`
+      : "0 công việc";
     elements.searchStrategy.textContent =
       getStrategyLabel(result.strategy);
 
@@ -50,8 +53,12 @@ export function createJobSearchRenderer({
       return;
     }
 
-    elements.jobResults.innerHTML =
-      items.map(renderJobCard).join("");
+    elements.jobResults.innerHTML = `
+      <div class="job-list">
+        ${items.map((item, index) => renderJobCard(item, index)).join("")}
+      </div>
+    `;
+    elements.jobResults.scrollTop = 0;
   }
 
   function showJobSearchResultsFromState() {

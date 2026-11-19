@@ -97,33 +97,116 @@ export function createWorkspaceController() {
     setActiveWorkspacePanel("chat");
   }
 
-  function toggleConversationHistory() {
-    state.historyOpen = !state.historyOpen;
+  // Below this width the history sidebar is an off-canvas drawer.
+  const drawerQuery = window.matchMedia("(max-width: 1023px)");
+  let focusBeforeHistoryDrawer = null;
+
+  function isHistoryDrawerMode() {
+    return drawerQuery.matches;
+  }
+
+  function setConversationHistoryOpen(open, { restoreFocus = true } = {}) {
+    const wasOpen = state.historyOpen;
+
+    state.historyOpen = open;
     elements.workspace?.setAttribute(
       "data-history-open",
-      String(state.historyOpen),
+      String(open),
     );
 
-    if (!elements.toggleHistoryButton) {
+    const drawerMode = isHistoryDrawerMode();
+
+    if (elements.sidebarScrim) {
+      elements.sidebarScrim.hidden = !(drawerMode && open);
+    }
+
+    // While the drawer is open, keep keyboard and screen-reader focus in it.
+    const isModalDrawer = drawerMode && open;
+    for (const region of [
+      document.querySelector("#chat-panel"),
+      elements.resultsPanel,
+      document.querySelector(".app-header"),
+      elements.mobileTabs,
+    ]) {
+      region?.toggleAttribute("inert", isModalDrawer);
+    }
+    elements.conversationSidebar?.setAttribute(
+      "aria-modal",
+      String(isModalDrawer),
+    );
+    if (isModalDrawer) {
+      elements.conversationSidebar?.setAttribute("role", "dialog");
+    } else {
+      elements.conversationSidebar?.removeAttribute("role");
+    }
+
+    if (elements.historyDrawerButton) {
+      elements.historyDrawerButton.setAttribute(
+        "aria-expanded",
+        String(drawerMode && open),
+      );
+    }
+
+    if (elements.toggleHistoryButton) {
+      const label = drawerMode
+        ? "Đóng lịch sử"
+        : open
+          ? "Thu gọn lịch sử"
+          : "Mở lịch sử";
+
+      elements.toggleHistoryButton.setAttribute(
+        "aria-expanded",
+        String(open),
+      );
+      elements.toggleHistoryButton.setAttribute("aria-label", label);
+      elements.toggleHistoryButton.title = label;
+    }
+
+    if (!drawerMode || wasOpen === open) {
       return;
     }
 
-    const label = state.historyOpen
-      ? "Thu gọn lịch sử"
-      : "Mở lịch sử";
-
-    elements.toggleHistoryButton.setAttribute(
-      "aria-expanded",
-      String(state.historyOpen),
-    );
-    elements.toggleHistoryButton.setAttribute("aria-label", label);
-    elements.toggleHistoryButton.title = label;
-
-    const icon = elements.toggleHistoryButton.querySelector("span");
-
-    if (icon) {
-      icon.textContent = state.historyOpen ? "‹" : "☰";
+    if (open) {
+      focusBeforeHistoryDrawer = document.activeElement;
+      requestAnimationFrame(() => {
+        elements.conversationHistorySearch?.focus();
+      });
+      return;
     }
+
+    if (
+      restoreFocus &&
+      focusBeforeHistoryDrawer instanceof HTMLElement &&
+      focusBeforeHistoryDrawer.isConnected
+    ) {
+      focusBeforeHistoryDrawer.focus();
+    }
+
+    focusBeforeHistoryDrawer = null;
+  }
+
+  function toggleConversationHistory() {
+    setConversationHistoryOpen(!state.historyOpen);
+  }
+
+  /** Closes the history drawer on narrow screens; no-op on desktop. */
+  function closeHistoryDrawer(options) {
+    if (isHistoryDrawerMode() && state.historyOpen) {
+      setConversationHistoryOpen(false, options);
+      return true;
+    }
+
+    return false;
+  }
+
+  function initializeWorkspaceLayout() {
+    // Start with the drawer closed on narrow screens; keep the desktop
+    // sidebar open.
+    setConversationHistoryOpen(!isHistoryDrawerMode(), { restoreFocus: false });
+
+    drawerQuery.addEventListener("change", (event) => {
+      setConversationHistoryOpen(!event.matches, { restoreFocus: false });
+    });
   }
 
   function updateMobileResultsBadge(count) {
@@ -194,9 +277,12 @@ export function createWorkspaceController() {
   }
 
   return {
+    closeHistoryDrawer,
     closeJobDetail,
     closeResultsPanel,
     handleMobileTabClick,
+    initializeWorkspaceLayout,
+    isHistoryDrawerMode,
     isJobDetailOpen,
     openResultsPanel,
     setActiveWorkspacePanel,

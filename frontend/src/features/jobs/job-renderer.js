@@ -6,6 +6,7 @@ import {
   formatScore,
 } from "../../shared/formatters.js";
 import { escapeHtml, safeExternalUrl } from "../../shared/html.js";
+import { icon } from "../../shared/icons.js";
 import {
   getEmploymentTypeLabel,
   getSeniorityLabel,
@@ -18,18 +19,40 @@ export function createJobRenderer({
   generateCoverLetterForJob,
   matchSelectedJob,
 }) {
-  function renderMetaItem(label, value) {
-    if (!value) {
+  const UNKNOWN_LABEL = "Không xác định";
+
+  function renderMetaItem(value, className = "") {
+    if (!value || value === UNKNOWN_LABEL) {
       return "";
     }
 
-    const salaryClass = label === "Lương" ? "is-salary" : "";
+    return `<li class="${className}">${escapeHtml(value)}</li>`;
+  }
+
+  function renderDetailItem(label, value, className = "") {
+    if (!value || value === UNKNOWN_LABEL) {
+      return "";
+    }
 
     return `
-      <span class="job-meta-item ${salaryClass}">
-        <span class="job-meta-label">${escapeHtml(label)}:</span>
-        ${escapeHtml(value)}
-      </span>
+      <div>
+        <dt>${escapeHtml(label)}</dt>
+        <dd class="${className}">${escapeHtml(value)}</dd>
+      </div>
+    `;
+  }
+
+  function renderSkillChips(skills) {
+    if (!skills.length) {
+      return "";
+    }
+
+    return `
+      <div class="skill-list">
+        ${skills
+          .map((skill) => `<span class="skill-chip">${escapeHtml(skill)}</span>`)
+          .join("")}
+      </div>
     `;
   }
 
@@ -49,15 +72,35 @@ export function createJobRenderer({
 
   function getMatchLabel(value) {
     const labels = {
-      "is-strong": "rất khớp",
+      "is-strong": "rất liên quan",
       "is-good": "đáng xem",
-      "is-low": "cần lọc",
+      "is-low": "liên quan thấp",
     };
 
     return labels[getMatchTone(value)];
   }
 
-  function renderJobCard(hit) {
+  /**
+   * `score.final` is the search ranking score (0–1) for the query, not a
+   * CV match. It is labelled as relevance to avoid implying a CV assessment.
+   */
+  function renderRelevance(value) {
+    const percent = Number.parseInt(formatScore(value), 10) || 0;
+    const tone = getMatchTone(value);
+
+    return `
+      <div class="relevance ${tone}" title="Độ liên quan với yêu cầu tìm kiếm">
+        <span class="relevance-value">${percent}%</span>
+        <span class="relevance-bar" aria-hidden="true">
+          <span style="--value: ${percent}"></span>
+        </span>
+        <span class="relevance-label">${escapeHtml(getMatchLabel(value))}</span>
+        <span class="visually-hidden">Độ liên quan ${percent} phần trăm</span>
+      </div>
+    `;
+  }
+
+  function renderJobCard(hit, index = 0) {
     const job = hit?.job ?? {};
     const score = hit?.score ?? {};
     const reasons = Array.isArray(hit?.reasons)
@@ -66,83 +109,69 @@ export function createJobRenderer({
     const skills = Array.isArray(job.skills)
       ? job.skills.slice(0, 7)
       : [];
-    const jobId = String(job.job_id ?? "");
+    const jobId = escapeHtml(String(job.job_id ?? ""));
     const sourceUrl = safeExternalUrl(job.source_url);
     const salary = formatSalary(job);
+    const companyLine = [job.company || "Chưa có công ty", job.location]
+      .filter(Boolean)
+      .join(" · ");
 
     return `
-      <article class="job-card">
+      <article class="job-card" style="animation-delay: ${Math.min(index, 8) * 30}ms">
         <header class="job-card-header">
           <div class="job-heading">
             <h3 class="job-title">
-              ${escapeHtml(job.title || "Chưa có chức danh")}
+              <button type="button" class="job-title-button"
+                data-action="view-job" data-job-id="${jobId}">
+                ${escapeHtml(job.title || "Chưa có chức danh")}
+              </button>
             </h3>
-            <span class="job-company">
-              ${escapeHtml(job.company || "Chưa có công ty")}
-            </span>
+            <p class="job-company">${escapeHtml(companyLine)}</p>
           </div>
-          <div class="match-score ${getMatchTone(score.final)}">
-            <strong>${formatScore(score.final)}</strong>
-            <small>${escapeHtml(getMatchLabel(score.final))}</small>
-          </div>
+          ${renderRelevance(score.final)}
         </header>
 
-        <div class="job-meta job-meta-priority">
-          ${salary ? renderMetaItem("Lương", salary) : ""}
-          ${renderMetaItem("Địa điểm", job.location || "Không xác định")}
-          ${renderMetaItem("Cấp độ", getSeniorityLabel(job.seniority_level))}
-          ${renderMetaItem("Hình thức", getWorkModeLabel(job.work_mode))}
-          ${renderMetaItem(
-            "Loại việc",
-            getEmploymentTypeLabel(job.employment_type),
-          )}
-        </div>
+        <ul class="job-meta" aria-label="Thông tin công việc">
+          ${salary ? renderMetaItem(salary, "is-salary") : ""}
+          ${renderMetaItem(getSeniorityLabel(job.seniority_level))}
+          ${renderMetaItem(getWorkModeLabel(job.work_mode))}
+          ${renderMetaItem(getEmploymentTypeLabel(job.employment_type))}
+        </ul>
 
-        ${
-          skills.length
-            ? `<div class="skill-list">
-                ${skills
-                  .map(
-                    (skill) =>
-                      `<span class="skill-chip">${escapeHtml(skill)}</span>`,
-                  )
-                  .join("")}
-              </div>`
-            : ""
-        }
+        ${renderSkillChips(skills)}
 
         ${
           reasons.length
-            ? `<div class="reason-block">
-                <strong>Vì sao nên xem?</strong>
-                <ul class="reason-list">
-                  ${reasons
-                    .map((reason) => `<li>${escapeHtml(reason)}</li>`)
-                    .join("")}
-                </ul>
-              </div>`
+            ? `<ul class="reason-list" aria-label="Vì sao công việc này được đề xuất">
+                ${reasons
+                  .map((reason) => `<li>${escapeHtml(reason)}</li>`)
+                  .join("")}
+              </ul>`
             : ""
         }
 
         <footer class="job-card-actions">
-          <button type="button" class="ghost-button"
-            data-action="view-job" data-job-id="${escapeHtml(jobId)}">
-            Xem chi tiết
+          <button type="button" class="btn btn-ghost btn-sm"
+            data-action="match-job" data-job-id="${jobId}">
+            ${icon("target")} So khớp CV
           </button>
-          <button type="button" class="primary-button"
-            data-action="match-job" data-job-id="${escapeHtml(jobId)}">
-            So khớp CV
+          <button type="button" class="btn btn-ghost btn-sm"
+            data-action="cover-letter-job" data-job-id="${jobId}">
+            ${icon("mail")} Viết thư
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm"
+            data-action="view-job" data-job-id="${jobId}">
+            Chi tiết
           </button>
           ${
             sourceUrl
-              ? `<a class="primary-button" href="${escapeHtml(sourceUrl)}"
-                    target="_blank" rel="noopener noreferrer">Ứng tuyển</a>`
+              ? `<a class="btn btn-ghost btn-sm" href="${escapeHtml(sourceUrl)}"
+                    target="_blank" rel="noopener noreferrer">
+                  Ứng tuyển ${icon("external")}
+                  <span class="visually-hidden">(mở trong thẻ mới)</span>
+                </a>`
               : ""
           }
-          <button type="button" class="ghost-button"
-            data-action="cover-letter-job" data-job-id="${escapeHtml(jobId)}">
-            Viết thư
-          </button>
         </footer>
       </article>
     `;
@@ -154,36 +183,30 @@ export function createJobRenderer({
 
     state.selectedJob = hit;
     state.lastFocusedBeforeDrawer = document.activeElement;
+    const salary = formatSalary(job);
+    const skills = Array.isArray(job.skills) ? job.skills : [];
+
     elements.jobDetailContent.innerHTML = `
       <section class="drawer-job-heading">
         <h2>${escapeHtml(job.title || "Công việc")}</h2>
         <p>${escapeHtml(job.company || "Chưa có công ty")}</p>
       </section>
 
-      <div class="job-meta">
-        ${renderMetaItem("Địa điểm", job.location || "Không xác định")}
-        ${renderMetaItem("Cấp độ", getSeniorityLabel(job.seniority_level))}
-        ${renderMetaItem("Hình thức", getWorkModeLabel(job.work_mode))}
-        ${renderMetaItem(
-          "Loại việc",
-          getEmploymentTypeLabel(job.employment_type),
-        )}
-        ${renderMetaItem("Ngày đăng", formatDate(job.posted_at))}
-        ${renderMetaItem("Nguồn", job.source || "Không xác định")}
-      </div>
+      <dl class="detail-grid">
+        ${renderDetailItem("Mức lương", salary, "is-salary")}
+        ${renderDetailItem("Địa điểm", job.location)}
+        ${renderDetailItem("Cấp độ", getSeniorityLabel(job.seniority_level))}
+        ${renderDetailItem("Hình thức", getWorkModeLabel(job.work_mode))}
+        ${renderDetailItem("Loại việc", getEmploymentTypeLabel(job.employment_type))}
+        ${renderDetailItem("Ngày đăng", formatDate(job.posted_at))}
+        ${renderDetailItem("Nguồn", job.source)}
+      </dl>
 
       ${
-        Array.isArray(job.skills) && job.skills.length
+        skills.length
           ? `<section class="drawer-section">
-              <h3>Kỹ năng</h3>
-              <div class="skill-list">
-                ${job.skills
-                  .map(
-                    (skill) =>
-                      `<span class="skill-chip">${escapeHtml(skill)}</span>`,
-                  )
-                  .join("")}
-              </div>
+              <h3>Kỹ năng yêu cầu</h3>
+              ${renderSkillChips(skills)}
             </section>`
           : ""
       }
@@ -191,7 +214,7 @@ export function createJobRenderer({
       ${
         Array.isArray(hit?.reasons) && hit.reasons.length
           ? `<section class="drawer-section">
-              <h3>Vì sao công việc này phù hợp?</h3>
+              <h3>Vì sao được đề xuất</h3>
               <ul class="reason-list">
                 ${hit.reasons
                   .map((reason) => `<li>${escapeHtml(reason)}</li>`)
@@ -202,27 +225,28 @@ export function createJobRenderer({
       }
 
       <section class="drawer-section">
-        <h3>Chi tiết JD</h3>
+        <h3>Mô tả công việc</h3>
         ${renderJobDescription(job.description)}
       </section>
 
       <div class="drawer-actions">
-        <button type="button" class="primary-button" id="match-drawer-job">
-          So khớp với CV
+        <button type="button" class="btn btn-primary" id="match-drawer-job">
+          ${icon("target")} So khớp với CV
+        </button>
+        <button type="button" class="btn btn-outline" id="cover-letter-drawer-job">
+          ${icon("mail")} Viết thư ứng tuyển
         </button>
         ${
           sourceUrl
-            ? `<a class="primary-button" href="${escapeHtml(sourceUrl)}"
+            ? `<a class="btn btn-ghost" href="${escapeHtml(sourceUrl)}"
                   target="_blank" rel="noopener noreferrer">
-                Đi đến trang ứng tuyển
+                Trang ứng tuyển ${icon("external")}
+                <span class="visually-hidden">(mở trong thẻ mới)</span>
               </a>`
             : ""
         }
-        <button type="button" class="ghost-button" id="close-drawer-action">
+        <button type="button" class="btn btn-ghost" id="close-drawer-action">
           Đóng
-        </button>
-        <button type="button" class="ghost-button" id="cover-letter-drawer-job">
-          Viết thư ứng tuyển
         </button>
       </div>
     `;
