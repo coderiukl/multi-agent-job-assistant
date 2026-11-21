@@ -145,17 +145,24 @@ class Settings(BaseSettings):
     embedding_max_length: int = Field(default=2048, ge=128, le=8192)
     embedding_cache_dir: Path = Path("storage/models")
     job_embedding_max_chars: int = Field(default=12_000, ge=1_000, le=50_000)
+    # v2: canonical skills (skill taxonomy) + "Categories:" line.
     job_embedding_text_version: str = Field(
-        default="v1",
+        default="v2",
         min_length=1,
         max_length=100,
     )
+    # BGE-M3 sparse (lexical) head; when disabled only dense vectors are written.
+    embedding_sparse_enabled: bool = True
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = Field(default=None, repr=False)
-    qdrant_collection_name: str = "jobs_bge_m3_v2"
+    qdrant_collection_name: str = "jobs_bge_m3_v3"
     qdrant_timeout_seconds: int = Field(default=30, gt=0)
+
+    # Dense + sparse fusion for semantic job retrieval (app/vectorstores/fusion.py)
+    vector_fusion_mode: Literal["dense", "sparse", "linear", "rrf"] = "linear"
+    vector_fusion_dense_weight: float = Field(default=0.7, ge=0.0, le=1.0)
 
     # Conversation Memory
     conversation_memory_backend: Literal[

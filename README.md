@@ -137,6 +137,17 @@ Các agent chính sử dụng input/output có cấu trúc qua **Pydantic**:
 
 Hệ thống lọc và truy xuất ứng viên công việc từ **PostgreSQL** và **Qdrant**, hợp nhất theo `job_id`, khử trùng lặp và xếp hạng kết quả. Khi Qdrant không khả dụng, hệ thống có cơ chế fallback về PostgreSQL.
 
+Trong Qdrant, mỗi job có **hai vector sinh từ cùng một lần forward của BGE-M3**: vector `dense` (ngữ nghĩa, cosine) và vector `sparse` (trọng số từ vựng – lexical weights, mạnh với từ khóa hiếm như "Golang", "K8s", "NestJS"). Hai danh sách kết quả được hợp nhất bằng `VECTOR_FUSION_MODE`, mọi chế độ đều trả điểm trong [0, 1] để thay cho điểm Semantic bên dưới:
+
+| `VECTOR_FUSION_MODE` | Điểm Semantic |
+| --- | --- |
+| `dense` | Cosine của vector dense (hành vi trước đây). |
+| `sparse` | Điểm sparse chia cho điểm sparse cao nhất của truy vấn. |
+| `linear` (mặc định) | `w × cosine + (1 − w) × sparse_tương_đối`, `w = VECTOR_FUSION_DENSE_WEIGHT` (0,7). Giữ thang cosine. Job chỉ lọt top-K của một vector được truy vấn bổ sung điểm thật ở vector còn lại, nên điểm không phụ thuộc `limit`. |
+| `rrf` | Reciprocal Rank Fusion (k = 60), chuẩn hóa về 1 cho job đứng đầu cả hai danh sách. |
+
+Đổi chế độ không cần index lại, nên có thể chạy ablation trên cùng một collection.
+
 Điểm xếp hạng baseline:
 
 ```text
@@ -208,21 +219,57 @@ Nguồn thu thập hiện được cấu hình gồm **Himalayas, Arbeitnow, Top
 ```mermaid
 flowchart LR
     Sources["6 Job Sources"] --> Crawl["Airflow Crawling"]
-    Crawl --> Raw["Raw JSONL"]
-    Raw --> Normalize["Normalize & Validate"]
-    Normalize --> Dedup["Content Hash & Dedup"]
-    Dedup --> DB[("PostgreSQL")]
-    DB --> Embed["BAAI/bge-m3"]
+    Crawl --> RawFile["Raw JSONL archive"]
+    Crawl --> RawDB[("raw.job_records")]
+    RawDB --> Normalize["Map, Normalize & Validate"]
+    Normalize --> Skills["Skill taxonomy"]
+    Skills --> Dedup["Content Hash & Dedup"]
+    Dedup --> DB[("public.jobs")]
+    DB --> Embed["BGE-M3 dense + sparse"]
     Embed --> Qdrant[("Qdrant")]
+    DB --> DBT["dbt staging → marts + tests"]
+    RawDB --> DBT
     Dedup --> Metrics["Daily Crawl Metrics"]
 ```
 
-Pipeline ghi nhận `fetched`, `normalized`, `failed`, `inserted`, `updated`, `unchanged` và kiểm tra độ mới của dữ liệu. **150–200 job/ngày** là mục tiêu giám sát, không phải cam kết dữ liệu thực tế. Mỗi bản ghi nguồn có vector riêng trong collection `jobs_bge_m3_v2`; thay đổi mô hình hoặc định dạng văn bản embedding cần cập nhật version tương ứng.
+Pipeline ghi nhận `fetched`, `normalized`, `failed`, `inserted`, `updated`, `unchanged` và kiểm tra độ mới của dữ liệu. **150–200 job/ngày** là mục tiêu giám sát, không phải cam kết dữ liệu thực tế. Mỗi bản ghi nguồn có một point (vector `dense` + `sparse`) trong collection `jobs_bge_m3_v3`; thay đổi mô hình hoặc định dạng văn bản embedding cần cập nhật version tương ứng (`EMBEDDING_MODEL_VERSION`, `JOB_EMBEDDING_TEXT_VERSION`).
 
-Chạy nạp lại job hiện có vào chỉ mục vector (từ thư mục `backend/`):
+**Lớp raw (`raw.job_records`).** Mỗi payload gốc khác nhau của một job được lưu đúng một lần (append-only, unique theo `source, source_job_id, payload_hash`), song song với file JSONL. Nhờ đó có thể sửa mapper, normalizer hay taxonomy rồi xử lý lại toàn bộ dữ liệu **mà không phải crawl lại**.
+
+**Skill taxonomy (`backend/app/data/skill_taxonomy.json`).** Nhãn "skills" từ nguồn được phân loại thành:
+- *skill*: chuẩn hóa về tên chính thức, ví dụ `ReactJS` → `React`, `PostgreSql` → `PostgreSQL`;
+- *category*: danh mục hoặc ngành như `Sales`, `Developer`, được chuyển sang `source_metadata.job_categories`;
+- *ignored*: nhãn nhiễu như `Remote`, `Berlin`, `Fresher Accepted`;
+- *unmapped*: giữ nguyên và liệt kê trong `mart_unmapped_skills` để bổ sung taxonomy.
+
+Kỹ năng cũng được trích từ tiêu đề và mô tả bằng mẫu bảo thủ: `Go` chỉ khớp qua "golang"; `Excel`, `Agile`, `Spark` phân biệt hoa thường. Phiên bản taxonomy nằm trong `content_hash`, nên tăng `version` sẽ khiến lần chạy `reprocess-raw-jobs` tiếp theo cập nhật và index lại các job bị ảnh hưởng.
+
+**dbt (`dbt/job_analytics`).** Python đảm nhận phần chuẩn hóa vận hành; dbt đảm nhận tầng phân tích trên `public.jobs` và `raw.job_records`:
+- Staging views: `stg_jobs`, `stg_job_skills`, `stg_raw_job_records`.
+- Marts: `mart_skill_demand`, `mart_salary_by_seniority`, `mart_source_quality`, `mart_daily_ingestion`, `mart_unmapped_skills`.
+- Data tests: unique, not_null, accepted_values, relationships, khoảng lương hợp lệ, kiểm tra lineage raw → jobs.
+- DAG `job_analytics_dbt` chạy `dbt source freshness` rồi `dbt build` lúc 01:15 mỗi ngày.
+
+Các lệnh chạy từ thư mục `backend/`:
 
 ```bash
+# Nạp lại job hiện có vào chỉ mục vector
 python -m app.cli index-jobs --batch-size 100
+
+# Nạp kho raw JSONL vào raw.job_records (idempotent)
+python -m app.cli backfill-raw-jobs
+
+# Xử lý lại raw → jobs sau khi sửa mapper/normalizer/taxonomy
+python -m app.cli reprocess-raw-jobs --dry-run      # chỉ xem số job sẽ thay đổi
+python -m app.cli reprocess-raw-jobs                # ghi và index lại job thay đổi
+```
+
+Chạy dbt trên máy (cần `pip install dbt-core dbt-postgres`, Postgres của jobs ở `localhost:5433`):
+
+```bash
+cd dbt/job_analytics
+DBT_PASSWORD=... dbt build --project-dir . --profiles-dir .
+DBT_PASSWORD=... dbt docs generate --project-dir . --profiles-dir .   # lineage graph
 ```
 
 ## 🧰 Công nghệ
@@ -233,7 +280,7 @@ python -m app.cli index-jobs --batch-size 100
 | LLM & Orchestration | LangChain, LangGraph, LangSmith |
 | Persistence & Search | PostgreSQL, Qdrant, BAAI/bge-m3 |
 | Document Processing | PyMuPDF, PaddleOCR |
-| Data Engineering | Apache Airflow, JSONL |
+| Data Engineering | Apache Airflow, dbt (dbt-postgres), JSONL + PostgreSQL raw layer |
 | Frontend | HTML, CSS, Vanilla JavaScript, Fetch API, Vite |
 | Development | Docker, Docker Compose, pytest |
 
@@ -253,7 +300,8 @@ multi-agent-job-assistant/
 │       ├── graphs/           # LangGraph workflows
 │       ├── llm/              # LLM integrations
 │       ├── memory/           # Conversation state
-│       ├── normalizers/      # Job normalization
+│       ├── data/             # Skill taxonomy (skill_taxonomy.json)
+│       ├── normalizers/      # Job + skill normalization
 │       ├── prompts/          # Agent prompts
 │       ├── repositories/     # Data access
 │       ├── schemas/          # Pydantic schemas
@@ -262,6 +310,8 @@ multi-agent-job-assistant/
 ├── airflow/
 │   ├── dags/
 │   └── docker-compose.yaml
+├── dbt/
+│   └── job_analytics/        # Analytics layer: staging, marts, data tests
 ├── frontend/
 │   ├── src/
 │   └── index.html

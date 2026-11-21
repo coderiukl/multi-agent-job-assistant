@@ -140,7 +140,9 @@ class JobicyJobSource:
             ),
             work_mode=WorkMode.REMOTE,
             seniority_level=self._map_seniority(job.job_level),
-            skills=job.job_industry,
+            # job_industry is a category list ("Sales", "Software
+            # Engineering"); skills come from the title/description.
+            skills=[],
             salary_min=salary_min,
             salary_max=salary_max,
             salary_currency=salary_currency,
@@ -150,6 +152,7 @@ class JobicyJobSource:
                 "job_slug": job.job_slug,
                 "company_logo": job.company_logo,
                 "industries": job.job_industry,
+                "job_categories": job.job_industry,
                 "job_types": job.job_type,
                 "job_level": job.job_level,
                 "excerpt": job.job_excerpt,

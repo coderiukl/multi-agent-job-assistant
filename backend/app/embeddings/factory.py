@@ -3,6 +3,7 @@ from langchain_core.embeddings import Embeddings
 from app.core.config import Settings
 from app.embeddings.bge_m3 import BgeM3Embeddings
 
+
 class EmbeddingFactory:
     @staticmethod
     def create(settings: Settings) -> Embeddings:
@@ -15,4 +16,5 @@ class EmbeddingFactory:
             max_length=settings.embedding_max_length,
             cache_folder=str(settings.embedding_cache_dir),
             expected_dimensions=settings.embedding_dimensions,
+            enable_sparse=settings.embedding_sparse_enabled,
         )

@@ -1,0 +1,15 @@
+# Connection comes from the environment (no credentials in the repository).
+# Local default: the jobs-postgres container published on localhost:5433.
+job_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PORT', '5433') | as_number }}"
+      user: "{{ env_var('DBT_USER', 'job_app') }}"
+      password: "{{ env_var('DBT_PASSWORD') }}"
+      dbname: "{{ env_var('DBT_DBNAME', 'job_search_ai') }}"
+      schema: analytics
+      threads: 4
+      connect_timeout: 10

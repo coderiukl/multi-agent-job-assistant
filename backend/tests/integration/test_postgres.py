@@ -46,7 +46,7 @@ def event_loop_policy():
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 TABLES = ("conversation_turns", "conversation_ownerships", "cv_processing_tasks",
-          "cv_ownerships", "users", "jobs")
+          "cv_ownerships", "users", "jobs", "raw.job_records")
 
 
 @pytest.fixture
@@ -209,9 +209,10 @@ async def _seed(sessions):
                  salary_min=Decimal(5_000_000), salary_max=Decimal(8_000_000),
                  salary_currency="VND", salary_period="monthly"),
         make_job(2, title="Java Developer", location="Hà Nội", skills=["Java"],
-                 seniority=SeniorityLevel.SENIOR),
+                 description="Build backend services.", seniority=SeniorityLevel.SENIOR),
         make_job(3, title="Frontend Developer", location="Ho Chi Minh City",
-                 skills=["JavaScript"], seniority=SeniorityLevel.UNKNOWN),
+                 description="Build user interfaces.", skills=["JavaScript"],
+                 seniority=SeniorityLevel.UNKNOWN),
         make_job(4, title="Expired Python job", location="Đà Nẵng",
                  expires_at=datetime.now(UTC) - timedelta(days=1)),
     ]
@@ -260,19 +261,23 @@ async def test_db_14_skill_filter_is_exact(sessions):
 
 
 async def test_db_14b_skill_keys_match_python_normalisation(sessions):
-    """TC-DB-14b: SQL skill normalisation equals normalize_deduplication_text
-    (accents, punctuation, case) – the rule Qdrant uses for skill_keys."""
-    from app.utils.job_deduplication import normalize_deduplication_text
+    """TC-DB-14b: SQL skill normalisation equals app.utils.skill_keys.skill_key
+    (accents, punctuation, case, C/C++/C#/.NET kept apart) – the rule Qdrant
+    uses for skill_keys."""
+    from app.utils.skill_keys import skill_key
 
-    job = make_job(9, title="Polyglot", skills=["Node.js", "C#", "Tiếng Anh", "ASP.NET Core"])
+    job = make_job(9, title="Polyglot", description="Polyglot work",
+                   skills=["Node.js", "C#", "C++", "Tiếng Việt", "ASP.NET Core"])
+    assert "Node.js" in job.skills and "ASP.NET" in job.skills
     await PostgresNormalizedJobRepository(sessions).upsert_many([job])
     repo = PostgresJobSearchRepository(sessions)
-    for skill in ("node js", "NODE.JS", "c", "tieng anh", "Tiếng  Anh", "asp net core"):
+    for skill in ("node js", "NODE.JS", "c", "c#", "C++", "cpp", "csharp", "tieng viet",
+                  "Tiếng  Việt", "asp.net", "ASP NET", "dotnet"):
         found = await repo.search_candidates(plan=plan(skills=[skill]), limit=10)
-        expected = normalize_deduplication_text(skill) in {
-            normalize_deduplication_text(s) for s in job.skills}
+        expected = skill_key(skill) in {skill_key(s) for s in job.skills}
         assert bool(found) is expected, skill
     assert await repo.search_candidates(plan=plan(skills=["Node"]), limit=10) == []
+    assert await repo.search_candidates(plan=plan(skills=["C"]), limit=10) == []
 
 
 async def test_db_14c_relevance_sort_prefers_keyword_matches(sessions):
@@ -281,7 +286,7 @@ async def test_db_14c_relevance_sort_prefers_keyword_matches(sessions):
     older_title = make_job(20, title="Rust Engineer", company="A", skills=["Rust"],
                            description="Systems work", posted_days_ago=20)
     newer_desc = make_job(21, title="Backend Engineer", company="B", skills=["Go"],
-                          description="Some Rust tooling", posted_days_ago=1)
+                          description="Some rust tooling", posted_days_ago=1)
     await PostgresNormalizedJobRepository(sessions).upsert_many([older_title, newer_desc])
     repo = PostgresJobSearchRepository(sessions)
     relevance = await repo.search_candidates(plan=plan(keywords=["Rust"]), limit=1)
@@ -466,3 +471,60 @@ def _nodes(harness):
         cv_analysis_service=harness.cv_analysis, career_advice_service=harness.career_advice,
         cover_letter_service=harness.cover_letter, job_search_service=harness.job_search,
         job_matching_service=harness.job_matching)
+
+
+# --------------------------------------------------------------------------
+# Raw layer (raw.job_records)
+# --------------------------------------------------------------------------
+def _raw_job(source_job_id: str, payload: dict, minutes: int = 0):
+    from app.schemas.job import RawJob
+
+    return RawJob(source="remotive", source_job_id=source_job_id,
+                  source_url=f"https://remotive.example/{source_job_id}", payload=payload,
+                  crawled_at=datetime(2026, 11, 1, tzinfo=UTC) + timedelta(minutes=minutes))
+
+
+async def test_db_21_raw_records_keep_one_row_per_distinct_payload(sessions):
+    """TC-DB-21: re-crawling an unchanged payload adds nothing; a changed
+    payload adds a new version; NUL characters are stripped for JSONB."""
+    from app.repositories.postgres_raw_job import PostgresRawJobRepository
+
+    repo = PostgresRawJobRepository(sessions)
+    assert await repo.save_raw_records(batch_id="b1", jobs=[
+        _raw_job("1", {"title": "A"}), _raw_job("2", {"title": "B\x00"})]) == 2
+    assert await repo.save_raw_records(batch_id="b2", jobs=[
+        _raw_job("1", {"title": "A"}, 5), _raw_job("2", {"title": "B"}, 5)]) == 0
+    assert await repo.save_raw_records(batch_id="b3", jobs=[
+        _raw_job("1", {"title": "A v2"}, 10)]) == 1
+    async with sessions() as session:
+        count = (await session.execute(text("SELECT count(*) FROM raw.job_records"))).scalar()
+    assert count == 3
+
+
+async def test_db_22_latest_raw_payload_is_read_in_key_order_batches(sessions):
+    """TC-DB-22: iter_latest_records returns the newest payload per job,
+    paginated by (source, source_job_id) without skipping or repeating."""
+    from app.repositories.postgres_raw_job import PostgresRawJobRepository
+
+    repo = PostgresRawJobRepository(sessions)
+    await repo.save_raw_records(batch_id="b1", jobs=[
+        _raw_job(str(i), {"v": 1}) for i in range(5)])
+    await repo.save_raw_records(batch_id="b2", jobs=[_raw_job("3", {"v": 2}, 30)])
+    batches = [batch async for batch in repo.iter_latest_records(batch_size=2)]
+    assert [len(batch) for batch in batches] == [2, 2, 1]
+    latest = {job.source_job_id: job.payload["v"] for batch in batches for job in batch}
+    assert latest == {"0": 1, "1": 1, "2": 1, "3": 2, "4": 1}
+    assert [j async for b in repo.iter_latest_records(source="himalayas") for j in b] == []
+
+
+async def test_db_23_preview_upsert_reports_without_writing(sessions):
+    """TC-DB-23: the dry run of reprocess-raw-jobs reports statuses only."""
+    repo = PostgresNormalizedJobRepository(sessions)
+    await repo.upsert_many([make_job(1, posted_days_ago=None)])
+    preview = await repo.preview_upsert([
+        make_job(1, description="changed", posted_days_ago=None),
+        make_job(2, posted_days_ago=None)])
+    assert (preview.inserted, preview.updated, preview.unchanged) == (1, 1, 0)
+    again = await repo.preview_upsert([make_job(1, posted_days_ago=None),
+                                       make_job(2, posted_days_ago=None)])
+    assert (again.inserted, again.updated, again.unchanged) == (1, 0, 1)

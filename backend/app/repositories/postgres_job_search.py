@@ -29,10 +29,8 @@ from app.schemas.job_search import (
     JobSearchPlan,
     JobSearchSort,
 )
-from app.utils.job_deduplication import (
-    build_job_location_search_terms,
-    normalize_deduplication_text,
-)
+from app.utils.job_deduplication import build_job_location_search_terms
+from app.utils.skill_keys import SKILL_KEY_REPLACEMENTS, skill_key
 
 MAX_CANDIDATE_LIMIT = 500
 
@@ -62,10 +60,16 @@ _ACCENT_SOURCE, _ACCENT_TARGET = _build_accent_translation()
 
 
 def normalized_skill_sql(value: ColumnElement[str]) -> ColumnElement[str]:
-    """SQL twin of ``normalize_deduplication_text`` for skill values."""
+    """SQL twin of ``app.utils.skill_keys.skill_key`` for skill values."""
+    lowered: ColumnElement[str] = func.lower(
+        func.translate(value, _ACCENT_SOURCE, _ACCENT_TARGET)
+    )
+    for symbol, replacement in SKILL_KEY_REPLACEMENTS:
+        lowered = func.replace(lowered, symbol, replacement)
+
     return func.btrim(
         func.regexp_replace(
-            func.lower(func.translate(value, _ACCENT_SOURCE, _ACCENT_TARGET)),
+            lowered,
             "[^a-z0-9]+",
             " ",
             "g",
@@ -260,7 +264,7 @@ class PostgresJobSearchRepository:
             skill_keys = [
                 key
                 for key in dict.fromkeys(
-                    normalize_deduplication_text(skill) for skill in filters.skills
+                    skill_key(skill) for skill in filters.skills
                 )
                 if key
             ]

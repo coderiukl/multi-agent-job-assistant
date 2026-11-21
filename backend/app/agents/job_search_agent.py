@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.core.exceptions import ExternalServiceException
+from app.normalizers.skills import get_skill_taxonomy
 from app.prompts.job_search import JOB_SEARCH_AGENT_PROMPT
 from app.schemas.job_search import (
     JobSearchFilters,
@@ -111,12 +112,20 @@ class JobSearchAgent:
         explicit = request.filters
         inferred = plan.filters
 
+        # Canonical skill names ("reactjs" -> "React"); job categories the
+        # planner put into the skill filter ("Sales") become keywords, as jobs
+        # no longer list categories as skills.
+        skill_filter, category_keywords = get_skill_taxonomy().normalize_query_skills(
+            explicit.skills or inferred.skills
+        )
+        keywords = list(dict.fromkeys([*plan.keywords, *category_keywords]))[:50]
+
         filters = JobSearchFilters(
             locations=explicit.locations or inferred.locations,
             employment_types=(explicit.employment_types or inferred.employment_types),
             work_modes=explicit.work_modes or inferred.work_modes,
             seniority_levels=(explicit.seniority_levels or inferred.seniority_levels),
-            skills=explicit.skills or inferred.skills,
+            skills=skill_filter,
             salary_min=(
                 explicit.salary_min
                 if explicit.salary_min is not None
@@ -141,7 +150,7 @@ class JobSearchAgent:
         return JobSearchPlan(
             original_query=request.query,
             semantic_query=plan.semantic_query,
-            keywords=plan.keywords,
+            keywords=keywords,
             filters=filters,
             strategy=JobSearchStrategy.HYBRID,
             sort=sort,

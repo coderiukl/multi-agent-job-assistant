@@ -16,6 +16,7 @@ from app.schemas.job import (
 )
 from app.utils.html import html_to_text
 
+
 class HimalayasJob(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -125,7 +126,10 @@ class HimalayasJobSource:
         if not description:
             description = job.excerpt or ""
 
-        skills = list(
+        # Himalayas categories ("Developer", "Sales", ...) are job categories,
+        # not skills: the normalizer stores them as job_categories and
+        # extracts the skills from the title/description instead.
+        job_categories = list(
             dict.fromkeys(
                 item.strip()
                 for item in [
@@ -151,7 +155,7 @@ class HimalayasJobSource:
             work_mode=WorkMode.REMOTE,
             employment_type=self._map_employment_type(job.employment_type),
             seniority_level=self._map_seniority(job.seniority),
-            skills=skills,
+            skills=[],
             salary_min=job.min_salary,
             salary_max=job.max_salary,
             salary_currency=(
@@ -170,6 +174,7 @@ class HimalayasJobSource:
                 ),
                 "categories": job.category,
                 "parent_categories": job.parent_categories,
+                "job_categories": job_categories,
                 "excerpt": job.excerpt,
                 "attribution": "Himalayas",
             },

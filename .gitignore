@@ -73,3 +73,11 @@ docs/system*
 
 backend/evals/datasets/cv_img
 backend/evals/datasets/*.xlsx
+
+reports
+# dbt
+dbt/job_analytics/target/
+dbt/job_analytics/dbt_packages/
+dbt/job_analytics/logs/
+dbt/.venv/
+dbt/job_analytics/.user.yml

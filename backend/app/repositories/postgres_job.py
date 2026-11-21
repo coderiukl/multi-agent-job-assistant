@@ -15,6 +15,7 @@ from app.schemas.job_storage import (
     JobWriteStatus,
 )
 
+
 class PostgresNormalizedJobRepository:
     def __init__(self, session_factory: JobSessionFactory) -> None:
         self._session_factory = session_factory
@@ -73,6 +74,36 @@ class PostgresNormalizedJobRepository:
                 result.status == JobWriteStatus.UNCHANGED
                 for result in results
             ),
+            results=results,
+        )
+
+    async def preview_upsert(self, jobs: list[NormalizedJob]) -> JobUpsertSummary:
+        """What ``upsert_many`` would do, without writing (dry runs)."""
+        unique_jobs = self._deduplicate_batch(jobs)
+
+        if not unique_jobs:
+            return JobUpsertSummary()
+
+        try:
+            async with self._session_factory() as session:
+                existing_hashes = await self._load_existing_hashes(
+                    session=session,
+                    job_ids=list(unique_jobs),
+                )
+        except SQLAlchemyError as exc:
+            raise StorageException(
+                message="Normalized jobs could not be read from PostgreSQL.",
+            ) from exc
+
+        results = self._build_results(
+            jobs=list(unique_jobs.values()),
+            existing_hashes=existing_hashes,
+        )
+
+        return JobUpsertSummary(
+            inserted=sum(r.status == JobWriteStatus.INSERTED for r in results),
+            updated=sum(r.status == JobWriteStatus.UPDATED for r in results),
+            unchanged=sum(r.status == JobWriteStatus.UNCHANGED for r in results),
             results=results,
         )
 

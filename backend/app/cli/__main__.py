@@ -135,6 +135,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only index jobs from one source.",
     )
 
+    backfill_parser = subparsers.add_parser(
+        "backfill-raw-jobs",
+        help="Load the JSONL raw archive into the PostgreSQL raw layer.",
+    )
+    backfill_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data/jobs"),
+        help="Job data directory containing raw/<source>/<date>/*.jsonl",
+    )
+    backfill_parser.add_argument(
+        "--source",
+        choices=sorted(SUPPORTED_SOURCES),
+        default=None,
+        help="Only backfill one source.",
+    )
+
+    reprocess_parser = subparsers.add_parser(
+        "reprocess-raw-jobs",
+        help=(
+            "Re-map and re-normalize the newest raw payload of every job "
+            "(no crawling), then re-index the changed jobs."
+        ),
+    )
+    reprocess_parser.add_argument(
+        "--source",
+        choices=sorted(SUPPORTED_SOURCES),
+        default=None,
+        help="Only reprocess one source.",
+    )
+    reprocess_parser.add_argument(
+        "--batch-size",
+        type=positive_int,
+        default=500,
+        help="Raw records read per batch.",
+    )
+    reprocess_parser.add_argument(
+        "--skip-index",
+        action="store_true",
+        help="Do not re-index changed jobs in Qdrant (run index-jobs later).",
+    )
+    reprocess_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only report how many jobs would be inserted/updated.",
+    )
+
     worker_parser = subparsers.add_parser(
         "cv-worker",
         help="Process durable CV tasks from PostgreSQL.",
@@ -206,6 +253,30 @@ async def execute(args: argparse.Namespace) -> int:
             source=args.source,
         )
 
+        print_result(result)
+        return 0
+
+    if args.command == "backfill-raw-jobs":
+        from app.cli.crawl_jobs import print_result
+        from app.cli.raw_jobs import backfill_raw_jobs
+
+        result = await backfill_raw_jobs(
+            data_dir=args.data_dir,
+            source=args.source,
+        )
+        print_result(result)
+        return 0
+
+    if args.command == "reprocess-raw-jobs":
+        from app.cli.crawl_jobs import print_result
+        from app.cli.raw_jobs import reprocess_raw_jobs
+
+        result = await reprocess_raw_jobs(
+            source=args.source,
+            batch_size=args.batch_size,
+            index=not args.skip_index,
+            dry_run=args.dry_run,
+        )
         print_result(result)
         return 0
 
