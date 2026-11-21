@@ -2,7 +2,6 @@ import asyncio
 from typing import Any
 
 from langchain_core.embeddings import Embeddings
-from sentence_transformers import SentenceTransformer
 
 from app.embeddings.types import HybridEmbedding, SparseEmbedding
 
@@ -23,6 +22,11 @@ class BgeM3Embeddings(Embeddings):
     ) -> None:
         self._batch_size = batch_size
         self._async_lock = asyncio.Lock()
+
+        # Imported lazily: sentence-transformers pulls in torch, which only the
+        # model-serving images install. Importing app.embeddings (e.g. for the
+        # types or the factory in tests/CI) must not require it.
+        from sentence_transformers import SentenceTransformer
 
         self._model = SentenceTransformer(
             model_name,

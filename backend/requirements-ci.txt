@@ -14,6 +14,7 @@ sqlalchemy[asyncio]>=2.0,<3
 asyncpg>=0.30,<1
 alembic>=1.16,<2
 pymupdf
+pillow
 numpy
 pendulum
 PyJWT>=2.10,<3
