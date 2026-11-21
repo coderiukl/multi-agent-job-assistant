@@ -4,7 +4,6 @@ from app.vectorstores.qdrant_job_index import (
     QdrantJobVectorIndex,
 )
 
-
 __all__ = [
     "JobVectorIndex",
     "QdrantJobVectorIndex",

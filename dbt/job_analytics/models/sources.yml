@@ -1,0 +1,31 @@
+version: 2
+
+sources:
+  - name: app
+    description: Normalized job postings written by the crawling pipeline (app/).
+    schema: public
+    tables:
+      - name: jobs
+        description: One row per source job (upserted by content hash).
+        config:
+          loaded_at_field: crawled_at
+          freshness:
+            warn_after: { count: 24, period: hour }
+            error_after: { count: 72, period: hour }
+        columns:
+          - name: job_id
+            data_tests: [unique, not_null]
+
+  - name: raw
+    description: Append-only payload history (one row per distinct payload).
+    schema: raw
+    tables:
+      - name: job_records
+        config:
+          loaded_at_field: ingested_at
+          freshness:
+            warn_after: { count: 24, period: hour }
+            error_after: { count: 72, period: hour }
+        columns:
+          - name: id
+            data_tests: [unique, not_null]

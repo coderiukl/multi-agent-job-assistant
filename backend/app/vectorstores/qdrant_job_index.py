@@ -8,17 +8,22 @@ from qdrant_client.http import models
 
 from app.core.config import Settings
 from app.core.exceptions import AppException, ExternalServiceException
+from app.embeddings.types import HybridEmbedding, SparseEmbedding, supports_sparse
 from app.schemas.job import NormalizedJob
 from app.schemas.job_index import JobIndexingSummary
 from app.schemas.job_search import JobSearchFilters, JobVectorSearchHit
 from app.utils.job_deduplication import (
     build_job_deduplication_key,
     build_job_location_keys,
-    normalize_deduplication_text,
 )
+from app.utils.skill_keys import skill_key
+from app.vectorstores.fusion import fuse_hits
 
 LOGGER = logging.getLogger(__name__)
-INDEX_PAYLOAD_VERSION = "v2"
+# v3: named dense vector + BGE-M3 sparse vector per point.
+INDEX_PAYLOAD_VERSION = "v3"
+DENSE_VECTOR = "dense"
+SPARSE_VECTOR = "sparse"
 
 
 class QdrantJobVectorIndex:
@@ -38,7 +43,14 @@ class QdrantJobVectorIndex:
         self._embedding_model = settings.embedding_model
         self._embedding_model_version = settings.embedding_model_version
         self._embedding_text_version = settings.job_embedding_text_version
+        self._sparse_enabled = supports_sparse(embeddings)
+        self._fusion_mode = settings.vector_fusion_mode
+        self._fusion_dense_weight = settings.vector_fusion_dense_weight
         self._collection_ready = False
+
+    @property
+    def sparse_enabled(self) -> bool:
+        return self._sparse_enabled
 
     async def ensure_collection(self) -> None:
         if self._collection_ready:
@@ -50,10 +62,18 @@ class QdrantJobVectorIndex:
             if not exists:
                 await self._client.create_collection(
                     collection_name=self._collection_name,
-                    vectors_config=models.VectorParams(
-                        size=self._dimensions,
-                        distance=models.Distance.COSINE,
-                    ),
+                    vectors_config={
+                        DENSE_VECTOR: models.VectorParams(
+                            size=self._dimensions,
+                            distance=models.Distance.COSINE,
+                        ),
+                    },
+                    # BGE-M3 weights are learned, so no IDF modifier. The
+                    # sparse vector is always declared so it can be enabled
+                    # later without recreating the collection.
+                    sparse_vectors_config={
+                        SPARSE_VECTOR: models.SparseVectorParams(),
+                    },
                 )
             else:
                 await self._validate_existing_collection()
@@ -86,13 +106,18 @@ class QdrantJobVectorIndex:
         """
         info = await self._client.get_collection(self._collection_name)
         vectors = info.config.params.vectors
-        if isinstance(vectors, dict):
-            # Named vectors: this index only writes the default unnamed vector.
-            vectors = vectors.get("") if "" in vectors else None
+        # This index writes the named vectors "dense" (+ "sparse"); a legacy
+        # collection with one unnamed vector (index payload <= v2) is refused.
+        vectors = vectors.get(DENSE_VECTOR) if isinstance(vectors, dict) else None
+        sparse_vectors = info.config.params.sparse_vectors or {}
 
         size = getattr(vectors, "size", None)
         distance = getattr(vectors, "distance", None)
-        if size != self._dimensions or distance != models.Distance.COSINE:
+        if (
+            size != self._dimensions
+            or distance != models.Distance.COSINE
+            or SPARSE_VECTOR not in sparse_vectors
+        ):
             LOGGER.error(
                 "Qdrant collection configuration does not match the embeddings",
                 extra={
@@ -100,6 +125,7 @@ class QdrantJobVectorIndex:
                     "expected_size": self._dimensions,
                     "actual_size": size,
                     "actual_distance": str(distance),
+                    "has_sparse_vector": SPARSE_VECTOR in sparse_vectors,
                 },
             )
             raise AppException(
@@ -107,12 +133,14 @@ class QdrantJobVectorIndex:
                 code="VECTOR_COLLECTION_MISCONFIGURED",
                 message=(
                     "The job vector collection does not match the configured "
-                    "embedding model."
+                    "embedding model. Use a new QDRANT_COLLECTION_NAME and "
+                    "re-index the jobs."
                 ),
                 details={
                     "collection": self._collection_name,
                     "expected_size": self._dimensions,
                     "actual_size": size,
+                    "has_sparse_vector": SPARSE_VECTOR in sparse_vectors,
                 },
             )
 
@@ -267,20 +295,20 @@ class QdrantJobVectorIndex:
 
                 texts = [self._build_embedding_text(job) for job in batch]
 
-                vectors = await self._embeddings.aembed_documents(texts)
+                embeddings = await self._embed_documents(texts)
 
-                self._validate_vectors(
+                self._validate_embeddings(
                     jobs=batch,
-                    vectors=vectors,
+                    embeddings=embeddings,
                 )
 
                 points = [
                     models.PointStruct(
                         id=self._point_id(job),
-                        vector=vector,
+                        vector=self._point_vectors(embedding),
                         payload=self._build_payload(job),
                     )
-                    for job, vector in zip(batch, vectors, strict=True)
+                    for job, embedding in zip(batch, embeddings, strict=True)
                 ]
 
                 await self._client.upsert(
@@ -345,21 +373,46 @@ class QdrantJobVectorIndex:
         await self.ensure_collection()
 
         try:
-            query_vector = await self._embeddings.aembed_query(normalized_query)
-
-            if len(query_vector) != self._dimensions:
-                raise ValueError(
-                    "Query embedding dimension does not match the Qdrant collection."
+            query_embedding = await self._embed_query(normalized_query)
+            query_filter = self._build_search_filter(filters)
+            dense_query = query_embedding.dense
+            sparse_query = models.SparseVector(
+                indices=query_embedding.sparse.indices,
+                values=query_embedding.sparse.values,
+            )
+            requests = [
+                self._query_request(dense_query, DENSE_VECTOR, query_filter, limit)
+            ]
+            use_sparse = (
+                self._fusion_mode != "dense"
+                and bool(query_embedding.sparse.indices)
+            )
+            if use_sparse:
+                requests.append(
+                    self._query_request(
+                        sparse_query, SPARSE_VECTOR, query_filter, limit
+                    )
                 )
 
-            response = await self._client.query_points(
+            responses = await self._client.query_batch_points(
                 collection_name=self._collection_name,
-                query=query_vector,
-                query_filter=self._build_search_filter(filters),
-                limit=limit,
-                with_payload=True,
-                with_vectors=False,
+                requests=requests,
             )
+            dense_hits = self._scored_job_ids(responses[0].points)
+            sparse_hits = (
+                self._scored_job_ids(responses[1].points)
+                if len(responses) > 1
+                else []
+            )
+
+            if use_sparse and self._fusion_mode == "linear":
+                dense_hits, sparse_hits = await self._complete_linear_scores(
+                    dense_hits,
+                    sparse_hits,
+                    dense_query=dense_query,
+                    sparse_query=sparse_query,
+                    query_filter=query_filter,
+                )
 
         except AppException:
             raise
@@ -379,9 +432,90 @@ class QdrantJobVectorIndex:
                 message=("Semantic job search is unavailable."),
             ) from exc
 
-        hits: list[JobVectorSearchHit] = []
+        return fuse_hits(
+            dense_hits,
+            sparse_hits,
+            mode=self._fusion_mode,
+            limit=limit,
+            dense_weight=self._fusion_dense_weight,
+        )
 
-        for point in response.points:
+    @staticmethod
+    def _query_request(
+        query: list[float] | models.SparseVector,
+        using: str,
+        query_filter: models.Filter | None,
+        limit: int,
+    ) -> models.QueryRequest:
+        return models.QueryRequest(
+            query=query,
+            using=using,
+            filter=query_filter,
+            limit=limit,
+            with_payload=["job_id"],
+            with_vector=False,
+        )
+
+    async def _complete_linear_scores(
+        self,
+        dense_hits: list[tuple[str, float]],
+        sparse_hits: list[tuple[str, float]],
+        *,
+        dense_query: list[float],
+        sparse_query: models.SparseVector,
+        query_filter: models.Filter | None,
+    ) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
+        """Score each candidate on the side whose top-K it missed.
+
+        Both lists are top-K only, so a job ranked by one vector alone would
+        get 0 for the other one in the linear blend just because it was not
+        retrieved. One extra batched query restricted to those point ids
+        fetches the real scores (a job without any shared sparse token stays
+        at 0, which is then its true sparse score).
+        """
+        dense_ids = {job_id for job_id, _ in dense_hits}
+        sparse_ids = {job_id for job_id, _ in sparse_hits}
+        missing = (
+            (DENSE_VECTOR, dense_query, sorted(sparse_ids - dense_ids)),
+            (SPARSE_VECTOR, sparse_query, sorted(dense_ids - sparse_ids)),
+        )
+        lookups = [
+            (using, query, job_ids) for using, query, job_ids in missing if job_ids
+        ]
+        if not lookups:
+            return dense_hits, sparse_hits
+
+        requests = []
+        for using, query, job_ids in lookups:
+            restriction: list[models.Condition] = [
+                models.HasIdCondition(
+                    has_id=[self._point_id_for_job_id(job_id) for job_id in job_ids]
+                )
+            ]
+            if query_filter is not None:
+                restriction.append(query_filter)
+            requests.append(
+                self._query_request(
+                    query, using, models.Filter(must=restriction), len(job_ids)
+                )
+            )
+
+        responses = await self._client.query_batch_points(
+            collection_name=self._collection_name,
+            requests=requests,
+        )
+
+        completed = {DENSE_VECTOR: list(dense_hits), SPARSE_VECTOR: list(sparse_hits)}
+        for (using, _, _), response in zip(lookups, responses, strict=True):
+            completed[using].extend(self._scored_job_ids(response.points))
+
+        return completed[DENSE_VECTOR], completed[SPARSE_VECTOR]
+
+    @staticmethod
+    def _scored_job_ids(points: list[models.ScoredPoint]) -> list[tuple[str, float]]:
+        scored: list[tuple[str, float]] = []
+
+        for point in points:
             payload = point.payload or {}
             job_id = payload.get("job_id")
 
@@ -392,14 +526,46 @@ class QdrantJobVectorIndex:
                 )
                 continue
 
-            hits.append(
-                JobVectorSearchHit(
-                    job_id=job_id,
-                    score=float(point.score),
-                )
+            scored.append((job_id, float(point.score)))
+
+        return scored
+
+    async def _embed_documents(self, texts: list[str]) -> list[HybridEmbedding]:
+        if self._sparse_enabled:
+            return await self._embeddings.aembed_hybrid(texts)  # type: ignore[attr-defined]
+
+        vectors = await self._embeddings.aembed_documents(texts)
+        empty = SparseEmbedding(indices=[], values=[])
+        return [HybridEmbedding(dense=vector, sparse=empty) for vector in vectors]
+
+    async def _embed_query(self, text: str) -> HybridEmbedding:
+        if self._sparse_enabled and self._fusion_mode != "dense":
+            embeddings = await self._embeddings.aembed_hybrid([text])  # type: ignore[attr-defined]
+            embedding = embeddings[0]
+        else:
+            embedding = HybridEmbedding(
+                dense=await self._embeddings.aembed_query(text),
+                sparse=SparseEmbedding(indices=[], values=[]),
             )
 
-        return hits
+        if len(embedding.dense) != self._dimensions:
+            raise ValueError(
+                "Query embedding dimension does not match the Qdrant collection."
+            )
+
+        return embedding
+
+    @staticmethod
+    def _point_vectors(embedding: HybridEmbedding) -> dict[str, object]:
+        vectors: dict[str, object] = {DENSE_VECTOR: embedding.dense}
+
+        if embedding.sparse.indices:
+            vectors[SPARSE_VECTOR] = models.SparseVector(
+                indices=embedding.sparse.indices,
+                values=embedding.sparse.values,
+            )
+
+        return vectors
 
     def _build_embedding_text(self, job: NormalizedJob) -> str:
         employment_type = (
@@ -414,12 +580,18 @@ class QdrantJobVectorIndex:
             (f"Work mode: {job.work_mode.value}"),
             (f"Seniority: {job.seniority_level.value}"),
             (f"Skills: {', '.join(job.skills)}"),
+            (f"Categories: {', '.join(self._job_categories(job))}"),
             (f"Description: {job.description}"),
         ]
 
         text = "\n".join(parts)
 
         return text[: self._max_text_chars]
+
+    @staticmethod
+    def _job_categories(job: NormalizedJob) -> list[str]:
+        categories = job.source_metadata.get("job_categories") or []
+        return [str(category) for category in categories if str(category).strip()]
 
     @staticmethod
     def _point_id(job: NormalizedJob) -> str:
@@ -457,7 +629,8 @@ class QdrantJobVectorIndex:
             "work_mode": job.work_mode.value,
             "seniority_level": (job.seniority_level.value),
             "skills": job.skills,
-            "skill_keys": [normalize_deduplication_text(skill) for skill in job.skills],
+            "skill_keys": list(dict.fromkeys(skill_key(skill) for skill in job.skills)),
+            "sparse_indexed": self._sparse_enabled,
             "salary_min": (
                 float(job.salary_min) if job.salary_min is not None else None
             ),
@@ -491,7 +664,11 @@ class QdrantJobVectorIndex:
             and payload.get("embedding_model_version") == self._embedding_model_version
             and payload.get("embedding_text_version") == self._embedding_text_version
             and payload.get("index_payload_version") == INDEX_PAYLOAD_VERSION
+            # Turning the sparse head on re-indexes points that only have the
+            # dense vector; turning it off keeps the existing sparse vectors.
+            and (bool(payload.get("sparse_indexed")) or not self._sparse_enabled)
         )
+        
 
     @staticmethod
     def _salary_floor(job: NormalizedJob) -> float | None:
@@ -586,7 +763,7 @@ class QdrantJobVectorIndex:
                     key="skill_keys",
                     match=models.MatchAny(
                         any=[
-                            normalize_deduplication_text(skill)
+                            skill_key(skill)
                             for skill in filters.skills
                         ]
                     ),
@@ -659,17 +836,21 @@ class QdrantJobVectorIndex:
 
         return list(jobs_by_id.values())
 
-    def _validate_vectors(
+    def _validate_embeddings(
         self,
         *,
         jobs: list[NormalizedJob],
-        vectors: list[list[float]],
+        embeddings: list[HybridEmbedding],
     ) -> None:
-        if len(jobs) != len(vectors):
+        if len(jobs) != len(embeddings):
             raise ValueError("Embedding result count does not match job count.")
 
-        for vector in vectors:
-            if len(vector) != self._dimensions:
+        for embedding in embeddings:
+            if len(embedding.dense) != self._dimensions:
                 raise ValueError(
                     "Embedding dimension does not match the Qdrant collection."
+                )
+            if len(embedding.sparse.indices) != len(embedding.sparse.values):
+                raise ValueError(
+                    "Sparse embedding indices and values differ in length."
                 )

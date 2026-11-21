@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: stg_jobs
+    description: Normalized jobs with derived salary midpoint and expiry flag.
+    columns:
+      - name: job_id
+        data_tests: [unique, not_null]
+      - name: source
+        data_tests: [not_null]
+      - name: work_mode
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [onsite, remote, hybrid, unknown]
+      - name: seniority_level
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [intern, fresher, junior, middle, senior, lead, manager, director, unknown]
+      - name: salary_period
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [hourly, weekly, fortnightly, monthly, annual, unknown]
+      - name: employment_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [full_time, part_time, contract, internship, freelance, temporary, other]
+
+  - name: stg_job_skills
+    description: One row per job and canonical skill.
+    columns:
+      - name: job_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_jobs')
+                field: job_id
+      - name: skill
+        data_tests: [not_null]
+
+  - name: stg_raw_job_records
+    description: Raw payload versions with a per-job version number.
+    columns:
+      - name: raw_record_id
+        data_tests: [unique, not_null]

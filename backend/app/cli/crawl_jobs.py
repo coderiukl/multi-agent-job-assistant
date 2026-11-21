@@ -16,7 +16,8 @@ from app.repositories import (
     CompositeJobRepository,
     JobRepository,
     LocalJsonlJobRepository,
-    PostgresNormalizedJobRepository
+    PostgresNormalizedJobRepository,
+    PostgresRawJobRepository,
 )
 from app.services.job_crawling import JobCrawlingService
 
@@ -37,7 +38,8 @@ def build_job_repository(*, data_dir: Path, settings: Settings) -> tuple[JobRepo
     postgres_repository = PostgresNormalizedJobRepository(session_factory)
     composite_repository = CompositeJobRepository(
         raw_repository=local_repository,
-        normalized_repository=postgres_repository
+        normalized_repository=postgres_repository,
+        raw_record_store=PostgresRawJobRepository(session_factory),
     )
 
     return composite_repository, engine

@@ -5,6 +5,7 @@ from app.repositories.postgres_job import PostgresNormalizedJobRepository
 from app.repositories.job_search import JobSearchRepository
 from app.repositories.postgres_job_search import PostgresJobSearchRepository
 from app.repositories.postgres_job_index_source import PostgresJobIndexSource
+from app.repositories.postgres_raw_job import PostgresRawJobRepository
 
 __all__ = [
     "CVRepository",
@@ -18,4 +19,5 @@ __all__ = [
     "JobSearchRepository",
     "PostgresJobSearchRepository",
     "PostgresJobIndexSource",
+    "PostgresRawJobRepository",
 ]

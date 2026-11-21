@@ -21,10 +21,10 @@ from app.schemas.job_search import (
 from app.schemas.job_search_context import JobSearchContext
 from app.utils.job_deduplication import (
     build_job_deduplication_key,
-    normalize_deduplication_text,
     normalize_job_location,
 )
 from app.utils.job_search_sorting import sort_job_search_hits
+from app.utils.skill_keys import skill_key
 from app.vectorstores.base import JobVectorIndex
 
 LOGGER = logging.getLogger(__name__)
@@ -478,9 +478,9 @@ class HybridJobSearchService:
                 else work_mode in filters.work_modes
             )
         if filters.skills:
-            job_skills = {normalize_deduplication_text(skill) for skill in job.skills}
+            job_skills = {skill_key(skill) for skill in job.skills}
             checks["skills"] = any(
-                normalize_deduplication_text(skill) in job_skills
+                skill_key(skill) in job_skills
                 for skill in filters.skills
             )
         return checks

@@ -6,7 +6,7 @@ from app.database.auth_models import (
     UserModel,
 )
 from app.database.base import Base
-from app.database.models import JobModel
+from app.database.models import RAW_SCHEMA, JobModel, RawJobRecordModel
 from app.database.session import (
     JobSessionFactory,
     create_job_database_engine,
@@ -16,6 +16,8 @@ from app.database.session import (
 __all__ = [
     "Base",
     "JobModel",
+    "RAW_SCHEMA",
+    "RawJobRecordModel",
     "UserModel",
     "CVOwnershipModel",
     "CVProcessingTaskModel",

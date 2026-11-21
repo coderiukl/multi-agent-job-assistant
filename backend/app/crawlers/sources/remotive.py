@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.schemas.job import (
     CrawlPage,
     EmploymentType,
@@ -10,7 +12,6 @@ from app.schemas.job import (
     WorkMode,
 )
 from app.utils.html import html_to_text
-from pydantic import BaseModel, ConfigDict, Field
 
 
 class RemotiveJob(BaseModel):
@@ -77,7 +78,6 @@ class RemotiveJobSource:
         job = RemotiveJob.model_validate(raw_job.payload)
         description = html_to_text(job.description)
         location = job.candidate_required_location or "Worldwide"
-        skills = [job.category] if job.category else []
 
         return JobCandidate(
             source=self.source_name,
@@ -90,11 +90,13 @@ class RemotiveJobSource:
             employment_type=self._map_employment_type(job.job_type),
             work_mode=WorkMode.REMOTE,
             seniority_level=SeniorityLevel.UNKNOWN,
-            skills=skills,
+            # The Remotive category is a job category, not a skill.
+            skills=[],
             posted_at=self._to_utc(job.publication_date),
             source_metadata={
                 "company_logo": job.company_logo,
                 "category": job.category,
+                "job_categories": [job.category] if job.category else [],
                 "salary_text": job.salary,
                 "attribution": "Remotive",
                 "attribution_url": job.url ,
